@@ -38,7 +38,7 @@ describe("the dashboard's gallery, in the browser", () => {
 /** The situation table also drives what the real frame draws over each page. */
 describe("onboarding situations in the frame", () => {
   it.each(ONBOARDING_CASES)(
-    "situation $row keeps the bar to its one reason and practice to the first live visit",
+    "situation $row places its account notice and offers practice only on the first live visit",
     async ({ row, facts, reason }) => {
       const state = gallery.states.find((one) => one.id === `dashboard-onboarding-${row}`);
       if (state === undefined) throw new Error(`the gallery has no onboarding situation ${row}`);
@@ -57,7 +57,7 @@ describe("onboarding situations in the frame", () => {
         [...drawn.querySelectorAll("[data-reason]")].map((element) =>
           element.getAttribute("data-reason"),
         ),
-      ).toEqual(reason === null ? [] : [reason]);
+      ).toEqual(facts.withdrawn || reason === null ? [] : [reason]);
       expect(drawn.querySelector('a[href="/docs/#how-to-start"]') !== null).toBe(
         row === 1 && facts.mode === "live",
       );

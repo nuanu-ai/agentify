@@ -23,12 +23,12 @@ import { paymentUnknown } from "../../../ports/operator/orders.js";
 import type { Integration } from "../../../ports/store.js";
 import type { Contact } from "../store.js";
 import {
-  namedAndPaid,
   onSale,
   priceOf,
   ready,
   type SettledSale,
   settledSales,
+  walletAt,
 } from "./figures-standing.js";
 import type { MemoryScope } from "./index.js";
 
@@ -49,25 +49,39 @@ const talliedSales = (sales: readonly SettledSale[]) =>
 
 export const memoryOperatorFigures = (scope: MemoryScope): OperatorFigures => ({
   async waitingForAdmission(asked) {
-    const { merchants, cards, contact } = scope.holdings();
+    const { merchants, cards, contact, liveRequests } = scope.holdings();
     const waiting = askedOn(asked.surface).admission
       ? merchants
-          .filter((merchant) => merchant.liveApprovedAt === null && namedAndPaid(merchant, asked))
-          .sort((one, other) => one.createdAt - other.createdAt || inCodeOrder(one.id, other.id))
+          .filter(
+            (merchant) =>
+              merchant.liveApprovedAt === null &&
+              liveRequests.get(merchant.id)?.state === "pending",
+          )
+          .sort(
+            (one, other) =>
+              (liveRequests.get(one.id)?.requestedAt ?? 0) -
+                (liveRequests.get(other.id)?.requestedAt ?? 0) || inCodeOrder(other.id, one.id),
+          )
       : [];
     return {
       readAt: asked.at,
       of: waiting.length,
-      merchants: waiting.slice(0, WAITING_NAMED_AT_MOST).map((merchant) => ({
-        merchantId: merchant.id,
-        name: merchant.name,
-        serviceName: merchant.serviceName ?? "",
-        sellerSite: merchant.sellerSite,
-        createdAt: merchant.createdAt,
-        integration: merchant.integration,
-        lastContact: contact.get(merchant.id)?.at ?? null,
-        cardsPublished: cards.filter((card) => card.merchantId === merchant.id).length,
-      })),
+      merchants: waiting.slice(0, WAITING_NAMED_AT_MOST).map((merchant) => {
+        const request = liveRequests.get(merchant.id);
+        if (!request) throw new Error("a waiting merchant has no live-sales request");
+        return {
+          request: structuredClone(request),
+          hasWallet: walletAt(merchant, asked.at).address !== null,
+          merchantId: merchant.id,
+          name: merchant.name,
+          serviceName: merchant.serviceName ?? "",
+          sellerSite: merchant.sellerSite,
+          createdAt: merchant.createdAt,
+          integration: merchant.integration,
+          lastContact: contact.get(merchant.id)?.at ?? null,
+          cardsPublished: cards.filter((card) => card.merchantId === merchant.id).length,
+        };
+      }),
     };
   },
 
@@ -150,7 +164,7 @@ export const memoryOperatorFigures = (scope: MemoryScope): OperatorFigures => ({
   },
 
   async merchantCounts(asked) {
-    const { merchants, cards } = scope.holdings();
+    const { merchants, cards, liveRequests } = scope.holdings();
     const byId = new Map(merchants.map((merchant) => [merchant.id, merchant]));
     const selling = new Set(
       cards
@@ -167,7 +181,9 @@ export const memoryOperatorFigures = (scope: MemoryScope): OperatorFigures => ({
       admitted: merchants.filter((merchant) => merchant.liveApprovedAt !== null).length,
       waitingForAdmission: askedOn(asked.surface).admission
         ? merchants.filter(
-            (merchant) => merchant.liveApprovedAt === null && namedAndPaid(merchant, asked),
+            (merchant) =>
+              merchant.liveApprovedAt === null &&
+              liveRequests.get(merchant.id)?.state === "pending",
           ).length
         : 0,
     };

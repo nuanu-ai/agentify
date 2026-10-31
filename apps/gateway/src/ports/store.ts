@@ -30,6 +30,12 @@ import type {
   JournalQuery,
   JournalRow,
 } from "./journal.js";
+import type {
+  LiveSalesAsk,
+  LiveSalesAsked,
+  LiveSalesDeclined,
+  LiveSalesRequest,
+} from "./live-sales.js";
 import type { Reminder } from "./queue.js";
 
 export type PaymentCompletion =
@@ -655,6 +661,17 @@ export interface Store {
    * events this method records.
    */
   recordAnalytics(event: AnalyticsEvent, at: number | Date): Promise<void>;
+
+  /** The latest request, including a declined decision, independently of current contact. */
+  liveSalesRequest(merchantId: string): Promise<LiveSalesRequest | null>;
+  /** Name, request and operator notice commit together. A pending retry keeps its original facts. */
+  requestLiveSales(input: LiveSalesAsk, at: number): Promise<LiveSalesAsked>;
+  /** The reviewed request, full decision journal row and merchant notice commit together. */
+  declineLiveSales(
+    merchantId: string,
+    requestId: string,
+    press: JournalPress,
+  ): Promise<LiveSalesDeclined | null>;
 
   // --- merchants and their keys ---------------------------------------------
 

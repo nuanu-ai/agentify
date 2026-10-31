@@ -30,7 +30,10 @@ const escapeHtml = (value: string): string =>
       })[character] ?? character,
   );
 
-export function transactionalEmailHtml(message: TransactionalEmail): string {
+export function transactionalEmailHtml(
+  message: TransactionalEmail,
+  options: { readonly paragraphsBeforeAction?: boolean } = {},
+): string {
   const preview = escapeHtml(message.preview);
   const eyebrow = escapeHtml(message.eyebrow);
   const title = escapeHtml(message.title);
@@ -43,7 +46,7 @@ export function transactionalEmailHtml(message: TransactionalEmail): string {
   const paragraphs = message.paragraphs
     .map(
       (paragraph) =>
-        `<p style="margin:0 0 16px;color:#6B6862;font-size:15px;line-height:1.65;">${escapeHtml(paragraph)}</p>`,
+        `<p style="margin:0 0 16px;color:#6B6862;font-size:15px;line-height:1.65;white-space:pre-wrap;">${escapeHtml(paragraph)}</p>`,
     )
     .join("");
 
@@ -68,14 +71,14 @@ export function transactionalEmailHtml(message: TransactionalEmail): string {
               <p style="margin:0 0 12px;color:#0F736E;font-size:12px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;">${eyebrow}</p>
               <h1 style="margin:0 0 16px;color:#1A1917;font-size:30px;line-height:1.2;font-weight:650;letter-spacing:-0.7px;">${title}</h1>
               <p style="margin:0 0 28px;color:#1A1917;font-size:17px;line-height:1.6;">${lead}</p>
-              <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 24px;">
+              ${options.paragraphsBeforeAction ? `${paragraphs}\n              ` : ""}<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 24px;">
                 <tr>
                   <td style="background:#0F736E;border-radius:12px;">
                     <a href="${link}" style="display:inline-block;padding:14px 22px;color:#FFFFFF;font-size:15px;font-weight:700;line-height:20px;text-decoration:none;">${action}</a>
                   </td>
                 </tr>
               </table>
-              ${paragraphs}
+              ${options.paragraphsBeforeAction ? "" : paragraphs}
               <p style="margin:24px 0 8px;color:#6B6862;font-size:13px;line-height:1.55;">If the button does not work, copy this link into your browser:</p>
               <p style="margin:0;padding:12px 14px;background:#F6F4EF;border:1px solid #E7E3DB;border-radius:8px;color:#0F736E;font-family:'SFMono-Regular',Consolas,'Liberation Mono',monospace;font-size:12px;line-height:1.55;word-break:break-all;"><a href="${link}" style="color:#0F736E;text-decoration:underline;">${link}</a></p>
             </td>

@@ -20,6 +20,7 @@
  */
 
 import { readinessOf, type SurfaceMode } from "@agentify/core";
+import type { LiveSalesRequest } from "../live-sales.js";
 import type { Integration } from "../store.js";
 import type { Dollars, Tally } from "./money.js";
 
@@ -40,8 +41,10 @@ export interface Read {
   readonly readAt: number;
 }
 
-/** A merchant with a seller name and a payout wallet who is not admitted to live sales. */
+/** A merchant with a pending request for live sales. */
 interface WaitingMerchant {
+  readonly request: LiveSalesRequest;
+  readonly hasWallet: boolean;
   readonly merchantId: string;
   readonly name: string;
   readonly serviceName: string;

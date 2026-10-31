@@ -10,8 +10,9 @@ import { defineConfig } from "vite";
  * routes use becomes a chunk of its own that a route module imports, and a
  * click then fetches the route module first and only then discovers the chunk:
  * a second round trip on the way to the page. As one chunk, which the frame is
- * drawn from, every page has loaded it before any click. The operator's
- * workspace keeps its components out of it, its frame in the shared package
+ * drawn from, every page has loaded it before any click. React's DOM runtime
+ * is required on every hydrated page, so it shares that chunk too. The
+ * operator's workspace keeps its components out of it, its frame in the shared package
  * among them: its pages are sent with no script, and a merchant's page would
  * only carry them.
  */
@@ -30,7 +31,8 @@ export default defineConfig({
       external: ["brotli-wasm"],
       output: {
         manualChunks(id) {
-          return /\/packages\/ui\/(?!src\/workspace)|\/app\/components\/(?!admin)/.test(id)
+          return /\/packages\/ui\/(?!src\/workspace)|\/app\/components\/(?!admin)/.test(id) ||
+            /\/node_modules\/react-dom\//.test(id)
             ? "components"
             : undefined;
         },

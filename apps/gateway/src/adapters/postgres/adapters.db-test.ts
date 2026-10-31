@@ -81,7 +81,7 @@ const QUEUE_SCHEMA = "pgboss_adapters";
  */
 const EMPTY_EVERY_TABLE =
   "truncate table cards, orders, receipts, payment_claims, merchant_keys, merchant_contact, merchants," +
-  " payout_splits, commerce_analytics_events, operator_journal";
+  " payout_splits, commerce_analytics_events, operator_journal, merchant_live_requests";
 
 /**
  * Terminates one backend, named by its pid, from a connection of its own.
@@ -2604,6 +2604,94 @@ if (databaseUrl === null) {
       });
     });
 
+    it("keeps a new pending request when a redundant grant overlaps withdrawal", async () => {
+      const blocker = new Pool({ connectionString: databaseUrl, max: 1 });
+      const repeating = new Pool({
+        connectionString: databaseUrl,
+        max: 1,
+        application_name: "repeat_live_grant",
+      });
+      const withdrawing = new Pool({ connectionString: databaseUrl, max: 1 });
+      const repeatedStore = PostgresStore.over(drizzle(repeating), "eip155:84532", countedIds());
+      const changingStore = PostgresStore.over(
+        drizzle(withdrawing),
+        "eip155:84532",
+        countedIds(),
+        undefined,
+        {
+          within: async () => {},
+        },
+      );
+      let repeated: ReturnType<typeof store.grantLiveApproval> | undefined;
+      let withdrawal: ReturnType<typeof store.withdrawLiveApproval> | undefined;
+      try {
+        await store.grantLiveApproval(A, 1_000);
+        await blocker.query("select pg_advisory_lock(60105)");
+        // Pause after the conditional grant has evaluated, including its zero-row result.
+        await pool.query(`create function pause_repeated_grant() returns trigger language plpgsql as $$
+          begin
+            if current_setting('application_name') = 'repeat_live_grant' then
+              perform pg_advisory_xact_lock(60105);
+            end if;
+            return null;
+          end $$`);
+        await pool.query(
+          "create trigger pause_repeated_grant after update on merchants for each statement execute function pause_repeated_grant()",
+        );
+        const repeatingPid = await backendPid(repeating);
+        const withdrawingPid = await backendPid(withdrawing);
+        repeated = repeatedStore.grantLiveApproval(A, 2_000);
+        await vi.waitFor(async () => {
+          const result = await pool.query(
+            "select cardinality(pg_blocking_pids($1)) > 0 as blocked",
+            [repeatingPid],
+          );
+          expect(result.rows[0].blocked).toBe(true);
+        });
+        let withdrawn = false;
+        withdrawal = changingStore.withdrawLiveApproval(A).then((result) => {
+          withdrawn = true;
+          return result;
+        });
+        await vi.waitFor(async () => {
+          const result = await pool.query(
+            "select cardinality(pg_blocking_pids($1)) > 0 as blocked",
+            [withdrawingPid],
+          );
+          if (!withdrawn && !result.rows[0].blocked)
+            throw new Error("withdrawal has not reached its lock or completed");
+        });
+        // A correct grant holds the merchant; release it so withdrawal can finish.
+        // An unlocked grant lets withdrawal and the new request finish first.
+        if (!withdrawn) await blocker.query("select pg_advisory_unlock(60105)");
+        await withdrawal;
+        const asked = await changingStore.requestLiveSales(
+          {
+            merchantId: A,
+            accountId: "acc_owner",
+            sellerName: "Freeland",
+            evidence: { integration: "api", connectedAt: 2_500 },
+          },
+          3_000,
+        );
+        await blocker.query("select pg_advisory_unlock(60105)");
+        const grant = await repeated;
+        expect(asked.kind).toBe("requested");
+        expect((await store.merchantById(A))?.liveApprovedAt).toBeNull();
+        expect(await store.liveSalesRequest(A)).toMatchObject({
+          state: "pending",
+          requestedAt: 3_000,
+        });
+        expect(grant).toMatchObject({ changed: false, merchant: { liveApprovedAt: 1_000 } });
+      } finally {
+        await blocker.query("select pg_advisory_unlock_all()");
+        await Promise.allSettled([repeated, withdrawal]);
+        await pool.query("drop trigger if exists pause_repeated_grant on merchants");
+        await pool.query("drop function if exists pause_repeated_grant()");
+        await Promise.all([blocker.end(), repeating.end(), withdrawing.end()]);
+      }
+    });
+
     /**
      * Everything both stores promise, against the one a merchant's money rests
      * on. Inside this suite because it needs the database, pools and emptied
@@ -2619,7 +2707,9 @@ if (databaseUrl === null) {
      */
     describeStore("the store on Postgres", async () => {
       await contract.pool.query(EMPTY_EVERY_TABLE);
-      return PostgresStore.over(contract.db, "eip155:84532", countedIds());
+      return PostgresStore.over(contract.db, "eip155:84532", countedIds(), undefined, {
+        within: async () => {},
+      });
     });
   });
 }

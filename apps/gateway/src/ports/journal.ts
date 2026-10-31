@@ -19,6 +19,7 @@ import type { PageFrom } from "./paging.js";
 /** The closed list of what an operator can do, as the journal names it. */
 export const JOURNAL_ACTIONS = [
   "admit",
+  "decline",
   "withdraw",
   "disable_key",
   "end_sessions",

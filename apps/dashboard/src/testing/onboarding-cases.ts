@@ -19,6 +19,9 @@ const initial: NextStepFacts = {
   withdrawn: false,
   walletChange: false,
   unserved: false,
+  request: "none",
+  ready: null,
+  connectedBefore: false,
 };
 
 /** The accepted situation numbers are shared by the next-step proof and gallery. */
@@ -28,6 +31,7 @@ export const ONBOARDING_CASES: readonly {
   facts: NextStepFacts;
   page: string;
   reason: string | null;
+  account?: string;
 }[] = [
   { row: 1, when: "First live visit", facts: initial, page: "platform", reason: null },
   {
@@ -120,6 +124,97 @@ export const ONBOARDING_CASES: readonly {
     reason: null,
   },
   {
+    row: 17,
+    when: "Checked shop can ask without a wallet",
+    facts: { ...initial, through: "woocommerce", shop: "connected", ready: 2 },
+    page: "shop",
+    reason: null,
+    account: "request",
+  },
+  {
+    row: 18,
+    when: "Test shop needs its publication profile",
+    facts: { ...initial, mode: "test", through: "woocommerce", shop: "connected", ready: 2 },
+    page: "shop",
+    reason: null,
+    account: "test-profile",
+  },
+  {
+    row: 22,
+    when: "Connected code can ask without a wallet",
+    facts: { ...initial, keys: 1, contact: "2026-10-30T09:00:00Z", contactAlive: true },
+    page: "code-connected",
+    reason: null,
+    account: "request",
+  },
+  {
+    row: 24,
+    when: "Connected test code needs its publication profile",
+    facts: {
+      ...initial,
+      mode: "test",
+      keys: 1,
+      contact: "2026-10-30T09:00:00Z",
+      contactAlive: true,
+    },
+    page: "code-connected",
+    reason: null,
+    account: "test-profile",
+  },
+  {
+    row: 25,
+    when: "Request stays visible when code goes quiet, without a wallet",
+    facts: { ...initial, keys: 1, contact: "2026-10-30T09:00:00Z", request: "pending" },
+    page: "code-silent",
+    reason: null,
+    account: "pending",
+  },
+  {
+    row: 26,
+    when: "Request stays visible after the wallet is saved",
+    facts: {
+      ...initial,
+      keys: 1,
+      contact: "2026-10-30T09:00:00Z",
+      request: "pending",
+      payoutWallet: true,
+    },
+    page: "code-silent",
+    reason: null,
+    account: "pending",
+  },
+  {
+    row: 27,
+    when: "Approved connected code needs its wallet even after going quiet",
+    facts: { ...initial, keys: 1, contact: "2026-10-30T09:00:00Z", liveApproved: true },
+    page: "code-silent",
+    reason: null,
+    account: "wallet",
+  },
+  {
+    row: 29,
+    when: "Approved code can publish",
+    facts: {
+      ...initial,
+      keys: 1,
+      contact: "2026-10-30T09:00:00Z",
+      contactAlive: true,
+      liveApproved: true,
+      payoutWallet: true,
+    },
+    page: "code-connected",
+    reason: null,
+    account: "publish-code",
+  },
+  {
+    row: 32,
+    when: "Declined request stays visible when code goes quiet",
+    facts: { ...initial, keys: 1, contact: "2026-10-30T09:00:00Z", request: "declined" },
+    page: "code-silent",
+    reason: null,
+    account: "declined",
+  },
+  {
     row: 30,
     when: "Products are on sale",
     facts: {
@@ -148,5 +243,6 @@ export const ONBOARDING_CASES: readonly {
     },
     page: "products",
     reason: "not_approved",
+    account: "withdrawn",
   },
 ];

@@ -1606,6 +1606,9 @@ describe("importing the catalogue", () => {
     await disconnectAsDrawn(running);
 
     expect(await cardsOf(running)).toHaveLength(1);
+    const products = await running.get("/products");
+    expect(products.html).not.toContain('aria-label="Search products"');
+    expect(readable(products.html)).toContain("1 product imported from your shop");
   });
 
   /**
@@ -2914,6 +2917,9 @@ describe("one integration at a time", () => {
     );
     expect(await onSale(running)).not.toContain(card);
     expect((await theCodePolls(running)).status).toBe(409);
+    const products = await running.get("/products");
+    expect(products.html).not.toContain('aria-label="Search products"');
+    expect(readable(products.html)).toContain("1 product your code published");
   });
 
   it("keeps the shop connected and the code selling when the keys arrive while an order waits on the code", async () => {
@@ -4021,8 +4027,15 @@ describe("the WooCommerce path on Products", () => {
     const running = await started({
       catalogue: async () => ({ ok: true, products: [aProduct()] }),
     });
-    await running.signIn();
-    await running.identity.choosePlatform(running.accountId, "woocommerce");
+    const merchantId = await running.harnessed.gateway.registerMerchant();
+    await running.harnessed.gateway.setSellerName(merchantId, {
+      seller_name: "Their own shop",
+      seller_site: SHOP,
+    });
+    const person = await running.identity.make("new-owner@shop.example", merchantId);
+    if (person === null) throw new Error("the keyless shop account was not made");
+    await running.signIn("default", person.email);
+    expect((await running.post("/products", { platform: "woocommerce" })).status).toBe(303);
     expect((await running.post("/products?woo=constructor")).status).toBe(404);
     const before = await running.get("/products");
     expect(formTo(before.html, "post", "/products?woo=connect")).toBeDefined();
@@ -4032,9 +4045,7 @@ describe("the WooCommerce path on Products", () => {
         .flatMap((form) => form.presses)
         .filter((press) => press.name === "platform"),
     ).toHaveLength(3);
-    expect((await running.identity.onboardingChoices(running.accountId)).platform).toBe(
-      "woocommerce",
-    );
+    expect((await running.identity.onboardingChoices(person.id)).platform).toBe("woocommerce");
     expect(before.html).toMatch(/<span aria-current="page">Products<\/span>/);
     const checked = await running.post("/products?woo=connect", { shop_url: SHOP });
     expect(checked.status).toBe(200);

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation, useRevalidator } from "react-router";
 import type { ShopJobView } from "../../src/shop-job-view.js";
 
-/** Progress reads stay local; a newly terminal publication refreshes its parent once. */
+/** Progress reads stay local; a newly terminal job refreshes its parent once. */
 export function useShopJob(initial: ShopJobView | null, endpoint: string) {
   const [view, setView] = useState(initial);
   const [unread, setUnread] = useState(false);
@@ -28,7 +28,7 @@ export function useShopJob(initial: ShopJobView | null, endpoint: string) {
           setView(next);
           setUnread(false);
           if (
-            next?.kind === "publish" &&
+            next !== null &&
             !again &&
             (previous?.id !== next.id ||
               previous.status === "queued" ||

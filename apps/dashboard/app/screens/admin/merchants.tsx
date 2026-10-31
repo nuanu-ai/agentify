@@ -29,6 +29,7 @@ import type { StepUpView } from "../../../src/admin/step-up.js";
 import { ActionForm, InPlace, opensOn } from "../../components/admin/action-form.js";
 import { PressAnswer } from "../../components/admin/press-answer.js";
 import { CouldNotBeRead, OrderState } from "../../components/admin/unknown.js";
+import { Fact, Facts } from "../../components/list.js";
 import { Moment } from "../../components/moment.js";
 import { Word } from "../../components/word.js";
 import { shortened } from "../../display/copy.js";
@@ -324,6 +325,54 @@ function Admission({ view, path }: Readonly<{ view: MerchantView; path: string }
       held={admission.admittedAt !== null}
       badge={admission.admittedAt === null ? "Not admitted" : "Admitted"}
     >
+      {admission.request ? (
+        <Facts>
+          <Fact label="Asked">
+            <Moment at={admission.request.at} />
+          </Fact>
+          <Fact label="Seller name">{view.name}</Fact>
+          <Fact label="Products or code connection">
+            {admission.request.evidence === null ? (
+              "Not known for this request"
+            ) : admission.request.evidence.integration === "api" ? (
+              <>
+                Code connected{" "}
+                {admission.request.evidenceAt === null ? null : (
+                  <Moment at={admission.request.evidenceAt} />
+                )}
+              </>
+            ) : (
+              <>
+                <span>
+                  WooCommerce · {admission.request.evidence.host}:{" "}
+                  {admission.request.evidence.ready.toLocaleString("en-US")} of{" "}
+                  {admission.request.evidence.total === null
+                    ? `${admission.request.evidence.read.toLocaleString("en-US")} checked`
+                    : admission.request.evidence.total.toLocaleString("en-US")}{" "}
+                  products ready
+                </span>
+                {view.shopJob ? (
+                  <>
+                    {" "}
+                    (<a href="#shop-products">latest product check</a>)
+                  </>
+                ) : null}
+                {!admission.request.evidence.complete ? " (check incomplete)" : ""}, checked{" "}
+                {admission.request.evidenceAt === null ? null : (
+                  <Moment at={admission.request.evidenceAt} />
+                )}
+              </>
+            )}
+          </Fact>
+          <Fact label="Payout wallet">
+            {view.ready.wallet === null ? (
+              "No payout wallet yet"
+            ) : (
+              <Address address={view.ready.wallet.address} />
+            )}
+          </Fact>
+        </Facts>
+      ) : null}
       {admission.admittedAt !== null ? (
         <>
           <span>
@@ -374,17 +423,28 @@ function Admission({ view, path }: Readonly<{ view: MerchantView; path: string }
             unchanged="It was not admitted; nothing changed."
             page={path}
           />
+          <PressAnswer
+            answer={
+              admission.request && opensOn(admission.decline ?? null)
+                ? null
+                : (admission.decline ?? null)
+            }
+            done="Request declined. The merchant receives your note by email."
+            unchanged="That request is no longer pending. Nothing changed."
+            page={path}
+          />
           <ActionForm
             action={`${path}/admit`}
             page={path}
             button="Admit to live sales"
             consequence={
               landsAt === null ? (
-                `${opening(called)} sells for real money from now on. You can withdraw this later.`
+                `${opening(called)} can sell for real money once the account and products are ready. You can withdraw approval later.`
               ) : (
                 <>
-                  {opening(called)} sells for real money from now on, and its payments go to a new
-                  wallet from <Moment at={landsAt} />. You can withdraw this later.
+                  {opening(called)} can sell for real money once the account and products are ready.
+                  Its payments go to a new wallet from <Moment at={landsAt} />. You can withdraw
+                  approval later.
                 </>
               )
             }
@@ -403,6 +463,25 @@ function Admission({ view, path }: Readonly<{ view: MerchantView; path: string }
               )
             }
           />
+          {admission.request ? (
+            <InPlace summary="Decline request…" open={opensOn(admission.decline ?? null)}>
+              <ActionForm
+                action={`${path}/decline`}
+                page={path}
+                button="Decline request"
+                consequence={`${opening(called)} stays without live sales and reads your note.`}
+                reason
+                reasonWords={{
+                  label: "Note to the merchant",
+                  hint: "The merchant reads this note on their dashboard and by email, and can ask again. Say what they should change. Do not name a buyer or paste their details.",
+                  missing: "Write a note for the merchant. Nothing was changed.",
+                }}
+                fields={{ request_id: admission.request.id }}
+                answer={admission.decline ?? null}
+                stepUp={view.stepUp}
+              />
+            </InPlace>
+          ) : null}
         </>
       )}
     </Check>
@@ -444,7 +523,9 @@ export function MerchantScreen({ view }: Readonly<{ view: MerchantView }>) {
         >
           <div data-shop-job-result>
             {view.shopJob ? (
-              <ShopJobPanel initial={view.shopJob} endpoint={`${base}${path}/shop-job`} />
+              <div id="shop-products">
+                <ShopJobPanel initial={view.shopJob} endpoint={`${base}${path}/shop-job`} />
+              </div>
             ) : (
               <p>No product check yet.</p>
             )}
@@ -581,7 +662,8 @@ export function MerchantScreen({ view }: Readonly<{ view: MerchantView }>) {
                 <div>
                   <dt>On sale</dt>
                   <dd>
-                    {selling.onSale} of {selling.published}
+                    {selling.onSale.toLocaleString("en-US")} of{" "}
+                    {selling.published.toLocaleString("en-US")}
                   </dd>
                 </div>
                 <div>
@@ -592,13 +674,14 @@ export function MerchantScreen({ view }: Readonly<{ view: MerchantView }>) {
                 </div>
                 <div>
                   <dt>Orders made</dt>
-                  <dd>{selling.orders}</dd>
+                  <dd>{selling.orders.toLocaleString("en-US")}</dd>
                 </div>
               </dl>
               <Sparkline days={selling.days} />
               <p className="op-sub">
-                {selling.settled.count} settled {selling.settled.count === 1 ? "sale" : "sales"}, in
-                USD per day. The dot is today so far.
+                {selling.settled.count.toLocaleString("en-US")} settled{" "}
+                {selling.settled.count === 1 ? "sale" : "sales"}, in USD per day. The dot is today
+                so far.
               </p>
               <h3>Orders worth a look</h3>
               {view.worth.rows.length === 0 ? (
@@ -636,7 +719,8 @@ export function MerchantScreen({ view }: Readonly<{ view: MerchantView }>) {
             <div className="op-panel-head">
               <h2 id="products-title">Products</h2>
               <p>
-                {selling.onSale} of {selling.published} on sale
+                {selling.onSale.toLocaleString("en-US")} of{" "}
+                {selling.published.toLocaleString("en-US")} on sale
               </p>
             </div>
             <div className="op-panel-body">
@@ -697,7 +781,9 @@ export function MerchantScreen({ view }: Readonly<{ view: MerchantView }>) {
         {view.history?.cut == null ? null : (
           <p className="cut">
             <span>{view.history.cut}</span>
-            <Link to={journal}>All {view.history.total} in the journal</Link>
+            <Link to={journal}>
+              All {view.history.total.toLocaleString("en-US")} in the journal
+            </Link>
           </p>
         )}
       </section>

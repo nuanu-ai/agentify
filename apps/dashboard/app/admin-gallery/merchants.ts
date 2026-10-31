@@ -91,6 +91,17 @@ const TOURS_THIRTY = {
 const ROWS: readonly MerchantRow[] = [
   {
     id: GIFT_CARDS,
+    liveRequest: {
+      id: "lrq_gallery",
+      merchantId: GIFT_CARDS,
+      accountId: null,
+      requestedAt: NOW - DAY,
+      evidence: { integration: "api", connectedAt: NOW - 3 * 60_000 },
+      state: "pending",
+      decline: null,
+      reminderDueAt: NOW + DAY,
+      reminderCreatedAt: null,
+    },
     serviceName: "Gift Card Shop",
     sellerSite: "https://giftcards.example",
     createdAt: Date.UTC(2026, 9, 19),
@@ -105,6 +116,7 @@ const ROWS: readonly MerchantRow[] = [
   },
   {
     id: TOURS,
+    liveRequest: null,
     serviceName: "City Walking Tours",
     sellerSite: "https://tours.example",
     createdAt: Date.UTC(2026, 8, 2),
@@ -119,6 +131,7 @@ const ROWS: readonly MerchantRow[] = [
   },
   {
     id: WOOL,
+    liveRequest: null,
     serviceName: "Wool Socks",
     sellerSite: null,
     createdAt: Date.UTC(2026, 9, 12),
@@ -133,6 +146,7 @@ const ROWS: readonly MerchantRow[] = [
   },
   {
     id: UNNAMED,
+    liveRequest: null,
     serviceName: null,
     sellerSite: null,
     createdAt: Date.UTC(2026, 9, 21),
@@ -171,6 +185,7 @@ const listed = (rows: readonly MerchantRow[], total = rows.length): MerchantList
       ? null
       : {
           waiting: last.segment === "waiting",
+          requestedAt: last.liveRequest?.requestedAt ?? null,
           lastSaleAt: last.lastSaleAt,
           createdAt: last.createdAt,
           id: last.id,
@@ -221,6 +236,7 @@ const card = (code: string, title: string, amount: string): Card => ({
 });
 
 const ADMITTED: MerchantRecord = {
+  liveRequest: null,
   id: TOURS,
   serviceName: "City Walking Tours",
   sellerSite: "https://tours.example",
@@ -388,7 +404,7 @@ const pageRead = (record: MerchantRecord, more: Partial<MerchantRead> = {}): Mer
 });
 
 /** The press routes, by what each adds to the merchant page's address. */
-type Pressed = "admit" | "withdraw" | Readonly<{ key: string }>;
+type Pressed = "admit" | "withdraw" | "decline" | Readonly<{ key: string }>;
 
 const pageState = (
   told: Pick<AdminGalleryState, "id" | "when" | "cause">,
@@ -421,6 +437,7 @@ const pageState = (
 };
 
 const SHOP_CHECK_MERCHANT: MerchantRecord = {
+  liveRequest: null,
   id: "mch_shop_check_example",
   serviceName: "Anonymized WooCommerce shop",
   sellerSite: "https://shop.example",
@@ -468,6 +485,7 @@ const OPERATOR_SHOP_JOBS: readonly [string, string, Partial<ShopJobState>][] = [
 
 const WAITING: MerchantRecord = {
   ...ADMITTED,
+  liveRequest: ROWS[0]?.liveRequest ?? null,
   id: GIFT_CARDS,
   serviceName: GIFTS.name,
   sellerSite: GIFTS.site,
@@ -528,7 +546,7 @@ const WITHDRAWAL = row(
 
 const WITHDRAWN: MerchantRecord = {
   ...ADMITTED,
-  segment: "waiting",
+  segment: "setting_up",
   missing: ["no_operator_approval"],
   liveApprovedAt: null,
   cards: {
@@ -649,6 +667,27 @@ export const MERCHANTS_STATES: readonly AdminGalleryState[] = [
         "Every check holds; the page lists its keys with Disable, its selling, the orders worth a look and its history.",
     },
     pageRead(ADMITTED),
+  ),
+  ...(
+    [
+      ["no-wallet", { wallet: null }, {}],
+      [
+        "decline-note-needed",
+        { wallet: null },
+        { decline: { kind: "refused", said: NO_REASON, typed: "", field: "reason" } },
+      ],
+      ["decline-unknown", { wallet: null }, { decline: { kind: "unknown" } }],
+    ] as const
+  ).map(([suffix, record, answers]) =>
+    pageState(
+      {
+        id: `dashboard-admin-request-${suffix}`,
+        when: "An operator reviews a pending request without a payout wallet.",
+        cause: "The request itself puts the merchant in Needs you; the wallet is a fact beside it.",
+      },
+      pageRead({ ...WAITING, ...record }, { answers }),
+      suffix === "no-wallet" ? undefined : "decline",
+    ),
   ),
   pageState(
     {

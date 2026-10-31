@@ -1,14 +1,23 @@
 import { Button } from "@agentify/ui";
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { Link, useRevalidator, useSearchParams } from "react-router";
 import type { KeysView } from "../../src/keys.js";
 import type { Platform } from "../../src/next-step.js";
-import type { OnboardingView } from "../../src/onboarding.js";
+import type { OnboardingPress, OnboardingView } from "../../src/onboarding.js";
 import wooMark from "../assets/woocommerce.png";
 import { Moment } from "../components/moment.js";
 import { PostForm } from "../components/post-form.js";
-import { CreateKeyForm } from "./create-key.js";
 import styles from "./onboarding.module.css";
+
+const CodeEntry = lazy(() =>
+  import("./onboarding-code.js").then(({ CodeEntry }) => ({ default: CodeEntry })),
+);
+
+const OnboardingAccount = lazy(() =>
+  import("./onboarding-account.js").then(({ OnboardingAccount }) => ({
+    default: OnboardingAccount,
+  })),
+);
 
 const PLATFORMS = [
   { value: "woocommerce", title: "WooCommerce", line: "Connect your shop. No code needed." },
@@ -99,38 +108,15 @@ function OtherWays() {
   );
 }
 
-function InstallCommand() {
-  const [said, setSaid] = useState("");
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText("npm install @nuanu-ai/agentify");
-      setSaid("Copied.");
-    } catch {
-      setSaid("Couldn't copy. Select the command and copy it.");
-    }
-  };
-  return (
-    <>
-      <div className={styles.command}>
-        <code>
-          npm install <span className={styles.packageName}>@nuanu-ai/agentify</span>
-        </code>
-        <Button variant="secondary" type="button" onClick={() => void copy()}>
-          Copy
-        </Button>
-      </div>
-      <span role="status">{said}</span>
-    </>
-  );
-}
-
 export function OnboardingScreen({
   view,
   problem,
   keyView,
   choose = false,
   selected,
+  press,
 }: Readonly<{
+  press?: OnboardingPress;
   view: OnboardingView;
   problem?: string;
   keyView?: KeysView;
@@ -140,9 +126,10 @@ export function OnboardingScreen({
   const { step } = view;
   const [query] = useSearchParams();
   const choosing =
-    choose ||
-    (query.get("ways") === "choose" &&
-      (step.page === "other" || (step.page === "code" && view.keys?.rows.length === 0)));
+    step.otherWays &&
+    (choose ||
+      (query.get("ways") === "choose" &&
+        (step.page === "other" || (step.page === "code" && view.keys?.rows.length === 0))));
   const revalidator = useRevalidator();
   useEffect(() => {
     if (step.page !== "code" || !view.keys?.rows.some((key) => key.revoked === null)) return;
@@ -157,7 +144,16 @@ export function OnboardingScreen({
     return () => clearInterval(timer);
   }, [step.page, view.keys, revalidator]);
   if (view.unread)
-    return (
+    return press?.requestNeedsCheck === true && press.problem !== null ? (
+      <>
+        <p role="alert" className="problem">
+          {press.problem}
+        </p>
+        <Link className="button button-primary" to="/products" reloadDocument>
+          Check again
+        </Link>
+      </>
+    ) : (
       <p>
         We could not read your next step.{" "}
         <Link to="/products" reloadDocument>
@@ -165,6 +161,17 @@ export function OnboardingScreen({
         </Link>
         .
       </p>
+    );
+  if (
+    ["pending", "declined", "withdrawn"].includes(step.account) &&
+    step.page !== "shop" &&
+    step.page !== "code-connected" &&
+    step.page !== "code-silent"
+  )
+    return (
+      <Suspense fallback={null}>
+        <OnboardingAccount view={view} {...(press === undefined ? {} : { press })} />
+      </Suspense>
     );
   if (step.page === "platform" || choosing)
     return (
@@ -203,6 +210,11 @@ export function OnboardingScreen({
           <a href="/docs/failures#your-integration-has-not-connected">hasn't heard from it</a>{" "}
           since.
         </p>
+        {step.account === "none" && !press?.problem ? null : (
+          <Suspense fallback={null}>
+            <OnboardingAccount view={view} {...(press === undefined ? {} : { press })} />
+          </Suspense>
+        )}
       </section>
     );
   if (step.page === "code-connected")
@@ -211,93 +223,16 @@ export function OnboardingScreen({
         <p className={styles.connection}>
           Your code connected {view.contact === null ? "" : <Moment at={view.contact} />}
         </p>
-        {step.profileStep !== null ? (
-          <>
-            <p>
-              Before publishing,{" "}
-              {step.profileStep === "seller-name"
-                ? "choose the seller name buyers see"
-                : view.mode === "test"
-                  ? "add your test wallet"
-                  : "add your payout wallet"}{" "}
-              in Settings.
-            </p>
-            <Link className="button button-primary" to="/settings">
-              Open Settings
-            </Link>
-          </>
-        ) : step.approvalNeeded ? (
-          <p>
-            Live sales start once Agentify approves your shop. To ask, write to{" "}
-            <a href="mailto:admin@agentify.ad">admin@agentify.ad</a>.
-          </p>
-        ) : (
-          <>
-            <p>Publish your products from your code.</p>
-            <a className="button button-primary" href="/docs/quickstart#_4-publish-one-card">
-              Open the publishing guide
-            </a>
-          </>
+        {step.account === "none" && !press?.problem ? null : (
+          <Suspense fallback={null}>
+            <OnboardingAccount view={view} {...(press === undefined ? {} : { press })} />
+          </Suspense>
         )}
       </section>
     );
-  const keys = keyView ?? view.keys;
-  if (keys === null) return null;
-  const working = keys.rows.filter((key) => key.revoked === null);
-  const first = working[0];
   return (
-    <section className={styles.code}>
-      {keys.rows.length === 0 ? (
-        <OtherWays />
-      ) : (
-        <p>
-          Your code hasn't connected yet.{" "}
-          <Link to="/products" reloadDocument>
-            Check again
-          </Link>
-          .
-        </p>
-      )}
-      <h2>Add products with code</h2>
-      <ol className={styles.steps}>
-        <li>
-          <h3>Install the package</h3>
-          <p>It runs on Node.js 24 or later.</p>
-          <InstallCommand />
-        </li>
-        <li>
-          <h3>Create an API key</h3>
-          {first === undefined ? (
-            <CreateKeyForm view={keys} action="/products" />
-          ) : (
-            <>
-              <p>
-                {working.length === 1 ? (
-                  <>
-                    You have a key: “{first.label}”, created <Moment at={first.created} />.
-                  </>
-                ) : (
-                  `You have ${working.length.toLocaleString("en-US")} keys.`
-                )}
-              </p>
-              <p>
-                If you no longer have it, create a new one on <Link to="/keys">API keys</Link> and
-                revoke the old one.
-              </p>
-            </>
-          )}
-        </li>
-        <li>
-          <h3>Follow the quickstart</h3>
-          <p>
-            <a id="code-quickstart" href="/docs/quickstart">
-              Open the quickstart
-            </a>{" "}
-            to publish your first product and answer its orders. Your code connects to{" "}
-            <span className={styles.origin}>{view.origin}</span>.
-          </p>
-        </li>
-      </ol>
-    </section>
+    <Suspense fallback={null}>
+      <CodeEntry view={view} {...(keyView === undefined ? {} : { keyView })} />
+    </Suspense>
   );
 }

@@ -1101,7 +1101,11 @@ describe("the passwordless dashboard door", () => {
     const inside = await running.browser.makeMerchant();
 
     expect(inside.status).toBe(200);
-    expect(inside.html).toContain('name="seller_name"');
+    expect(formTo(inside.html, "post", "/products")?.presses.map((press) => press.value)).toEqual([
+      "woocommerce",
+      "api",
+      "other",
+    ]);
     const merchant = (await running.identity.byEmail(FRESH.email))?.merchant;
     expect(await running.harnessed.store.merchantById(merchant?.id ?? "")).not.toBeNull();
   });
@@ -1131,7 +1135,7 @@ describe("the passwordless dashboard door", () => {
     available = true;
     const retry = await running.browser.from(running.url).post("/merchant");
     expect(retry.status).toBe(303);
-    expect(retry.to).toBe("/choose-name");
+    expect(retry.to).toBe("/products");
     expect(running.mails).toHaveLength(1);
     expect((await running.identity.byEmail(FRESH.email))?.merchant?.id).toBe("mer_after_retry");
   });
@@ -1612,9 +1616,13 @@ describe("where a sign-in started", () => {
     const byGoogle = await signInWithGoogle(running, google, {}, "seller@gmail.com");
 
     expect(byLink.status).toBe(200);
-    expect(formTo(byLink.html, "post", "/choose-name")).toBeDefined();
+    expect(formTo(byLink.html, "post", "/products")?.presses.map((press) => press.value)).toEqual([
+      "woocommerce",
+      "api",
+      "other",
+    ]);
     expect(byGoogle.returned.status).toBe(303);
-    expect(byGoogle.returned.to).toBe("/choose-name");
+    expect(byGoogle.returned.to).toBe("/products");
     for (const email of [FRESH.email, "seller@gmail.com"]) {
       const merchant = await merchantOf(running, email);
       expect(merchant, email).not.toBeNull();
@@ -1648,8 +1656,13 @@ describe("where a sign-in started", () => {
     expect(formTo(window.html, "post", "/merchant")).toBeDefined();
     expect(await merchantOf(running, FRESH.email)).toBeNull();
     const pressed = await running.browser.makeMerchant();
-    expect(formTo(pressed.html, "post", "/choose-name")).toBeDefined();
+    expect(pressed.status).toBe(200);
     expect(await merchantOf(running, FRESH.email)).not.toBeNull();
+    expect(formTo(pressed.html, "post", "/products")?.presses.map((press) => press.value)).toEqual([
+      "woocommerce",
+      "api",
+      "other",
+    ]);
   });
 
   it("makes no merchant for a sign-in asked for a page of the operator's workspace", async () => {
@@ -1703,7 +1716,6 @@ describe("where a sign-in started", () => {
     );
 
     expect(fromTheDashboard.status).toBe(200);
-    expect(formTo(fromTheDashboard.html, "post", "/choose-name")).toBeUndefined();
     expect(readable(fromTheDashboard.html)).toContain(PERSON);
     expect(fromADoor.to).toBe("/products");
     expect(googleFromTheDashboard.returned.to).toBe("/products");
@@ -1738,7 +1750,7 @@ describe("where a sign-in started", () => {
     expect(formTo(again.html, "post", "/merchant")).toBeDefined();
     available = true;
     const retried = await running.browser.post("/merchant");
-    expect(retried.to).toBe("/choose-name");
+    expect(retried.to).toBe("/products");
     expect(await merchantOf(running, FRESH.email)).toBe("mer_after_retry");
     expect(running.mails).toHaveLength(2);
   });
@@ -1937,7 +1949,7 @@ describe("the click of a visitor an ad sent, through the Google sign-in", () => 
     for (const flow of [carried, unreadable]) {
       expect(flow.sent.status).toBe(303);
       expect(flow.returned.status).toBe(303);
-      expect(flow.returned.to).toBe("/choose-name");
+      expect(flow.returned.to).toBe("/products");
       expect(flow.seen).not.toContain(CLICK);
     }
     const person = await running.identity.byEmail("carried@gmail.com");
@@ -2660,117 +2672,6 @@ describe("the address a press posts to, opened as a page", () => {
       expect({ status: read.status, to: read.to }, path).toStrictEqual({ status: 303, to: page });
     }
     expect((await browser.get("/woocommerce/import.data?_routes=routes%2Fgate")).status).toBe(200);
-  });
-});
-
-describe("choosing the name buyers read", () => {
-  it("asks for the name on a screen of its own, with room to say what it is for", async () => {
-    // Here the screen can say what the name does, show what one looks like and
-    // promise it can be changed, which decides whether what arrives is a name
-    // or "some stuff".
-    const running = await started();
-    await unname(running);
-    await running.browser.signIn();
-
-    const screen = await running.browser.get("/choose-name");
-    const text = readable(screen.html);
-
-    expect(screen.status).toBe(200);
-    expect(screen.html).toContain('name="seller_name"');
-    // What it is for: buyers read it beside the products.
-    expect(text).toMatch(/buyers/i);
-    expect(text).toMatch(/name people know you by/i);
-    // The catalogue's rule, before anybody types.
-    expect(text).toMatch(/32 characters/);
-    // That it can be changed, and where.
-    expect(text).toMatch(/change/i);
-    expect(screen.html).toContain('href="/settings"');
-    // A way past it, for somebody who has not decided.
-    expect(screen.html).toContain('href="/products"');
-  });
-
-  it("writes the name and takes the merchant on to their cards", async () => {
-    const running = await started();
-    await unname(running);
-    await running.browser.signIn();
-
-    const chosen = await running.browser.post("/choose-name", { seller_name: "Bright Data Plans" });
-
-    expect(chosen.status).toBe(303);
-    expect(chosen.to).toBe("/products");
-    expect(await listedAs(running)).toBe("Bright Data Plans");
-  });
-
-  it("lets a merchant walk past the name and keeps account setup on the page before products exist", async () => {
-    // The publishing door still owns the missing-name refusal; the empty
-    // path keeps that next step on the page instead of a global banner.
-    const running = await started();
-    await unname(running);
-    await running.browser.signIn();
-
-    const cards = await running.browser.get("/products");
-
-    expect(cards.status).toBe(200);
-    expect(reasonsIn(cards.html)).toEqual([]);
-    expect(cards.html).toContain('href="/settings"');
-    expect(await listedAs(running)).toBeNull();
-  });
-
-  it("refuses a name the catalogue that lists it would not carry, and says the rule", async () => {
-    // The rule is thirty-two ordinary keyboard characters with no space at
-    // either end. Refused here, the person gets it in the screen's words, and
-    // nothing is written.
-    const running = await started();
-    await unname(running);
-    await running.browser.signIn();
-
-    for (const name of ["x".repeat(33), "Кириллица", "  "]) {
-      const answered = await running.browser.post("/choose-name", { seller_name: name });
-      expect(answered.status, name).toBe(400);
-      expect(readable(answered.html), name).toMatch(/not saved|enter a name/i);
-      expect(await listedAs(running), name).toBeNull();
-    }
-  });
-
-  it("refuses a post with no name in it at all, and says the field is the one thing needed", async () => {
-    // An empty field and a missing one (a post not from this page) are both no
-    // name, and the screen says so rather than writing an empty one.
-    const running = await started();
-    await unname(running);
-    await running.browser.signIn();
-
-    const answered = await running.browser.post("/choose-name");
-
-    expect(answered.status).toBe(400);
-    expect(readable(answered.html)).toMatch(/enter a name/i);
-    // The way past stays, for somebody with nothing to type.
-    expect(answered.html).toContain('href="/products"');
-    expect(await listedAs(running)).toBeNull();
-  });
-
-  it("takes the space off a name rather than refusing it for one", async () => {
-    // A leading space is a typing accident, and a padded name would survive the
-    // catalogue as a second spelling, so it is trimmed.
-    const running = await started();
-    await unname(running);
-    await running.browser.signIn();
-
-    const chosen = await running.browser.post("/choose-name", {
-      seller_name: "  Bright Data Plans  ",
-    });
-
-    expect(chosen.status).toBe(303);
-    expect(await listedAs(running)).toBe("Bright Data Plans");
-  });
-
-  it("is behind the gate, like every other screen in the dashboard", async () => {
-    const running = await started();
-
-    const screen = await running.browser.get("/choose-name");
-    const posted = await running.browser.post("/choose-name", { seller_name: "Anybody At All" });
-
-    expect(screen.to).toBe("/sign-in");
-    expect(posted.to).toBe(UNSAVED);
   });
 });
 
@@ -3567,13 +3468,22 @@ describe("the cards screen", () => {
     expect(text).toContain("Later, within 1 hour");
   });
 
-  it("takes an established code integration with no products to its next step", async () => {
-    const { browser } = await started();
+  it("keeps an empty catalogue on its next step and a filtered catalogue on its search", async () => {
+    const { browser, gateway } = await started();
+    await browser.signIn();
 
-    const screen = await browser.signIn();
+    const empty = await browser.get("/products?q=suite");
 
-    expect(reasonsIn(screen.html)).toEqual([]);
-    expect(screen.html).toContain('href="/settings"');
+    expect(reasonsIn(empty.html)).toEqual([]);
+    expect(empty.html).toContain('href="/settings"');
+    expect(empty.html).not.toContain('aria-label="Search products"');
+    expect(readable(empty.html)).not.toContain("No product matches");
+
+    await publish(gateway, roomCard);
+    const filtered = await browser.get("/products?q=suite");
+
+    expect(filtered.html).toContain('aria-label="Search products"');
+    expect(readable(filtered.html)).toContain("No product matches “suite”. Clear the search");
   });
 
   it("keeps account requirements on the empty Products page instead of repeating them in a banner", async () => {
@@ -3794,19 +3704,22 @@ describe("the cards screen", () => {
     expect(await purchasable(gateway, room)).toBe(true);
   });
 
-  it("loads a page whole when a press is answered on another page, which may not be one the script draws", async () => {
-    // Only a press answered back on its own page stays inside the
-    // application; the seller name is answered on the cards.
+  it("answers a profile press as data on its own Products page", async () => {
     const running = await started();
-    await unname(running);
     await running.browser.signIn();
-    await running.browser.get("/choose-name");
+    await running.browser.get("/products");
 
-    const chosen = await running.browser.post("/choose-name.data", { seller_name: "Freeland" });
+    const saved = await running.browser.post("/products.data", {
+      intent: "save-onboarding-profile",
+      seller_name: "Freeland",
+      payout_wallet: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
+    });
 
-    expect(chosen.status).toBe(202);
-    expect(chosen.headers.get("x-remix-reload-document")).toBe("true");
+    expect(saved.status).toBe(202);
+    expect(saved.headers.get("x-remix-reload-document")).toBeNull();
+    expect(saved.html).toContain('"redirect","/products"');
     expect(await listedAs(running)).toBe("Freeland");
+    expect(await paidInto(running)).toBe("0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed");
   });
 
   it("refuses a press that names no one switch, and switches nothing", async () => {
@@ -5784,7 +5697,6 @@ describe("a page left open while another address signs in", () => {
     ],
     ["/settings", "/settings/sign-out-everywhere", {}, 303],
     ["/woocommerce", "/woocommerce/connect", { shop_url: "" }, 400],
-    ["/choose-name", "/choose-name", { seller_name: "Bright Data Plans" }, 303],
     ["/merchant", "/merchant", {}, 303],
     ["/products", "/sign-out", {}, 303],
   ] as const)(
@@ -5792,7 +5704,6 @@ describe("a page left open while another address signs in", () => {
     async (page, action, typed, status) => {
       const running = await started({ wooShops: memoryWooShops() });
       const item = await publish(running.gateway, roomCard);
-      if (page === "/choose-name") await unname(running);
       await running.browser.signIn(
         page === "/merchant" ? FRESH.email : PERSON,
         page === "/merchant" ? TO_READ_REPORTS : {},
@@ -5821,8 +5732,7 @@ describe("a page left open while another address signs in", () => {
             (key) => key.label === "worker",
           ),
         ).toBe(true);
-      if (action === "/settings" || action === "/choose-name")
-        expect(await listedAs(running)).toBe("Bright Data Plans");
+      if (action === "/settings") expect(await listedAs(running)).toBe("Bright Data Plans");
       if (action === "/settings/payout-wallet")
         expect(await paidInto(running)).toBe("0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed");
       if (action === "/woocommerce/connect") {
@@ -5832,7 +5742,7 @@ describe("a page left open while another address signs in", () => {
         const id = (await running.identity.byEmail(FRESH.email))?.merchant?.id;
         expect(id).toBeDefined();
         expect(await running.harnessed.store.merchantById(id ?? "")).not.toBeNull();
-        expect(answer.to).toBe("/choose-name");
+        expect(answer.to).toBe("/products");
       }
       if (action === "/settings/sign-out-everywhere" || action === "/sign-out")
         expect((await running.browser.get("/settings")).to).toMatch(/^\/sign-in/);
@@ -5918,6 +5828,45 @@ describe("a list, when it could not be read", () => {
       expect(readable(failed.html)).not.toMatch(/went through/i);
     },
   );
+
+  it("keeps the full withdrawal note when Products cannot load its catalog, without duplicating it on the readable page", async () => {
+    const live = {
+      PAYMENT_NETWORK: "eip155:8453",
+      FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
+    };
+    let breaking = false;
+    const running = await started({
+      gateway: { ...live, CDP_API_KEY_ID: "key-id", CDP_API_KEY_SECRET: "key-secret" },
+      dashboard: live,
+      client: (real) => ({
+        ...real,
+        cards: async () => {
+          if (breaking) throw new Error("the catalog read failed");
+          return await real.cards();
+        },
+      }),
+    });
+    await running.browser.signIn();
+    const id = theMerchant(running.harnessed);
+    const note = `Correct the current seller site.\n${"Check the legal shop name. ".repeat(30)}\nKeep this final instruction visible.`;
+    await running.harnessed.store.withdrawLiveApproval(id, {
+      at: running.harnessed.now(),
+      actor: { kind: "terminal" },
+      action: "withdraw",
+      subject: { kind: "merchant", id },
+      reason: note,
+    });
+    const fullNote = note.replaceAll(/\s+/g, " ").trim();
+    const products = await running.browser.get("/products");
+    expect(products.status).toBe(200);
+    expect(readable(mainOf(products.html)).split(fullNote)).toHaveLength(2);
+
+    breaking = true;
+    const failed = await quietly(async () => await running.browser.get("/products"));
+    expect(failed.status).toBe(500);
+    expect(readable(mainOf(failed.html))).toContain("Your products could not be loaded.");
+    expect(readable(mainOf(failed.html))).toContain(fullNote);
+  });
 
   it("says a page whose session could not be checked could not be loaded, and a press it could not check changed nothing", async () => {
     // Opening a list is a read: nothing could have been done, so the person
@@ -7903,7 +7852,7 @@ describe("what the pages record for product analytics", () => {
     expect(named(running, "agc_dashboard_viewed")).toStrictEqual([viewOf("orders", owner)]);
   });
 
-  it("records a view of another screen a press leads to, read as data next", async () => {
+  it("sends merchant creation to Products as a full document, then records its view as data", async () => {
     const running = await started();
     await running.browser.signIn(FRESH.email, TO_READ_REPORTS);
     const person = await running.identity.byEmail(FRESH.email);
@@ -7911,15 +7860,16 @@ describe("what the pages record for product analytics", () => {
     await fromNow(running);
 
     const pressed = await running.browser.post("/merchant.data", {});
-    const led = await running.browser.get("/choose-name.data");
+    const led = await running.browser.get("/products.data");
     await settle();
 
     expect([pressed.status, led.status]).toStrictEqual([202, 200]);
-    expect(pressed.html).toContain('"redirect","/choose-name"');
+    expect(pressed.headers.get("x-remix-reload-document")).toBe("true");
+    expect(pressed.html).toContain('"redirect","/products"');
     const merchant = (await running.identity.byEmail(FRESH.email))?.merchant?.id;
     expect(await running.harnessed.store.merchantById(merchant ?? "")).not.toBeNull();
     expect(named(running, "agc_dashboard_viewed")).toStrictEqual([
-      viewOf("choose_name", { person: person?.id ?? "", merchant: merchant ?? "" }),
+      viewOf("cards", { person: person?.id ?? "", merchant: merchant ?? "" }),
     ]);
   });
 
@@ -8170,22 +8120,18 @@ describe("what the pages record for product analytics", () => {
     fields: { step, integration: "api", outcome: "blocked", reason_code: reason },
   });
 
-  it("records a seller name refused before the gateway is asked as one blocked setup step, on both screens that take it", async () => {
+  it("records an invalid seller name at Settings as a blocked setup step", async () => {
     const running = await started();
-    await unname(running);
     await running.browser.signIn();
     const owner = await theOwner(running);
-    await running.browser.get("/choose-name");
+    await running.browser.get("/settings");
     await fromNow(running);
 
-    const chosen = await running.browser.post("/choose-name", { seller_name: "" });
-    await running.browser.get("/settings");
     const renamed = await running.browser.post("/settings", { seller_name: "x".repeat(500) });
     await settle();
 
-    expect([chosen.status, renamed.status]).toStrictEqual([400, 400]);
+    expect(renamed.status).toBe(400);
     expect(named(running, "agc_setup_result")).toStrictEqual([
-      setupOf("seller_name", "profile_missing", owner),
       setupOf("seller_name", "invalid_input", owner),
     ]);
   });
@@ -8199,9 +8145,8 @@ describe("what the pages record for product analytics", () => {
         },
       }),
     });
-    await unname(running);
     await running.browser.signIn();
-    await running.browser.get("/choose-name");
+    await running.browser.get("/settings");
     await fromNow(running);
     const rejected: unknown[] = [];
     const rejection = (reason: unknown) => rejected.push(reason);
@@ -8209,9 +8154,9 @@ describe("what the pages record for product analytics", () => {
     const told = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     try {
-      const chosen = await running.browser.post("/choose-name", { seller_name: "" });
+      const chosen = await running.browser.post("/settings", { seller_name: "x".repeat(500) });
       await settle();
-      const after = await running.browser.get("/choose-name");
+      const after = await running.browser.get("/settings");
 
       expect([chosen.status, after.status]).toStrictEqual([400, 200]);
     } finally {
@@ -8282,6 +8227,61 @@ describe("what the pages record for product analytics", () => {
 });
 
 describe("merchant onboarding choices over HTTP", () => {
+  it.each(["timeout", "I/O failure"])(
+    "checks an unread live-sales request after %s before offering the request action again",
+    async (failure) => {
+      const live = {
+        PAYMENT_NETWORK: "eip155:8453",
+        FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
+      };
+      let failRequestReads = false;
+      const running = await started({
+        gateway: { ...live, CDP_API_KEY_ID: "key-id", CDP_API_KEY_SECRET: "key-secret" },
+        dashboard: live,
+        client: (real) => ({
+          ...real,
+          liveSalesRequest: async () => {
+            if (failRequestReads) {
+              if (failure === "I/O failure") throw new Error("the request store is unavailable");
+              return lateAnswer(10);
+            }
+            return await real.liveSalesRequest();
+          },
+        }),
+      });
+      await running.browser.signIn(FRESH.email);
+      const merchant = (await running.identity.byEmail(FRESH.email))?.merchant;
+      if (merchant === null || merchant === undefined)
+        throw new Error("the sign-in made no merchant");
+      await running.harnessed.store.noteContact(merchant.id, running.harnessed.now(), "api");
+      const before = await running.browser.get("/products");
+      expect(
+        formsIn(before.html).some((entry) => entry.fields.get("intent") === "request-live-sales"),
+      ).toBe(true);
+
+      failRequestReads = true;
+      const unread = await running.browser.post("/products", {
+        intent: "request-live-sales",
+        seller_name: "Freeland",
+      });
+      expect(unread.status).toBe(503);
+      expect(readable(unread.html)).toContain(
+        "We couldn't read your request. Check again before asking.",
+      );
+      expect(unread.html).toMatch(
+        /<a\b(?=[^>]*class="button button-primary")(?=[^>]*href="\/products")[^>]*>\s*Check again\s*<\/a>/,
+      );
+
+      failRequestReads = false;
+      const checked = await running.browser.get("/products");
+      expect(checked.status).toBe(200);
+      expect(await running.harnessed.store.liveSalesRequest(merchant.id)).toBeNull();
+      expect(
+        formsIn(checked.html).some((entry) => entry.fields.get("intent") === "request-live-sales"),
+      ).toBe(true);
+    },
+  );
+
   it("keeps a failed platform save retryable without recording an answer", async () => {
     let unavailable = true;
     const running = await started({

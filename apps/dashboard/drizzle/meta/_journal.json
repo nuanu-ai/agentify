@@ -204,6 +204,13 @@
       "when": 1793379863954,
       "tag": "0028_shop_jobs",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1793395023520,
+      "tag": "0029_live_sales_mail",
+      "breakpoints": true
     }
   ]
 }

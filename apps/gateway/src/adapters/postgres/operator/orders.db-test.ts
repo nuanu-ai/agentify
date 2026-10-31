@@ -63,7 +63,7 @@ const migrationsIn = join(
 
 const EMPTY_EVERY_TABLE =
   "truncate table cards, orders, receipts, payment_claims, merchant_keys, merchant_contact, merchants," +
-  " payout_splits, commerce_analytics_events, operator_journal";
+  " payout_splits, commerce_analytics_events, operator_journal, merchant_live_requests";
 
 if (databaseUrl === null) {
   console.log(noDatabaseHere(wanted));

@@ -11,6 +11,8 @@ import { MemoryStore } from "../store.js";
 import { memoryOperatorReader } from "./index.js";
 
 describeOperatorFigures("the operator's figures in memory", async () => {
-  const store = new MemoryStore("eip155:84532", countedIds());
+  const store = new MemoryStore("eip155:84532", countedIds(), undefined, undefined, {
+    stage: () => () => {},
+  });
   return { store, reader: memoryOperatorReader(store) };
 });

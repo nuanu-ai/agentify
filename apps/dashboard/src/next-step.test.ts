@@ -6,10 +6,11 @@ const first = ONBOARDING_CASES[0]?.facts;
 if (first === undefined) throw new Error("the shared situations have no first visit");
 
 describe("the seller's next step", () => {
-  it.each(ONBOARDING_CASES)("situation $row: $when", ({ facts, page, reason }) => {
+  it.each(ONBOARDING_CASES)("situation $row: $when", ({ facts, page, reason, account }) => {
     const step = nextStepOf(facts);
     expect(step.page).toBe(page);
     expect(step.reason).toBe(reason);
+    if (account !== undefined) expect(step.account).toBe(account);
     expect(step.practice).toBe(
       facts.mode === "live" && page === "platform" && !facts.withdrawn && !facts.unread,
     );
@@ -49,6 +50,18 @@ describe("the seller's next step", () => {
       nextStepOf({ ...first, keys: 1, contact: "2026-10-30T09:00:00Z", contactAlive: true }).page,
     ).toBe("code-connected");
   });
+
+  it("follows the code that is in use instead of an old WooCommerce answer", () => {
+    expect(nextStepOf({ ...first, platform: "woocommerce", keys: 1 }).page).toBe("code");
+    expect(
+      nextStepOf({
+        ...first,
+        platform: "woocommerce",
+        contact: "2026-10-30T09:00:00Z",
+        contactAlive: true,
+      }).page,
+    ).toBe("code-connected");
+  });
 });
 
 it("uses the sale door's silence fact so stale contact cannot hide unserved orders behind individually paused products", () => {
@@ -64,4 +77,61 @@ it("uses the sale door's silence fact so stale contact cannot hide unserved orde
   expect(nextStepOf(pausedProducts).reason).toBe("unserved");
   expect(nextStepOf({ ...pausedProducts, unserved: false }).reason).toBeNull();
   expect(nextStepOf({ ...pausedProducts, outOfTouch: true }).reason).toBe("out_of_touch");
+});
+
+it("keeps another way available before shop keys arrive, while a real connection wins over a saved answer", () => {
+  const fresh = ONBOARDING_CASES[0];
+  if (!fresh) throw new Error("missing initial situation");
+  const waiting = { ...fresh.facts, platform: "woocommerce" as const, shop: "waiting" as const };
+  expect(nextStepOf(waiting).otherWays).toBe(true);
+  expect(nextStepOf({ ...waiting, platform: "api" }).page).toBe("code");
+  expect(nextStepOf({ ...waiting, keys: 1 }).page).toBe("code");
+  expect(nextStepOf({ ...waiting, platform: "api", shop: "connected" }).page).toBe("shop");
+  expect(nextStepOf({ ...waiting, platform: "api", connectedBefore: true }).otherWays).toBe(false);
+});
+
+it.each(["waiting", "unanswered"] as const)(
+  "keeps an implicit %s WooCommerce attempt without overriding an explicit other choice",
+  (shop) => {
+    expect(nextStepOf({ ...first, shop, platform: null }).page).toBe("shop");
+    expect(nextStepOf({ ...first, shop, platform: "api" }).page).toBe("code");
+    expect(nextStepOf({ ...first, shop, platform: "other" }).page).toBe("other");
+    expect(nextStepOf({ ...first, shop, platform: "other", connectedBefore: true }).page).toBe(
+      "other",
+    );
+    expect(nextStepOf({ ...first, shop, platform: null, keys: 1 }).page).toBe("code");
+  },
+);
+it("follows code after leaving a shop even when the old platform answer still names WooCommerce", () => {
+  expect(
+    nextStepOf({ ...first, through: "api", connectedBefore: true, platform: "woocommerce" }).page,
+  ).toBe("code");
+});
+
+it.each(
+  (["connected", "read-only"] as const).flatMap((shop) => [
+    { shop, keys: 1, contact: null, contactAlive: false, page: "code" },
+    { shop, keys: 0, contact: "2026-10-30T09:00:00Z", contactAlive: true, page: "code-connected" },
+    { shop, keys: 0, contact: "2026-10-30T09:00:00Z", contactAlive: false, page: "code-silent" },
+  ]),
+)(
+  "keeps current API $page ahead of an inactive $shop shop and old WooCommerce answer",
+  ({ page, ...current }) => {
+    expect(nextStepOf({ ...first, ...current, through: "api", platform: "woocommerce" }).page).toBe(
+      page,
+    );
+  },
+);
+it("keeps active WooCommerce ahead of an old API key or contact", () => {
+  expect(
+    nextStepOf({
+      ...first,
+      through: "woocommerce",
+      shop: "none",
+      platform: "api",
+      keys: 2,
+      contact: "2026-10-30T09:00:00Z",
+      contactAlive: true,
+    }).page,
+  ).toBe("shop");
 });

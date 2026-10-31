@@ -8,6 +8,7 @@ import { SILENT_AFTER_MS } from "@agentify/core/published";
 import { CONTRACT_VERSION } from "@nuanu-ai/agentify-contracts";
 import { type SQL, sql } from "drizzle-orm";
 import { CONTACT_WRITTEN_EVERY_MS } from "../../../app/gateway.js";
+import type { LiveSalesRequest } from "../../../ports/live-sales.js";
 import {
   askedOn,
   CHART_DAYS,
@@ -29,13 +30,13 @@ import {
   listOf,
   microsOfSum,
   msOf,
-  namedAndPaid,
   onSale,
   ready,
   refuseUnaddable,
   SETTLED,
   settledSales,
 } from "./figures-sql.js";
+import { pendingRequest } from "./live-requests.js";
 import { PAYMENT_UNKNOWN } from "./predicates.js";
 import type { ReadOnlyTransaction } from "./read-only.js";
 import type { OperatorScope } from "./scope.js";
@@ -62,6 +63,8 @@ export const postgresOperatorFigures = (scope: OperatorScope): OperatorFigures =
     return await scope.read(async (tx) => {
       const { rows } = await tx.execute<{
         id: string;
+        request: LiveSalesRequest;
+        has_wallet: boolean;
         name: string;
         service_name: string;
         seller_site: string | null;
@@ -71,19 +74,22 @@ export const postgresOperatorFigures = (scope: OperatorScope): OperatorFigures =
         cards: number;
         of: number;
       }>(sql`
-        select m.id, m.name, m.service_name, m.seller_site, ${msOf(sql`m.created_at`)} as created_at, m.integration,
+        select ${pendingRequest} as request, (m.payout_wallet is not null) as has_wallet, m.id, m.name, m.service_name, m.seller_site, ${msOf(sql`m.created_at`)} as created_at, m.integration,
                (select ${msOf(sql`mc.polled_at`)} from merchant_contact mc where mc.merchant_id = m.id) as polled_at,
                (select count(*)::int from cards c where c.merchant_id = m.id) as cards,
                (count(*) over ())::int as of
           from merchants m
-         where m.live_approved_at is null and ${namedAndPaid(asked, scope.network)}
-         order by m.created_at, m.id collate "C"
+          join merchant_live_requests r on r.merchant_id = m.id and r.state = 'pending'
+         where m.live_approved_at is null
+         order by r.requested_at, m.id collate "C" desc
          limit ${WAITING_NAMED_AT_MOST}`);
       const of = rows[0]?.of ?? 0;
       return {
         readAt: asked.at,
         of,
         merchants: rows.map((row) => ({
+          request: row.request,
+          hasWallet: row.has_wallet,
           merchantId: row.id,
           name: row.name,
           serviceName: row.service_name,
@@ -200,7 +206,7 @@ export const postgresOperatorFigures = (scope: OperatorScope): OperatorFigures =
 
   async merchantCounts(asked) {
     const waiting = askedOn(asked.surface).admission
-      ? sql`m.live_approved_at is null and ${namedAndPaid(asked, scope.network)}`
+      ? sql`m.live_approved_at is null and exists (select 1 from merchant_live_requests r where r.merchant_id = m.id and r.state = 'pending')`
       : sql`false`;
     return await scope.read(async (tx) => {
       const {

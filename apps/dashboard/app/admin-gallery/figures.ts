@@ -69,6 +69,18 @@ const WAITING: WaitingForAdmission = {
   merchants: [
     {
       merchantId: GIFT_CARDS.id,
+      hasWallet: false,
+      request: {
+        id: "lrq_gallery",
+        merchantId: GIFT_CARDS.id,
+        accountId: null,
+        requestedAt: AT - 3 * DAY,
+        evidence: { integration: "api", connectedAt: AT - 3 * MINUTE },
+        state: "pending",
+        decline: null,
+        reminderDueAt: AT - DAY,
+        reminderCreatedAt: null,
+      },
       name: GIFT_CARDS.name,
       serviceName: GIFT_CARDS.name,
       sellerSite: GIFT_CARDS.site,

@@ -22,7 +22,7 @@ export const NAME_RULE =
  * The name is checked here as well as at the gateway so the person reads this
  * rather than the gateway's refusal, which names a route rather than a page.
  */
-export const NAME_REFUSED =
+const NAME_REFUSED =
   "The payment network allows only letters A to Z, numbers, spaces and punctuation, up to 32" +
   " characters. Your name was not saved.";
 

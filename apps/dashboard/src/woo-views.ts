@@ -316,6 +316,7 @@ export interface RateViewState {
 export type RateView = RateViewState & Readonly<{ words: RateWords }>;
 
 export interface WooShopView {
+  readonly savedProfile?: string;
   readonly job?: import("./shop-job-view.js").ShopJobView | null;
   readonly screen: "shop";
   /**

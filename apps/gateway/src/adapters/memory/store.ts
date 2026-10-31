@@ -22,6 +22,16 @@ import {
   journalLimitOf,
   settledPress,
 } from "../../ports/journal.js";
+import {
+  checkedDecline,
+  checkedLiveSalesAsk,
+  type LiveSalesAsk,
+  type LiveSalesAsked,
+  type LiveSalesDeclined,
+  type LiveSalesNotice,
+  type LiveSalesRequest,
+  liveSalesReminderAt,
+} from "../../ports/live-sales.js";
 import { pageIn } from "../../ports/paging.js";
 import type { Reminder } from "../../ports/queue.js";
 import {
@@ -55,6 +65,16 @@ import {
 import { isSameAddress } from "../../split/address.js";
 import type { PayoutSplit } from "../../split/parameters.js";
 import { recordedOtherwise, splitsOfTheWrite } from "../registry.js";
+
+/** Stages an in-memory notice; the returned commit cannot fail. */
+export interface MemoryLiveSalesNotices {
+  stage(notice: LiveSalesNotice): () => void;
+}
+const noLiveSalesNotices: MemoryLiveSalesNotices = {
+  stage() {
+    throw new Error("live-sales changes need a transactional notice writer");
+  },
+};
 
 /**
  * Where this store puts an envelope that must be written with an order. `stage`
@@ -115,6 +135,7 @@ export interface Contact {
 /** What `MemoryStore#holdings` hands the operator's memory reader. */
 export interface MemoryHoldings {
   readonly merchants: readonly StoredMerchant[];
+  readonly liveRequests: ReadonlyMap<string, LiveSalesRequest>;
   readonly keys: readonly StoredKey[];
   readonly cards: readonly StoredCard[];
   /** Each order with when it was last written, as Postgres stamps `updated_at`. */
@@ -142,6 +163,8 @@ interface MerchantRow {
 
 export class MemoryStore implements Store {
   readonly #merchants = new Map<string, MerchantRow>();
+  readonly #liveRequests = new Map<string, LiveSalesRequest>();
+  readonly #liveNotices: MemoryLiveSalesNotices;
   readonly #keys = new Map<string, StoredKey>();
   readonly #keysByDigest = new Map<string, string>();
   readonly #cards = new Map<string, StoredCard>();
@@ -179,11 +202,13 @@ export class MemoryStore implements Store {
     ids: Ids,
     now: Clock = () => Date.now(),
     envelopes: Envelopes = noEnvelopes,
+    liveNotices: MemoryLiveSalesNotices = noLiveSalesNotices,
   ) {
     this.#network = network;
     this.#ids = ids;
     this.#now = now;
     this.#envelopes = envelopes;
+    this.#liveNotices = liveNotices;
   }
 
   get network(): string {
@@ -246,34 +271,111 @@ export class MemoryStore implements Store {
     analytics?: AnalyticsOf<{ merchant: StoredMerchant; changed: boolean }>,
     journal?: JournalPress,
   ): Promise<{ merchant: StoredMerchant; changed: boolean } | null> {
-    const row = this.#merchants.get(id);
-    if (row === undefined) {
-      return null;
-    }
-    const changed = row.liveApprovedAt === null;
-    // Checked before anything moves, so a row the journal refuses leaves the
-    // merchant as it was, as the rolled-back transaction does in Postgres.
-    const entry = this.#checkedPress(journal, changed);
-    row.liveApprovedAt ??= at;
-    const granted = { merchant: this.#storedMerchantOf(row), changed };
-    if (changed) await this.#recordWith(analytics, granted, at);
-    this.#append(entry);
-    return granted;
+    return this.#withMerchant(id, async () => {
+      const row = this.#merchants.get(id);
+      if (row === undefined) {
+        return null;
+      }
+      const changed = row.liveApprovedAt === null;
+      // Checked before anything moves, so a row the journal refuses leaves the
+      // merchant as it was, as the rolled-back transaction does in Postgres.
+      const entry = this.#checkedPress(journal, changed);
+      row.liveApprovedAt ??= at;
+      const request = this.#liveRequests.get(id);
+      if (changed && request)
+        this.#liveRequests.set(id, { ...request, state: "admitted", decline: null });
+      const granted = { merchant: this.#storedMerchantOf(row), changed };
+      if (changed) await this.#recordWith(analytics, granted, at);
+      this.#append(entry);
+      return granted;
+    });
   }
 
   async withdrawLiveApproval(
     id: string,
     journal?: JournalPress,
   ): Promise<{ merchant: StoredMerchant; changed: boolean } | null> {
-    const row = this.#merchants.get(id);
-    if (row === undefined) {
-      return null;
-    }
-    const changed = row.liveApprovedAt !== null;
-    const entry = this.#checkedPress(journal, changed);
-    row.liveApprovedAt = null;
-    this.#append(entry);
-    return { merchant: this.#storedMerchantOf(row), changed };
+    return this.#withMerchant(id, async () => {
+      const row = this.#merchants.get(id);
+      if (row === undefined) {
+        return null;
+      }
+      const changed = row.liveApprovedAt !== null;
+      const entry = this.#checkedPress(journal, changed);
+      row.liveApprovedAt = null;
+      this.#append(entry);
+      return { merchant: this.#storedMerchantOf(row), changed };
+    });
+  }
+
+  async liveSalesRequest(merchantId: string): Promise<LiveSalesRequest | null> {
+    return structuredClone(this.#liveRequests.get(merchantId) ?? null);
+  }
+
+  async requestLiveSales(input: LiveSalesAsk, at: number): Promise<LiveSalesAsked> {
+    return this.#withMerchant(input.merchantId, async () => {
+      const row = this.#merchants.get(input.merchantId);
+      if (!row) return { kind: "missing" };
+      if (row.liveApprovedAt !== null) return { kind: "approved" };
+      const previous = this.#liveRequests.get(input.merchantId);
+      if (previous?.state === "pending")
+        return { kind: "pending", request: structuredClone(previous) };
+      checkedLiveSalesAsk(input, at);
+      if (row.integration !== input.evidence.integration) return { kind: "moved" };
+      const request: LiveSalesRequest = {
+        id: this.#ids("lsr"),
+        merchantId: input.merchantId,
+        accountId: input.accountId,
+        requestedAt: at,
+        evidence: structuredClone(input.evidence),
+        state: "pending",
+        decline: null,
+        reminderDueAt: liveSalesReminderAt(at),
+        reminderCreatedAt: null,
+      };
+      const commit = this.#liveNotices.stage({
+        kind: "requested",
+        request: structuredClone(request),
+        sellerName: input.sellerName,
+        hasWallet: row.payoutWallet.address !== null,
+      });
+      row.serviceName = input.sellerName;
+      this.#liveRequests.set(row.id, request);
+      commit();
+      return { kind: "requested", request: structuredClone(request) };
+    });
+  }
+
+  async declineLiveSales(
+    merchantId: string,
+    requestId: string,
+    press: JournalPress,
+  ): Promise<LiveSalesDeclined | null> {
+    checkedDecline(merchantId, press);
+    return this.#withMerchant(merchantId, async () => {
+      const merchant = this.#merchants.get(merchantId);
+      if (!merchant) return null;
+      const held = this.#liveRequests.get(merchantId);
+      const changed =
+        held?.id === requestId && held.state === "pending" && merchant.liveApprovedAt === null;
+      const entry = checkedJournalEntry(settledPress(press, changed));
+      if (!changed || !held) {
+        this.#appended(entry);
+        return { changed: false, request: structuredClone(held ?? null) };
+      }
+      const decline = { ...entry, sequence: this.#journal.length + 1 };
+      const request: LiveSalesRequest = { ...held, state: "declined", decline };
+      const commit = this.#liveNotices.stage({
+        kind: "declined",
+        request: structuredClone(request),
+        sellerName: merchant.serviceName ?? merchant.name,
+        hasWallet: merchant.payoutWallet.address !== null,
+      });
+      this.#appended(entry);
+      this.#liveRequests.set(merchantId, request);
+      commit();
+      return { changed: true, request: structuredClone(request) };
+    });
   }
 
   async merchants(): Promise<readonly StoredMerchant[]> {
@@ -569,6 +671,7 @@ export class MemoryStore implements Store {
   holdings(): MemoryHoldings {
     return {
       merchants: [...this.#merchants.values()].map((row) => this.#storedMerchantOf(row)),
+      liveRequests: new Map(structuredClone([...this.#liveRequests])),
       keys: [...this.#keys.values()],
       cards: [...this.#cards.values()],
       orders: [...this.#orders.values()].map((record) => ({

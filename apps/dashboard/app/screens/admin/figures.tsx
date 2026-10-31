@@ -227,7 +227,9 @@ export function OverviewScreen({ view }: Readonly<{ view: OverviewView }>) {
               <div className="group-head">
                 <h2>
                   Needs you
-                  {needs === 0 ? null : <span className="count warn">{needs}</span>}
+                  {needs === 0 ? null : (
+                    <span className="count warn">{needs.toLocaleString("en-US")}</span>
+                  )}
                 </h2>
                 <p className="group-aside">Decisions only an operator can take</p>
               </div>
@@ -241,12 +243,24 @@ export function OverviewScreen({ view }: Readonly<{ view: OverviewView }>) {
                     {refused === null ? null : <StartRefused refused={refused} />}
                     {(waiting?.items ?? []).map((item) => (
                       <li className="op-told" key={item.merchantId}>
-                        <span className="badge badge-notice">Waiting for admission</span>
+                        <span className="op-told-badges">
+                          <span className="badge badge-notice">Asked for live sales</span>
+                          {item.overdue ? (
+                            <span className="badge badge-warn">Over two working days</span>
+                          ) : null}
+                        </span>
                         <span className="t">{item.name}</span>
                         <span className="a">{item.site ?? ""}</span>
-                        <p className="why">{item.why}</p>
+                        <p className="why">
+                          {item.requested ? (
+                            <>
+                              Asked <Moment at={item.requested} /> ·{" "}
+                            </>
+                          ) : null}
+                          {item.why}
+                        </p>
                         <div className="meta">
-                          <Link to={`/admin/merchants/${item.merchantId}`}>Review and admit</Link>
+                          <Link to={`/admin/merchants/${item.merchantId}`}>Review</Link>
                           {item.owner === null ? null : <span>{item.owner}</span>}
                           <span>
                             Merchant since <Moment at={item.created} />
@@ -263,7 +277,8 @@ export function OverviewScreen({ view }: Readonly<{ view: OverviewView }>) {
               ) : null}
               {waiting !== null && waiting.of > waiting.items.length ? (
                 <p className="cut">
-                  {waiting.items.length} of {waiting.of} waiting, those who waited longest first
+                  {waiting.items.length.toLocaleString("en-US")} of{" "}
+                  {waiting.of.toLocaleString("en-US")} waiting, those who waited longest first
                 </p>
               ) : null}
             </section>
@@ -363,7 +378,7 @@ export function OverviewScreen({ view }: Readonly<{ view: OverviewView }>) {
                       <span className="track" aria-hidden="true">
                         <span className="fill" style={{ width: step.share }} />
                       </span>
-                      <span className="n">{step.merchants}</span>
+                      <span className="n">{step.merchants.toLocaleString("en-US")}</span>
                       <span className="rate">{step.share}</span>
                     </li>
                   ))}
@@ -465,7 +480,7 @@ export function MoneyScreen({ view }: Readonly<{ view: MoneyView }>) {
           <h2>
             Splits
             {view.splits.kind === "read" ? (
-              <span className="count">{view.splits.value.count}</span>
+              <span className="count">{view.splits.value.count.toLocaleString("en-US")}</span>
             ) : null}
           </h2>
           <p className="group-aside">One for every wallet a merchant set</p>

@@ -491,3 +491,27 @@ export const referenceUnanswered = (currency: string): string =>
   " Before connecting such a shop, Agentify checks that Coinbase gives a rate for its currency, to" +
   " show beside the rate you set, and Coinbase did not answer just now, so whether it gives one" +
   ` is not known.${NOTHING_CHANGED} Wait a moment and press Check my shop again.`;
+
+/** WordPress's own site title, kept whole for the merchant to check before saving. */
+export async function wordpressNameOf(
+  shopUrl: string,
+  request: WooRequest = wooRequest,
+): Promise<string | null> {
+  try {
+    const response = await request(`${shopUrl}/wp-json/`, {
+      redirect: "manual",
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (response.status !== 200) return null;
+    const body: unknown = await response.json();
+    return typeof body === "object" &&
+      body !== null &&
+      "name" in body &&
+      typeof body.name === "string"
+      ? body.name
+      : null;
+  } catch {
+    return null;
+  }
+}

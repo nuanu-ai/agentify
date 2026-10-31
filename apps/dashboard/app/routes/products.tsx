@@ -11,6 +11,7 @@ import {
 } from "react-router";
 import type { KeysView, NewKeyView } from "../../src/keys.js";
 import type { Platform } from "../../src/next-step.js";
+import type { OnboardingPress } from "../../src/onboarding.js";
 import type { FrameView } from "../../src/views.js";
 import type { WooShopView } from "../../src/woo-views.js";
 import { acted, formOf, readOnly, useChrome } from "../answer.js";
@@ -59,29 +60,34 @@ export async function loader(asked: LoaderFunctionArgs) {
  */
 export async function action(asked: ActionFunctionArgs) {
   const { url, context, request } = asked;
-  return acted<KeysView | NewKeyView | WooShopView | { problem: string; platform?: Platform }>(
-    async () => {
-      const form = await formOf(request);
-      const person = context.get(signedIn);
-      const pages = context.get(services);
-      const woo = url.searchParams.get("woo");
-      if (woo !== null)
-        return await pages.onboarding.shopPress(
-          person,
-          woo,
-          form,
-          request.headers.get("cookie") ?? undefined,
-        );
-      if (form.has("platform") || form.get("intent") === "acknowledge-test")
-        return await pages.onboarding.press(person, form);
-      if (form.get("intent") === "create-key") {
-        context.set(keyPressed, true);
-        return await pages.keys.issue(person, form);
-      }
-      return await pages.selling.press(person, url.searchParams, form);
-    },
-    asked,
-  );
+  return acted<
+    KeysView | NewKeyView | WooShopView | OnboardingPress | { problem: string; platform?: Platform }
+  >(async () => {
+    const form = await formOf(request);
+    const person = context.get(signedIn);
+    const pages = context.get(services);
+    if (
+      ["request-live-sales", "save-onboarding-profile", "save-onboarding-wallet"].includes(
+        String(form.get("intent")),
+      )
+    )
+      return await pages.onboarding.account(person, form);
+    const woo = url.searchParams.get("woo");
+    if (woo !== null)
+      return await pages.onboarding.shopPress(
+        person,
+        woo,
+        form,
+        request.headers.get("cookie") ?? undefined,
+      );
+    if (form.has("platform") || form.get("intent") === "acknowledge-test")
+      return await pages.onboarding.press(person, form);
+    if (form.get("intent") === "create-key") {
+      context.set(keyPressed, true);
+      return await pages.keys.issue(person, form);
+    }
+    return await pages.selling.press(person, url.searchParams, form);
+  }, asked);
 }
 
 export const shouldRevalidate: ShouldRevalidateFunction = ({
@@ -96,17 +102,22 @@ export default function Products() {
   const pressed = useActionData<typeof action>();
   const issued =
     pressed && "screen" in pressed && pressed.screen === "issued" ? pressed : undefined;
+  const onboardingPress =
+    pressed && "screen" in pressed && pressed.screen === "onboarding" ? pressed : undefined;
   const frame = useRouteLoaderData<FrameView>("routes/merchant-only");
   const onboarding = frame?.onboarding;
-  const empty = (view === null || view.empty !== null) && onboarding !== undefined;
+  const empty = (view === null || view.empty) && onboarding !== undefined;
   const shop = pressed && "screen" in pressed && pressed.screen === "shop" ? pressed : view?.shop;
   const choosingShop =
-    query.get("ways") === "choose" && shop?.screen === "shop" && shop.connection === null;
+    onboarding?.step.otherWays &&
+    query.get("ways") === "choose" &&
+    shop?.screen === "shop" &&
+    shop.connection === null;
   if (
     issued === undefined &&
     !choosingShop &&
     shop !== undefined &&
-    (view === null || view.empty !== null) &&
+    (view === null || view.empty) &&
     (onboarding?.step.page === "shop" ||
       (pressed && "screen" in pressed && pressed.screen === "shop"))
   )
@@ -118,7 +129,13 @@ export default function Products() {
           </Frame>
         }
       >
-        <WooPage view={shop} onboarding elsewhere={view?.elsewhere} />
+        <WooPage
+          view={shop}
+          onboarding
+          elsewhere={view?.elsewhere}
+          account={onboarding}
+          press={onboardingPress}
+        />
       </Suspense>
     );
   const keyView = pressed && "screen" in pressed && pressed.screen === "list" ? pressed : undefined;
@@ -135,7 +152,13 @@ export default function Products() {
           </Frame>
         }
       >
-        <ProductsCatalog view={view} base={chrome.base} shop={shop} />
+        <ProductsCatalog
+          view={view}
+          base={chrome.base}
+          shop={shop}
+          account={onboarding}
+          press={onboardingPress}
+        />
       </Suspense>
     );
   return (
@@ -145,6 +168,7 @@ export default function Products() {
           <ProductsOnboarding
             view={onboarding}
             choose={choosingShop}
+            press={onboardingPress}
             selected={pressed && "platform" in pressed ? pressed.platform : undefined}
             problem={problem}
             keyView={keyView}
@@ -152,6 +176,7 @@ export default function Products() {
           />
         </Suspense>
       ) : null}
+      {view?.elsewhere ? <p className="note">{view.elsewhere}</p> : null}
     </Frame>
   );
 }

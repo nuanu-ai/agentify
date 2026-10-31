@@ -188,16 +188,8 @@ export interface CardsView {
    * drawn where the merchant has some.
    */
   readonly listing: Listing<CardRow>;
-  /**
-   * Present only when the integration in use has published no card: the
-   * sentence, and the ways to its first card. What the account lacks to
-   * publish is the banner's to say.
-   */
-  readonly empty: null | Readonly<{
-    says: string;
-    /** The SDK's guide, and the words of the way to the WooCommerce page where this dashboard has one. */
-    ways: Readonly<{ sdk: boolean; woo: string | null }>;
-  }>;
+  /** Whether the integration in use has published no products, before search or filters. */
+  readonly empty: boolean;
   /** Under the cards, how many the integration not in use published, which are not listed. */
   readonly elsewhere: string | null;
   /** The line under the cards about what their switches do, and where the rest is. */
@@ -227,7 +219,6 @@ export const cardsPlace = (fields: URLSearchParams): string =>
 export const cardsView = (
   cards: MerchantCardList & { readonly integrationPauses?: Readonly<Record<string, WooCardPause>> },
   origin: string,
-  wooAvailable = false,
   integration: CardsIntegration = ALL_THROUGH_THE_CODE,
   query: URLSearchParams = new URLSearchParams(),
 ): CardsView => {
@@ -301,7 +292,7 @@ export const cardsView = (
       },
       showAll: "Show all products",
     }),
-    empty: listed.length > 0 ? null : emptyOf(integration.through, elsewhere, wooAvailable),
+    empty: listed.length === 0,
     elsewhere: elsewhereOf(integration.through, elsewhere),
     note: switchesNote(cards.selling),
     byCode: byCode
@@ -309,30 +300,6 @@ export const cardsView = (
       : null,
   };
 };
-
-/**
- * A merchant on the shop gets their first products by importing them on the
- * WooCommerce page, not from the SDK. One back on their code with only the
- * shop's products is told their code has published none, since a sentence
- * that they published nothing would contradict the count under it.
- */
-const emptyOf = (
-  through: Integration,
-  elsewhere: number,
-  wooAvailable: boolean,
-): NonNullable<CardsView["empty"]> =>
-  through === "woocommerce"
-    ? {
-        says: "Your shop's products haven't been imported yet.",
-        ways: { sdk: false, woo: wooAvailable ? "Open WooCommerce page" : null },
-      }
-    : {
-        says:
-          elsewhere === 0
-            ? "You haven't published any products yet."
-            : "Your code hasn't published any products yet.",
-        ways: { sdk: true, woo: wooAvailable ? "Connect a WooCommerce shop" : null },
-      };
 
 /**
  * They come back on sale only when the merchant switches integration, which

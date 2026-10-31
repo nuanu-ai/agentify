@@ -78,7 +78,11 @@ function factsOf(
         : Math.max(latest ?? Number.NEGATIVE_INFINITY, sale.settledAt),
     null,
   );
+  const heldRequest = holdings.liveRequests.get(merchant.id);
+  const liveRequest =
+    heldRequest?.state === "pending" && merchant.liveApprovedAt === null ? heldRequest : null;
   const row: MerchantRow = {
+    liveRequest,
     id: merchant.id,
     serviceName: merchant.serviceName,
     sellerSite: merchant.sellerSite,
@@ -86,6 +90,7 @@ function factsOf(
     integration: merchant.integration,
     segment: segmentOf({
       surface,
+      liveRequest,
       missing,
       selling: merchant.selling,
       ofIntegration: ofIntegration.length,
@@ -107,11 +112,13 @@ function factsOf(
 
 /**
  * Where a row stands from a place in the list, below nought before it: who
- * waits for the operator first, then the latest sale, then the newest
- * merchant, then the identifier, each from the most.
+ * waits for the operator first, oldest request first. Other merchants sort
+ * by latest sale and creation, newest first; identifier breaks ties.
  */
 function placed(row: MerchantRow, place: MerchantPlace): number {
   const at = merchantPlaceOf(row);
+  if (at.waiting && place.waiting)
+    return (at.requestedAt ?? 0) - (place.requestedAt ?? 0) || byBytes(place.id, at.id);
   return (
     Number(place.waiting) - Number(at.waiting) ||
     (place.lastSaleAt ?? -1) - (at.lastSaleAt ?? -1) ||

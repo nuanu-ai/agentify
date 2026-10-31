@@ -12,8 +12,9 @@ import type {
 import { Moment } from "../components/moment.js";
 import { PostForm } from "../components/post-form.js";
 import { Address } from "../wallet/address.js";
-import { CoinbaseAddress, CoinbasePayout } from "../wallet/buttons.js";
 import { WalletEcho } from "../wallet/echo.js";
+import { CoinbasePayout } from "../wallet/payout-button.js";
+import { SettingsAddress } from "../wallet/settings-address.js";
 import styles from "./settings.module.css";
 
 /** A section's heading and the line under it that says what the section is for. */
@@ -123,7 +124,7 @@ function Waiting({
   saved,
 }: Readonly<{ pending: NonNullable<WalletView["pending"]>; saved: string | null }>) {
   return (
-    <div className={`${styles.notice} ${styles.warn}`}>
+    <div id="wallet-change" className={`${styles.notice} ${styles.warn}`}>
       <h2 className={styles.noticeHead}>Your payout wallet is changing</h2>
       <p>
         From <Moment at={pending.from} />, your share of each sale goes to{" "}
@@ -255,7 +256,7 @@ export function PayoutWalletPanel({ wallet }: Readonly<{ wallet: WalletView }>) 
         </div>
       )}
       {wallet.coinbase !== null && "chain" in wallet.coinbase ? (
-        <CoinbaseAddress
+        <SettingsAddress
           chainId={wallet.coinbase.chain}
           box="payout_wallet"
           className={styles.coinbase}
@@ -284,7 +285,6 @@ export function PayoutWalletPanel({ wallet }: Readonly<{ wallet: WalletView }>) 
               autoComplete="off"
               spellCheck={false}
               placeholder="0x…"
-              maxLength={42}
               defaultValue={typed}
               required
               hint={wallet.rule}

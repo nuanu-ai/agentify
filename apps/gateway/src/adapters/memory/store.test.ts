@@ -78,7 +78,11 @@ const order = (id: string, state: Order["state"]): StoredOrder => ({
   openDeliveryId: null,
 });
 
-describeStore("the store in memory", async () => new MemoryStore("eip155:84532", counted()));
+describeStore(
+  "the store in memory",
+  async () =>
+    new MemoryStore("eip155:84532", counted(), undefined, undefined, { stage: () => () => {} }),
+);
 
 describe("MemoryStore, where it is not like the other one", () => {
   it("keeps what it was given, whatever the caller does with its copy afterwards", async () => {

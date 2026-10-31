@@ -16,7 +16,6 @@ import { AskScreen, LinkRequestedScreen, MailUnavailableScreen } from "../screen
 import { services } from "../services.js";
 
 export const headers = carried;
-export const meta = () => [{ name: "robots", content: "noindex" }];
 
 export async function loader(asked: LoaderFunctionArgs) {
   const { request, url, context } = asked;

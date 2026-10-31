@@ -151,23 +151,27 @@ in the test environment, its orders are test orders: do not ship them.
 
 1. Open the [test dashboard](https://test.agentify.ad/dashboard), enter your
    email address, open the link in the message and press the confirmation
-   button. That sign-in sets up your business and asks for the name buyers
-   will see.
+   button. Products asks how you want to add your products.
 2. On Products, choose how to add your products. **With code** shows the
    package, API key and [quickstart](/quickstart); **WooCommerce** opens the
    shop connection ([how it works](/woocommerce)).
-3. After your code connects, save the payout wallet in Settings. For a
-   WooCommerce shop, save it before importing products. In the test
-   environment the wallet only receives test USDC.
+3. After your code connects, or your shop's check finds ready products,
+   Products asks for your seller name and wallet in one form. Save them,
+   then publish from your code or press **Publish** for the checked shop
+   products. In the test environment the wallet only receives test USDC.
    [Money](/money#if-you-have-no-wallet-yet) explains how to get one.
 4. Make your first test purchase yourself, buying your own product with test
    USDC, as [the guide's sixth
    step](/quickstart#_6-make-your-first-test-purchase) shows.
 5. For live sales, sign in to your separate dashboard at
-   `https://agentify.ad` and connect your code or shop there. Save a wallet
-   for real USDC and ask for Agentify approval at admin@agentify.ad before
-   publishing. Your code publishes with a live key; a shop imports its
-   products from its live connection. Replacing a saved wallet on the live
+   `https://agentify.ad` and connect your code or shop there. When your code
+   connects or your shop's check finds ready products, enter your seller
+   name and press **Ask for live sales** on Products. A wallet is not needed
+   to ask; you can add it while you wait. Products keeps the request and
+   any decision note, and an email tells you if the request is declined.
+   After approval, save a wallet for real USDC before publishing. Your code
+   publishes with a live key; a shop publishes its checked products from
+   its live connection. Replacing a saved wallet on the live
    account takes forty-eight hours ([why](/money#replacing-your-wallet)).
 
 What changes between the two channels:
@@ -180,7 +184,7 @@ What changes between the two channels:
 | Wallet | receives test USDC on Base Sepolia, which is worth nothing; a replacement applies at once | receives real USDC on Base; replacing a saved one takes forty-eight hours |
 | API key | starts with `csk_test_` | starts with `csk_live_` |
 | Your first purchase | you make it yourself, with test USDC | — |
-| Agentify's operator | not involved | approves your business before anything sells; ask at admin@agentify.ad |
+| Agentify's operator | not involved | approves your business before anything sells; ask on Products |
 | Products | published with a test key | published again with a live key; nothing is copied |
 | WooCommerce | available | available: the shop is connected again under the live account |
 

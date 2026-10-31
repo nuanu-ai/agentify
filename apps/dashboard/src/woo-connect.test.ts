@@ -14,6 +14,7 @@ import {
   publicShopOf,
   theStateToken,
   whatIsWrongWithTheShopUrl,
+  wordpressNameOf,
 } from "./woo-connect.js";
 
 const isTheGrantScreen = (url: string) => inspectGrantScreen(url, fetch);
@@ -599,4 +600,29 @@ describe("the product the rate guard shows as an example", () => {
       kind: "unanswered",
     });
   });
+});
+
+describe("the seller-name suggestion from WordPress", () => {
+  it.each([
+    [200, { name: "Freeland" }, "Freeland"],
+    [
+      200,
+      { name: "A complete shop title that does not fit the seller-name rule" },
+      "A complete shop title that does not fit the seller-name rule",
+    ],
+    [200, { name: "Магазин" }, "Магазин"],
+    [200, {}, null],
+    [200, { name: 42 }, null],
+    [403, { name: "An unreadable shop" }, null],
+  ])(
+    "keeps the root's readable name whole and otherwise leaves the field empty (%i, %j)",
+    async (status, body, expected) => {
+      shop = await shopAnswering((path, method) =>
+        path === "/wp-json/" && method === "GET"
+          ? { status, body: JSON.stringify(body), type: "application/json" }
+          : { status: 404 },
+      );
+      expect(await wordpressNameOf(shop.url, fetch)).toBe(expected);
+    },
+  );
 });

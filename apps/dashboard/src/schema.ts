@@ -502,6 +502,64 @@ export const shopJobProducts = pgTable(
   (table) => [primaryKey({ columns: [table.jobId, table.productId] })],
 );
 
+/** Private recipient intents; erasing either named account erases their mail material. */
+export const liveSalesMail = pgTable(
+  "dashboard_live_sales_mail",
+  {
+    id: text("id").primaryKey(),
+    requestId: text("request_id").notNull(),
+    merchantId: text("merchant_id").notNull(),
+    recipientAccountId: text("recipient_account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    requesterAccountId: text("requester_account_id").references(() => accounts.id, {
+      onDelete: "cascade",
+    }),
+    kind: text("kind").$type<"requested" | "declined" | "reminder">().notNull(),
+    event: jsonb("event").$type<import("./live-sales-mail.js").LiveSalesMailEvent>().notNull(),
+    message: jsonb("message").$type<import("./mail.js").Message>(),
+    state: text("state")
+      .$type<"pending" | "accepted" | "suppressed">()
+      .notNull()
+      .default("pending"),
+    suppression: text("suppression"),
+    attempts: integer("attempts").notNull().default(0),
+    lastOutcome: text("last_outcome").$type<import("./mail.js").Handover>(),
+    createdAt: moment("created_at"),
+    nextAttemptAt: moment("next_attempt_at"),
+    preparedAt: timestamp("prepared_at", { withTimezone: true, mode: "date" }),
+    preparedFrom: text("prepared_from"),
+    preparedProvider: text("prepared_provider"),
+    lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true, mode: "date" }),
+    settledAt: timestamp("settled_at", { withTimezone: true, mode: "date" }),
+  },
+  (table) => [
+    uniqueIndex("dashboard_live_sales_mail_recipient_event").on(
+      table.requestId,
+      table.kind,
+      table.recipientAccountId,
+    ),
+    index("dashboard_live_sales_mail_due")
+      .on(table.nextAttemptAt)
+      .where(sql`${table.state} = 'pending'`),
+    index("dashboard_live_sales_mail_requester").on(table.requesterAccountId),
+    index("dashboard_live_sales_mail_recipient").on(table.recipientAccountId),
+    check(
+      "dashboard_live_sales_mail_kind",
+      sql`${table.kind} in ('requested', 'declined', 'reminder')`,
+    ),
+    check(
+      "dashboard_live_sales_mail_state",
+      sql`${table.state} in ('pending', 'accepted', 'suppressed')`,
+    ),
+    check(
+      "dashboard_live_sales_mail_outcome",
+      sql`${table.lastOutcome} is null or ${table.lastOutcome} in ('accepted', 'refused', 'unknown')`,
+    ),
+    check("dashboard_live_sales_mail_attempts", sql`${table.attempts} >= 0`),
+  ],
+);
+
 export const wooCardPauses = pgTable(
   "dashboard_woo_card_pauses",
   {

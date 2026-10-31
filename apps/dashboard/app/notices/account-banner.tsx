@@ -1,11 +1,15 @@
-import { Button } from "@agentify/ui";
-import { Link, useLocation } from "react-router";
-import type { AccountNote, WalletChangeNote } from "../../src/account-banner.js";
+import { lazy } from "react";
+import { Link, useLocation, useRouteError, useRouteLoaderData } from "react-router";
+import type { AccountNote } from "../../src/account-banner.js";
 import { headingOf } from "../../src/account-heading.js";
-import { Moment } from "../components/moment.js";
-import { PostForm } from "../components/post-form.js";
-import { Address } from "../wallet/address.js";
+import type { FrameView } from "../../src/views.js";
 import styles from "./account-banner.module.css";
+
+const WalletChangeReason = lazy(() =>
+  import("./wallet-change-note.js").then(({ WalletChangeReason }) => ({
+    default: WalletChangeReason,
+  })),
+);
 
 /**
  * A way to the documentation or to another site, which the dashboard's router
@@ -16,40 +20,11 @@ const offTheDashboard = (to: string): boolean => /^(\/docs\/|[a-z]+:)/.test(to);
 /** The page itself or one under it. */
 const isOn = (here: string, page: string): boolean => here === page || here.startsWith(`${page}/`);
 
-/**
- * The cancel, pressed from whichever page the banner is on and brought back to
- * it. It carries the change it showed, as the settings' own cancel does. On
- * Settings the wallet's section holds the cancel, so the banner has none.
- */
-function CancelChange({ change, back }: Readonly<{ change: WalletChangeNote; back: string }>) {
-  return (
-    <PostForm document action="/settings/payout-wallet/cancel" className={styles.cancel}>
-      {(pressed) => (
-        <>
-          <input type="hidden" name="waiting" value={change.wallet} />
-          <input type="hidden" name="waiting_from" value={change.takesEffectAt} />
-          <input type="hidden" name="paid" value={change.paid ?? ""} />
-          <input type="hidden" name="back" value={back} />
-          <Button variant="secondary" compact pending={pressed}>
-            Cancel this change
-          </Button>
-        </>
-      )}
-    </PostForm>
-  );
-}
-
 /** A reason's line, and the way to the page that puts it right unless that page is this one. */
 function Reason({ note, here, back }: Readonly<{ note: AccountNote; here: string; back: string }>) {
   const { change } = note;
   if (change !== undefined) {
-    return (
-      <>
-        From <Moment at={change.from} />, your share of each sale goes to{" "}
-        <Address address={change.wallet} />. {note.says}
-        {isOn(here, "/settings") ? null : <CancelChange change={change} back={back} />}
-      </>
-    );
+    return <WalletChangeReason change={change} here={here} back={back} says={note.says} />;
   }
   return (
     <>
@@ -78,11 +53,25 @@ function Reason({ note, here, back }: Readonly<{ note: AccountNote; here: string
  * title, unless the heading already says it. A way to the page it is drawn on
  * is left out, since the control it names is already on screen.
  */
-export function AccountBanner({ notes }: Readonly<{ notes: readonly AccountNote[] }>) {
+export function AccountBanner({ notes: allNotes }: Readonly<{ notes: readonly AccountNote[] }>) {
   const { pathname: here, search } = useLocation();
   const back = `${here}${search}`;
-  if (notes.length === 0) return null;
+  const onboarding = useRouteLoaderData<FrameView>("routes/merchant-only")?.onboarding;
+  const routeError = useRouteError();
+  const localDecision =
+    here === "/products" &&
+    routeError == null &&
+    onboarding?.unread === false &&
+    onboarding.step.page !== "shop" &&
+    onboarding.account?.decision != null;
+  const notes = localDecision
+    ? allNotes.filter((note) => note.reason !== "not_approved")
+    : allNotes;
+  const first = notes[0];
+  if (first === undefined) return null;
   const heading = headingOf(notes);
+  // A line that holds a form is no paragraph, which may hold none.
+  const Line = first.change === undefined ? "p" : "div";
   return (
     <section className="account-banner" aria-label="About your account">
       <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
@@ -92,18 +81,9 @@ export function AccountBanner({ notes }: Readonly<{ notes: readonly AccountNote[
       <div>
         <h2 className={styles.heading}>{heading}</h2>
         {notes.length === 1 ? (
-          notes.map((note) =>
-            // A line that holds a form is no paragraph, which may hold none.
-            note.change === undefined ? (
-              <p key={note.reason} data-reason={note.reason}>
-                <Reason note={note} here={here} back={back} />
-              </p>
-            ) : (
-              <div key={note.reason} data-reason={note.reason}>
-                <Reason note={note} here={here} back={back} />
-              </div>
-            ),
-          )
+          <Line key={first.reason} data-reason={first.reason}>
+            <Reason note={first} here={here} back={back} />
+          </Line>
         ) : (
           <ul className={styles.reasons}>
             {notes.map((note) => (

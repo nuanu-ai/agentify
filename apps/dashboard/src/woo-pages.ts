@@ -1,5 +1,6 @@
 import { shopJobView } from "./shop-job-view.js";
 import { jobIsCurrent } from "./shop-jobs.js";
+
 /**
  * The server half of the WooCommerce connector's screens: what their loaders
  * and actions call, answering with an `Outcome` as every page's server half
@@ -12,6 +13,7 @@ import { jobIsCurrent } from "./shop-jobs.js";
 import { readinessOf, UNKNOWN } from "@agentify/core";
 import { publishRefusalReason } from "@agentify/gateway";
 import type { SetupResult } from "@agentify/gateway/analytics";
+import type { LiveSalesEvidence } from "@agentify/gateway/live-sales";
 import { keepUnits, withUnit } from "@agentify/ui/units";
 import { MERCHANT_FINDINGS, type Problem } from "@nuanu-ai/agentify-contracts";
 import type { DashboardConfig } from "./config.js";
@@ -38,6 +40,7 @@ import {
   shopUrlAs,
   theStateToken,
   whatIsWrongWithTheShopUrl,
+  wordpressNameOf,
   writesOtherDecimals,
 } from "./woo-connect.js";
 import { dollarsAt, gapOf, rateWrittenAs, shopDecimalsOf } from "./woo-money.js";
@@ -77,6 +80,7 @@ import { SITE_IN_SETTINGS, type Unset } from "./words.js";
  * either ran, so the calls are handed in rather than the shop stood up.
  */
 export interface ShopCalls {
+  readonly sellerName?: (shopUrl: string) => Promise<string | null>;
   readonly grantScreen: (authorizeUrl: string) => Promise<Preflight>;
   /** Null where the shop did not clearly say. */
   readonly preview: (shopUrl: string) => Promise<PublicShopRead>;
@@ -131,6 +135,10 @@ export interface WooPages {
   cameBack(cookie: string | undefined, query: URLSearchParams): Promise<Outcome<null>>;
   /** The account's connection as the shop screen reads it, for any screen that says it. */
   stateOf(accountId: string): Promise<ShopState>;
+  onboardingFacts(
+    person: Person,
+  ): Promise<Readonly<{ evidence: LiveSalesEvidence | null; connectedBefore: boolean }>>;
+  sellerName(person: Person): Promise<string | null>;
 }
 
 export interface WooParts {
@@ -630,6 +638,43 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       );
     },
     stateOf: async (accountId) => await shopStateOf(shops, accountId),
+    async sellerName(person) {
+      const connection = await shops.connectionOf(person.id);
+      return connection === null
+        ? null
+        : await (parts.shop?.sellerName ?? wordpressNameOf)(connection.shopUrl);
+    },
+    async onboardingFacts(person) {
+      if (person.merchant === null) return { evidence: null, connectedBefore: false };
+      const [snapshots, connection] = await Promise.all([
+        shops.jobs.snapshots(person.merchant.id),
+        shops.connectionOf(person.id),
+      ]);
+      for (const { job, rows } of snapshots) {
+        if (
+          job.kind !== "check" ||
+          job.status === "queued" ||
+          job.status === "running" ||
+          !(await jobIsCurrent(shops, job))
+        )
+          continue;
+        const ready = rows.filter((row) => row.group === "ready").length;
+        if (connection === null || connection.permissions !== "read_write" || ready === 0) break;
+        return {
+          connectedBefore: true,
+          evidence: {
+            integration: "woocommerce",
+            host: new URL(connection.shopUrl).host,
+            checkedAt: new Date(job.endedAt ?? job.startedAt).getTime(),
+            ready,
+            read: job.read,
+            total: job.total,
+            complete: job.status === "completed" && job.total !== null && job.total === job.read,
+          },
+        };
+      }
+      return { evidence: null, connectedBefore: snapshots.length > 0 || connection !== null };
+    },
 
     async shop(person, query) {
       // The only page that reads the flag the return address's redirect set,

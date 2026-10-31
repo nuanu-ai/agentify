@@ -699,6 +699,49 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         });
       });
 
+      it("resolves a declined request on manual admission and retains its journal after a later withdrawal", async () => {
+        const store = await twoMerchants();
+        const ask = {
+          merchantId: A,
+          accountId: "acc_owner",
+          sellerName: "Freeland",
+          evidence: { integration: "api" as const, connectedAt: 1_000 },
+        };
+        const requested = await store.requestLiveSales(ask, 2_000);
+        if (requested.kind !== "requested") throw new Error("request missing");
+        const decline = {
+          at: 3_000,
+          action: "decline" as const,
+          actor: { kind: "account" as const, id: OPERATOR },
+          subject: { kind: "merchant" as const, id: A },
+          reason: "Use the full seller name.\nKeep this historical note.",
+        };
+        await store.declineLiveSales(A, requested.request.id, decline);
+        await store.grantLiveApproval(A, 4_000);
+        expect(await store.liveSalesRequest(A)).toMatchObject({
+          id: requested.request.id,
+          requestedAt: 2_000,
+          state: "admitted",
+          decline: null,
+        });
+        await store.withdrawLiveApproval(A, {
+          ...decline,
+          at: 5_000,
+          action: "withdraw",
+          reason: "Correct the current seller site.",
+        });
+        expect((await store.liveSalesRequest(A))?.state).toBe("admitted");
+        expect((await store.standingWithdrawal(A))?.reason).toBe(
+          "Correct the current seller site.",
+        );
+        expect((await store.journal({ actions: ["decline"], limit: 10 })).rows).toMatchObject([
+          { ...decline, outcome: { kind: "done" } },
+        ]);
+        const next = await store.requestLiveSales(ask, 6_000);
+        expect(next.kind).toBe("requested");
+        if (next.kind === "requested") expect(next.request.id).not.toBe(requested.request.id);
+      });
+
       it("is listed under a name for a catalog only where somebody set one", async () => {
         const store = await twoMerchants();
 

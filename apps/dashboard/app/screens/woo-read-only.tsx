@@ -1,4 +1,5 @@
 import { Button } from "@agentify/ui";
+import { lazy, Suspense } from "react";
 import { codeProducts, offSaleOnKeys } from "../../src/woo-product-words.js";
 import type { ConnectionView, WooShopView } from "../../src/woo-views.js";
 import { PanelHead } from "../display/panel-head.js";
@@ -7,7 +8,52 @@ import { Problem } from "./woo-panels.js";
 
 import styles from "./woocommerce.module.css";
 
-export function SwitchPanel({
+const RatePanel = lazy(() =>
+  import("./woo-rate.js").then(({ RatePanel }) => ({ default: RatePanel })),
+);
+
+/** The access and integration settings are only needed away from a selling shop. */
+export function ConnectionSettings({
+  connection,
+  view,
+  base,
+}: Readonly<{
+  connection: ConnectionView;
+  view: WooShopView;
+  base: string;
+}>) {
+  if (connection.access !== "read_write")
+    return <ReadOnlyPanel connection={connection} view={view} base={base} />;
+  return (
+    <div className="settings-grid">
+      <SwitchPanel connection={connection} view={view} base={base} />
+      {connection.rate === null ? null : (
+        <Suspense fallback={null}>
+          <RatePanel rate={connection.rate} />
+        </Suspense>
+      )}
+    </div>
+  );
+}
+
+export function ReconnectShop({
+  connection,
+  className,
+}: Readonly<{ connection: ConnectionView; className?: string }>) {
+  return (
+    <ShopForm action="/woocommerce/connect" {...(className === undefined ? {} : { className })}>
+      {(pending) => (
+        <>
+          <input type="hidden" name="checked_shop" value={connection.shopUrl} autoComplete="off" />
+          <input type="hidden" name="shop_url" value={connection.shopUrl} autoComplete="off" />
+          <Button pending={pending}>Connect again</Button>
+        </>
+      )}
+    </ShopForm>
+  );
+}
+
+function SwitchPanel({
   connection,
   view,
   base,
@@ -62,7 +108,7 @@ export function SitePanel({
   );
 }
 
-export function ReadOnlyPanel({
+function ReadOnlyPanel({
   connection,
   view,
   base,
@@ -82,20 +128,7 @@ export function ReadOnlyPanel({
             : null}
         </p>
       </PanelHead>
-      <ShopForm action="/woocommerce/connect" className="issue">
-        {(pending) => (
-          <>
-            <input
-              type="hidden"
-              name="checked_shop"
-              value={connection.shopUrl}
-              autoComplete="off"
-            />
-            <input type="hidden" name="shop_url" value={connection.shopUrl} autoComplete="off" />
-            <Button pending={pending}>Connect again</Button>
-          </>
-        )}
-      </ShopForm>
+      <ReconnectShop connection={connection} className="issue" />
     </section>
   );
 }

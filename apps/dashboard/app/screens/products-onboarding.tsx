@@ -1,10 +1,11 @@
-import type { ComponentProps } from "react";
+import { type ComponentProps, lazy, Suspense } from "react";
 import type { NewKeyView } from "../../src/keys.js";
 import type { OnboardingView } from "../../src/onboarding.js";
-import { NewKeyScreen } from "./new-key.js";
 import { OnboardingScreen } from "./onboarding.js";
 
-// Loading the form also loads its one-time disclosure, before Create key is available.
+const NewKeyScreen = lazy(() =>
+  import("./onboarding-code.js").then(({ NewKeyScreen }) => ({ default: NewKeyScreen })),
+);
 export function ProductsOnboarding({
   view,
   issued,
@@ -18,7 +19,11 @@ export function ProductsOnboarding({
   return (
     <>
       {view === undefined ? null : <OnboardingScreen view={view} {...props} />}
-      {issued === undefined ? null : <NewKeyScreen view={issued} doneTo="/products" />}
+      {issued === undefined ? null : (
+        <Suspense fallback={null}>
+          <NewKeyScreen view={issued} doneTo="/products" />
+        </Suspense>
+      )}
     </>
   );
 }

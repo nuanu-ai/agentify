@@ -135,7 +135,7 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersListView }>) {
               {segment.count === null ? null : (
                 <>
                   {" "}
-                  <b>{segment.count}</b>
+                  <b>{segment.count.toLocaleString("en-US")}</b>
                 </>
               )}
             </>

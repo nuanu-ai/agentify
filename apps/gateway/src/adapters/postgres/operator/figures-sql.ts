@@ -28,7 +28,7 @@ export const walletNow = (at: number): SQL =>
             then m.pending_payout_wallet else m.payout_wallet end)`;
 
 /** Whether merchant `m` has a seller name and, where the channel asks, a wallet with a recorded split. */
-export const namedAndPaid = (asked: FiguresAsked, network: string): SQL => {
+const namedAndPaid = (asked: FiguresAsked, network: string): SQL => {
   const paid = askedOn(asked.surface).wallet
     ? sql`exists (select 1 from payout_splits ws
                    where ws.network = ${network} and ws.merchant_id = m.id

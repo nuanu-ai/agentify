@@ -24,7 +24,7 @@ import type { LocalAccount } from "viem";
 import { RecordingAnnouncer } from "../adapters/memory/announcer.js";
 import { ScriptedFacilitator } from "../adapters/memory/facilitator.js";
 import { MemoryQueue } from "../adapters/memory/queue.js";
-import { MemoryStore } from "../adapters/memory/store.js";
+import { type MemoryLiveSalesNotices, MemoryStore } from "../adapters/memory/store.js";
 import { paymentChainOn } from "../adapters/x402/payment-chain.js";
 import { Gateway, type PricedPurchase } from "../app/gateway.js";
 import {
@@ -133,6 +133,7 @@ export async function harness(
    */
   options: {
     readonly ids?: Ids;
+    readonly liveSalesNotices?: MemoryLiveSalesNotices;
     /** What the chain says a payout would bring; none is asked by default. */
     readonly payoutCheck?: PayoutCheck;
     /** Seeded merchants have a site unless a missing-site case requests null. */
@@ -151,7 +152,13 @@ export async function harness(
   });
   // The store writes an order's envelopes through the queue in the same step as
   // the order, and a test that replaces `queue.stage` replaces the store's too.
-  const store = new MemoryStore(config.payment.network, countedIds(), () => now, queue.envelopes());
+  const store = new MemoryStore(
+    config.payment.network,
+    countedIds(),
+    () => now,
+    queue.envelopes(),
+    options.liveSalesNotices,
+  );
   const facilitator = new ScriptedFacilitator();
   const chain = paymentChainOn(config.payment.network, config.payment.rpcUrl);
   const announcer = new RecordingAnnouncer();

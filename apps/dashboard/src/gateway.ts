@@ -42,6 +42,12 @@ import {
 } from "@agentify/gateway";
 import { failureNamed } from "@agentify/gateway/failure-named";
 import {
+  type LiveSalesAsked,
+  type LiveSalesEvidence,
+  type LiveSalesRequest,
+  requestLiveSales,
+} from "@agentify/gateway/live-sales";
+import {
   API_ROUTES,
   type CardInput,
   CONTRACT_VERSION,
@@ -238,6 +244,12 @@ export interface GatewayClient {
   /** Null for none. */
   sellerName(): Promise<Answer<string | null>>;
   liveApproval(): Promise<Answer<boolean>>;
+  liveSalesRequest(): Promise<Answer<LiveSalesRequest | null>>;
+  askForLiveSales(
+    accountId: string,
+    sellerName: string,
+    evidence: LiveSalesEvidence | null,
+  ): Promise<Answer<LiveSalesAsked>>;
   setSellerName(name: string): Promise<Answer<string | null>>;
   /** Either is null where none was given. */
   seller(): Promise<Answer<{ readonly name: string | null; readonly site: string | null }>>;
@@ -284,6 +296,7 @@ export interface GatewayClient {
         readonly takesEffectAt: number;
       } | null;
       readonly liveApproved: boolean;
+      readonly commissionRate: CommissionRate;
       readonly hasProducts: boolean;
       readonly lastContact: number | null;
       readonly contactAlive: boolean;
@@ -849,8 +862,25 @@ export const gatewayFor = (
         done(await application.integrationOf(merchantId)),
       ),
     standing: () =>
-      call("reading the merchant's standing", async () =>
-        done(await application.standingOf(merchantId)),
+      call("reading the merchant's standing", async () => {
+        const standing = await application.standingOf(merchantId);
+        const { commissionAllocation, totalAllocation } = application.runtime.config.payoutSplit;
+        return done({ ...standing, commissionRate: { commissionAllocation, totalAllocation } });
+      }),
+    liveSalesRequest: () =>
+      call("reading the live-sales request", async () =>
+        done(await application.runtime.store.liveSalesRequest(merchantId)),
+      ),
+    askForLiveSales: (accountId, sellerName, evidence) =>
+      call("requesting live sales", async () =>
+        done(
+          await requestLiveSales(
+            application.runtime.store,
+            { merchantId, accountId, sellerName, evidence },
+            application.runtime.clock(),
+            application.runtime.config.surfaceMode,
+          ),
+        ),
       ),
     sellThrough: (to) =>
       call("switching the integration", async () => {

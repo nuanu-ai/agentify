@@ -25,7 +25,21 @@ export interface NextStepFacts extends OnboardingChoices {
   readonly withdrawn: boolean;
   readonly walletChange: boolean;
   readonly unserved: boolean;
+  readonly request: "none" | "pending" | "declined";
+  readonly ready: number | null;
+  readonly connectedBefore: boolean;
 }
+
+type AccountStep =
+  | "none"
+  | "request"
+  | "pending"
+  | "declined"
+  | "withdrawn"
+  | "test-profile"
+  | "seller-name"
+  | "wallet"
+  | "publish-code";
 
 export interface NextStep {
   readonly page:
@@ -39,27 +53,31 @@ export interface NextStep {
   readonly reason: AccountReason | null;
   readonly practice: boolean;
   readonly acknowledgeTest: boolean;
-  readonly approvalNeeded: boolean;
-  readonly profileStep: "seller-name" | "payout-wallet" | null;
+  readonly account: AccountStep;
+  readonly otherWays: boolean;
 }
 
 /** A page's next action and at most one reason that belongs on every page. */
 export function nextStepOf(facts: NextStepFacts): NextStep {
-  const started = facts.keys > 0 || facts.contact !== null || facts.shop !== "none";
-  const page: NextStep["page"] =
-    facts.cards > 0
-      ? "products"
-      : facts.through === "woocommerce" || facts.platform === "woocommerce" || facts.shop !== "none"
-        ? "shop"
-        : facts.contact !== null
-          ? facts.contactAlive
-            ? "code-connected"
-            : "code-silent"
-          : facts.keys > 0 || facts.platform === "api"
-            ? "code"
-            : facts.platform === "other"
-              ? "other"
-              : "platform";
+  const started =
+    facts.keys > 0 ||
+    facts.contact !== null ||
+    facts.shop === "connected" ||
+    facts.shop === "read-only" ||
+    facts.connectedBefore;
+  let page: NextStep["page"];
+  if (facts.cards > 0) page = "products";
+  else if (facts.through === "woocommerce") page = "shop";
+  else if (facts.contact !== null) page = facts.contactAlive ? "code-connected" : "code-silent";
+  else if (facts.keys > 0) page = "code";
+  else if (facts.shop === "connected" || facts.shop === "read-only") page = "shop";
+  else if (facts.shop === "waiting" || facts.shop === "unanswered")
+    page = facts.platform === "api" ? "code" : facts.platform === "other" ? "other" : "shop";
+  else if (facts.connectedBefore) page = "code";
+  else if (facts.platform === "woocommerce") page = "shop";
+  else if (facts.platform === "api") page = "code";
+  else if (facts.platform === "other") page = "other";
+  else page = "platform";
   const door = readinessOf(
     {
       sellerName: facts.sellerName ? "set" : null,
@@ -89,15 +107,42 @@ export function nextStepOf(facts: NextStepFacts): NextStep {
                     : facts.unserved
                       ? "unserved"
                       : null;
+  const connected =
+    facts.through === "woocommerce"
+      ? facts.shop === "connected" && facts.ready !== null && facts.ready > 0
+      : facts.contact !== null && facts.contactAlive;
+  const account: AccountStep = facts.unread
+    ? "none"
+    : facts.mode === "live"
+      ? facts.liveApproved
+        ? !facts.sellerName
+          ? "seller-name"
+          : !facts.payoutWallet
+            ? "wallet"
+            : facts.through === "api" && facts.cards === 0 && facts.contact !== null
+              ? "publish-code"
+              : "none"
+        : facts.request === "pending"
+          ? "pending"
+          : facts.request === "declined"
+            ? "declined"
+            : facts.withdrawn
+              ? "withdrawn"
+              : connected
+                ? "request"
+                : "none"
+      : connected && facts.cards === 0
+        ? door.missing.includes("no_seller_name") || door.missing.includes("no_payout_wallet")
+          ? "test-profile"
+          : facts.through === "api"
+            ? "publish-code"
+            : "none"
+        : "none";
   return {
     page,
     reason,
-    approvalNeeded: door.missing.includes("no_operator_approval"),
-    profileStep: door.missing.includes("no_seller_name")
-      ? "seller-name"
-      : door.missing.includes("no_payout_wallet")
-        ? "payout-wallet"
-        : null,
+    account,
+    otherWays: !started && facts.request === "none" && !facts.liveApproved,
     practice:
       facts.mode === "live" && page === "platform" && !started && !facts.withdrawn && !facts.unread,
     acknowledgeTest: facts.mode === "test" && !facts.testAcknowledged && !facts.unread,

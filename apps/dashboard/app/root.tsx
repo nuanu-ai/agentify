@@ -14,7 +14,6 @@ import {
   data,
   Links,
   type LoaderFunctionArgs,
-  Meta,
   type MiddlewareFunction,
   Outlet,
   Scripts,
@@ -39,7 +38,6 @@ export const links = () => [
 const SCREENS: Readonly<Record<string, Screen>> = {
   "sign-in": "sign_in",
   merchant: "merchant",
-  "choose-name": "choose_name",
   products: "cards",
   orders: "orders",
   receipts: "receipts",
@@ -101,7 +99,8 @@ export const loader = ({ context }: LoaderFunctionArgs): Chrome => chromeOf(cont
 export const shouldRevalidate = () => false;
 
 export function Layout({ children }: Readonly<{ children: ReactNode }>) {
-  const script = useMatches()
+  const matches = useMatches();
+  const script = matches
     .map((match) => (match.handle as { script?: boolean | string } | undefined)?.script)
     .filter((value) => value !== undefined)
     .at(-1);
@@ -110,7 +109,9 @@ export function Layout({ children }: Readonly<{ children: ReactNode }>) {
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <Meta />
+        {matches.some((match) => match.id === "routes/sign-in") ? (
+          <meta name="robots" content="noindex" />
+        ) : null}
         <Links />
       </head>
       <body>

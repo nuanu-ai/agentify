@@ -10,8 +10,14 @@ The connector runs on the test channel, where the money is not real, and on
 the live channel, where buyers pay in real USDC on Base. Each channel has its
 own dashboard and its own account, so you connect the shop on each one. On
 the live channel publication waits until an Agentify operator has approved
-your business, which you ask for at admin@agentify.ad
-([How to start](/#how-to-start)). Your products can be checked before approval,
+your business. When the product check finds ready products, enter your
+seller name and press **Ask for live sales** on Products. The name is filled
+from your WordPress site's title where it can be read; check it before
+saving. A wallet is not needed to ask. While you wait, you can add the payout
+wallet and check your products again. Products keeps the request and the
+operator's full note if it is declined, with **Ask again** to send a new
+request. A decline also sends the note by email.
+Your products can be checked before approval,
 before choosing a seller name and before setting a payout wallet. A purchase on the
 test channel makes a paid order in the shop connected there, as a live one
 does. Its Agentify lines say it came from the test channel and was paid in

@@ -590,73 +590,73 @@ export function describeOperatorFigures(
     });
 
     describe("the merchants", () => {
-      it("waiting for admission are those with a seller name and a wallet, not admitted, the longest waiting first", async () => {
+      it("waiting means an unresolved request ordered by its date, including a merchant without a wallet", async () => {
         const { store, reader } = await open();
-        await store.addMerchant({ id: A, name: "Example Roasters" }, NOW - 5 * DAY);
-        await store.setServiceName(A, "Example Roasters", NOW - 5 * DAY);
-        await store.setPayoutWallet(
-          A,
-          { address: null, pending: null },
-          { address: W1, split: splitOf(A, W1), pending: null },
-          NOW - 5 * DAY,
-        );
-        await store.publishCard(A, aCard("sku-1"), NOW - 4 * DAY);
-        await store.noteContact(A, NOW - 3 * 60_000, "api");
-        await store.addMerchant({ id: B, name: "Only named" }, NOW - 9 * DAY);
-        await store.setServiceName(B, "Only named", NOW - 9 * DAY);
+        await store.addMerchant({ id: A, name: "Old account" }, NOW - 9 * DAY);
+        await store.addMerchant({ id: B, name: "New account" }, NOW - DAY);
         await ready(store, C);
-
-        for (const [id, createdAt] of [
-          ["mch_z", NOW - 6 * DAY],
-          ["mch_y", NOW - 6 * DAY],
-          ["mch_d", NOW - 2 * DAY],
-        ] as const) {
-          await store.addMerchant({ id, name: id }, createdAt);
-          await store.setServiceName(id, id, createdAt);
-          await store.setPayoutWallet(
-            id,
-            { address: null, pending: null },
-            { address: W1, split: splitOf(id, W1), pending: null },
-            createdAt,
-          );
-        }
-        // Tried a shop, whose connector polled for it, and came back to their
-        // code: the connector's poll is the one on record.
-        await store.switchIntegration("mch_d", "woocommerce");
-        await store.noteContact("mch_d", NOW - 60_000, "woocommerce");
-        await store.switchIntegration("mch_d", "api");
+        await store.addMerchant({ id: "mch_unasked", name: "Unasked" }, NOW - 10 * DAY);
+        await store.setServiceName("mch_unasked", "Unasked", NOW);
+        await store.setPayoutWallet(
+          "mch_unasked",
+          { address: null, pending: null },
+          { address: W1, split: splitOf("mch_unasked", W1), pending: null },
+          NOW,
+        );
+        await store.requestLiveSales(
+          {
+            merchantId: A,
+            accountId: "acc_a",
+            sellerName: "Old account",
+            evidence: { integration: "api", connectedAt: NOW - DAY },
+          },
+          NOW - 1000,
+        );
+        await store.requestLiveSales(
+          {
+            merchantId: B,
+            accountId: "acc_b",
+            sellerName: "New account",
+            evidence: { integration: "api", connectedAt: NOW - DAY },
+          },
+          NOW - 2000,
+        );
         const read = await reader.figures.waitingForAdmission(LIVE);
-        expect(read.merchants.map((merchant) => merchant.merchantId)).toStrictEqual([
-          "mch_y",
-          "mch_z",
-          A,
-          "mch_d",
+        expect(read.of).toBe(2);
+        expect(
+          read.merchants.map((row) => [row.merchantId, row.request.requestedAt, row.hasWallet]),
+        ).toEqual([
+          [B, NOW - 2000, false],
+          [A, NOW - 1000, false],
         ]);
-
-        expect(without(read)).toStrictEqual({
-          of: 4,
-          merchants: [
-            expect.objectContaining({ merchantId: "mch_y", createdAt: NOW - 6 * DAY }),
-            expect.objectContaining({ merchantId: "mch_z", createdAt: NOW - 6 * DAY }),
-            {
-              merchantId: A,
-              name: "Example Roasters",
-              serviceName: "Example Roasters",
-              sellerSite: null,
-              createdAt: NOW - 5 * DAY,
-              integration: "api",
-              lastContact: NOW - 3 * 60_000,
-              cardsPublished: 1,
-            },
-            expect.objectContaining({
-              merchantId: "mch_d",
-              createdAt: NOW - 2 * DAY,
-              integration: "api",
-              lastContact: NOW - 60_000,
-            }),
-          ],
+        expect((await reader.figures.merchantCounts(LIVE)).waitingForAdmission).toBe(2);
+        const pending = await store.liveSalesRequest(B);
+        if (!pending) throw new Error("request missing");
+        await store.declineLiveSales(B, pending.id, {
+          action: "decline",
+          at: NOW,
+          actor: { kind: "terminal" },
+          subject: { kind: "merchant", id: B },
+          reason: "Correct the name",
         });
-        expect((await reader.figures.merchantCounts(LIVE)).waitingForAdmission).toBe(4);
+        expect(
+          (await reader.figures.waitingForAdmission(LIVE)).merchants.map((row) => row.merchantId),
+        ).toEqual([A]);
+        expect((await reader.figures.merchantCounts(LIVE)).waitingForAdmission).toBe(1);
+        await store.requestLiveSales(
+          {
+            merchantId: B,
+            accountId: "acc_b",
+            sellerName: "New account",
+            evidence: { integration: "api", connectedAt: NOW - DAY },
+          },
+          NOW + 1000,
+        );
+        expect(
+          (await reader.figures.waitingForAdmission({ ...LIVE, at: NOW + 2000 })).merchants.map(
+            (row) => row.merchantId,
+          ),
+        ).toEqual([A, B]);
       });
 
       it("wait for nobody on a channel that admits nobody", async () => {
@@ -697,7 +697,7 @@ export function describeOperatorFigures(
           total: 3,
           selling: 1,
           admitted: 2,
-          waitingForAdmission: 1,
+          waitingForAdmission: 0,
         });
         expect((await reader.figures.merchantCounts(TEST)).selling).toBe(2);
       });

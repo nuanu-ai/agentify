@@ -1,5 +1,8 @@
 import { type ComponentProps, createContext, type ReactNode, useContext } from "react";
+import type { OnboardingPress, OnboardingView } from "../../src/onboarding.js";
 import { PostForm } from "../components/post-form.js";
+
+export const ShopAccount = createContext<{ view?: OnboardingView; press?: OnboardingPress }>({});
 
 export const ProductsShop = createContext(false);
 

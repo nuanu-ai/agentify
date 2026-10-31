@@ -115,6 +115,9 @@ export function ActionForm({
                 {...(refusedReason === undefined ? {} : { error: refusedReason })}
               />
             ) : null}
+            {reason && refusedReason !== undefined ? (
+              <p className="field-hint">{reasonWords.hint}</p>
+            ) : null}
             <label className="check">
               <input type="checkbox" name={CONFIRM_FIELD} value={CONFIRMED} required />
               <span>{consequence}</span>

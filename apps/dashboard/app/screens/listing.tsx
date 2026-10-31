@@ -64,11 +64,11 @@ export function ListTools({
         {listing.segments.map((segment) =>
           marked(segment.key, segment.here) ? (
             <span key={segment.key} className="here" aria-current="page">
-              {segment.label} <b>{segment.count}</b>
+              {segment.label} <b>{segment.count.toLocaleString("en-US")}</b>
             </span>
           ) : (
             <Link key={segment.key} to={segment.to} prefetch="intent">
-              {segment.label} <b>{segment.count}</b>
+              {segment.label} <b>{segment.count.toLocaleString("en-US")}</b>
             </Link>
           ),
         )}
@@ -157,7 +157,7 @@ export function CutNote({ cut }: Readonly<{ cut: CutView | null }>) {
   if (cut === null) return null;
   return (
     <Pager
-      range={`Showing ${cut.from}–${cut.to} of ${cut.of}`}
+      range={`Showing ${cut.from.toLocaleString("en-US")}–${cut.to.toLocaleString("en-US")} of ${cut.of.toLocaleString("en-US")}`}
       previous={{ to: cut.previous, words: "Previous" }}
       next={{ to: cut.next, words: "Next" }}
     />

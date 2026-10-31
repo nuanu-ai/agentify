@@ -555,10 +555,7 @@ describe("the products of the integration the merchant does not sell through", (
     offSale: readonly string[],
   ) =>
     served(() => (
-      <CardsScreen
-        view={cardsView(list, "https://agentify.ad", true, { through, offSale })}
-        base=""
-      />
+      <CardsScreen view={cardsView(list, "https://agentify.ad", { through, offSale })} />
     ));
   const rowsIn = (html: string) =>
     [...html.matchAll(/<li class="list-row[^"]*">([\s\S]*?)<\/li>/g)].map(([, row = ""]) => row);
@@ -590,32 +587,6 @@ describe("the products of the integration the merchant does not sell through", (
   it("says nothing of the other integration where it published nothing", () => {
     expect(readable(screen(listOf(2), "woocommerce", []))).not.toMatch(SELLS_THROUGH.woocommerce);
   });
-
-  it.each([
-    [
-      "sells through the shop and has imported nothing yet to the WooCommerce page",
-      "woocommerce",
-      'href="/woocommerce"',
-      'href="/docs/quickstart"',
-    ],
-    [
-      "went back to their code and has published nothing from it to the SDK's guide",
-      "api",
-      'href="/docs/quickstart"',
-      null,
-    ],
-  ] as const)(
-    "leads a merchant who %s, and still says how many products the other integration published",
-    (_which, through, way, notThere) => {
-      const html = screen(listOf(1), through, ["itm_0"]);
-      const text = readable(html);
-
-      expect(rowsIn(html)).toStrictEqual([]);
-      expect(html).toContain(way);
-      if (notThere !== null) expect(html).not.toContain(notThere);
-      expect(text).toMatch(/\b1 product\b/);
-    },
-  );
 });
 
 describe("how a card is delivered", () => {
@@ -627,9 +598,7 @@ describe("how a card is delivered", () => {
       selling: "open",
       cards: [{ ...entry, card: { ...entry.card, ...card } }],
     });
-    const html = served(() => (
-      <CardsScreen view={cardsView(list, "https://agentify.ad")} base="" />
-    ));
+    const html = served(() => <CardsScreen view={cardsView(list, "https://agentify.ad")} />);
     return readable(/<div class="cell cell-fact">([\s\S]*?)<\/div>/.exec(html)?.[1] ?? "");
   };
   const later = (seconds: number) =>
@@ -670,7 +639,6 @@ describe("how a card is delivered", () => {
           }),
           "https://agentify.ad",
         )}
-        base=""
       />
     ));
     const fact = /<div class="cell cell-fact">([\s\S]*?)<\/div>/.exec(html)?.[1] ?? "";
@@ -694,9 +662,7 @@ describe("a card's row on a phone", () => {
       selling: "open",
       cards: [{ ...entry, card: { ...entry.card, price_check: "handler" } }],
     });
-    const html = served(() => (
-      <CardsScreen view={cardsView(asked, "https://agentify.ad")} base="" />
-    ));
+    const html = served(() => <CardsScreen view={cardsView(asked, "https://agentify.ad")} />);
     const fact = /<div class="cell cell-fact">([\s\S]*?)<\/div>/.exec(html)?.[1] ?? "";
 
     expect(readable(fact)).toContain("price asked at purchase");
@@ -709,9 +675,7 @@ describe("a card's row on a phone", () => {
       selling: "open",
       cards: [entry, { ...entry, id: "itm_2", card: { ...entry.card, price_check: "handler" } }],
     });
-    const html = served(() => (
-      <CardsScreen view={cardsView(both, "https://agentify.ad")} base="" />
-    ));
+    const html = served(() => <CardsScreen view={cardsView(both, "https://agentify.ad")} />);
     const prices = [...html.matchAll(/<div class="cell cell-amount">([\s\S]*?)<\/div>/g)].map(
       ([, price = ""]) => price,
     );
@@ -739,14 +703,7 @@ describe("a search over the cards", () => {
     readable(
       served(() => (
         <CardsScreen
-          view={cardsView(
-            list,
-            "https://agentify.ad",
-            false,
-            undefined,
-            new URLSearchParams(address),
-          )}
-          base=""
+          view={cardsView(list, "https://agentify.ad", undefined, new URLSearchParams(address))}
         />
       )),
     );
@@ -756,7 +713,6 @@ describe("a search over the cards", () => {
 
     expect(text).toContain("No product matches “suite”. Clear the search");
     expect(text).not.toContain("haven't published any products");
-    expect(page(many(0), "q=suite")).toContain("You haven't published any products yet.");
   });
 
   it("finds only the card whose product code is the whole search, as a link to one card names it", () => {
@@ -773,7 +729,6 @@ describe("a search over the cards", () => {
       cardsView(
         coded,
         "https://agentify.ad",
-        false,
         undefined,
         new URLSearchParams({ q }),
       ).listing.rows.map((row) => row.itemId);
@@ -805,14 +760,7 @@ describe("a search over the cards", () => {
       readable(
         served(() => (
           <CardsScreen
-            view={cardsView(
-              coded,
-              "https://agentify.ad",
-              false,
-              undefined,
-              new URLSearchParams(address),
-            )}
-            base=""
+            view={cardsView(coded, "https://agentify.ad", undefined, new URLSearchParams(address))}
           />
         )),
       );
@@ -838,7 +786,6 @@ describe("a search over the cards", () => {
       cardsView(
         sized,
         "https://agentify.ad",
-        false,
         undefined,
         new URLSearchParams({ q }),
       ).listing.rows.map((row) => row.itemId);
@@ -862,30 +809,5 @@ describe("a search over the cards", () => {
     expect(text).toContain("Showing 1–50 of 214");
     expect(text).toContain("Room 49");
     expect(text).not.toContain("Room 50 ");
-  });
-});
-
-describe("an empty catalogue", () => {
-  const none = () =>
-    served(() => (
-      <CardsScreen
-        view={cardsView(
-          MerchantCardListSchema.parse({ selling: "open", cards: [] }),
-          "https://agentify.ad",
-          true,
-        )}
-        base=""
-      />
-    ));
-
-  it("offers the ways to a first card to a merchant who sells", () => {
-    const page = documentOf(none());
-    const links = [...page.querySelectorAll("a")];
-    expect(links.find((link) => /SDK/.test(link.textContent ?? ""))?.getAttribute("href")).toBe(
-      "/docs/quickstart",
-    );
-    expect(
-      links.find((link) => /WooCommerce/.test(link.textContent ?? ""))?.getAttribute("href"),
-    ).toBe("/woocommerce");
   });
 });

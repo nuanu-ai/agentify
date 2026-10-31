@@ -159,8 +159,15 @@
   padding: 18px 20px;
 }
 
-.op-told > .badge {
+.op-told > .badge,
+.op-told > .op-told-badges {
   grid-area: state;
+}
+
+.op-told-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-tight) var(--space-control);
 }
 
 .op-told > .t {
@@ -413,6 +420,17 @@
 
 .op-form textarea {
   min-height: 88px;
+}
+
+/* A refused note keeps its label below both sticky bars, including a wrapped lookup. */
+.op-form[action$="/decline"] textarea {
+  scroll-margin-top: calc(var(--under-header) + 3 * var(--space-page));
+}
+
+@media (max-width: 910px) {
+  .op-form[action$="/decline"] textarea {
+    scroll-margin-top: calc(var(--under-header) + var(--space-section));
+  }
 }
 
 .op-form .row {
@@ -1007,9 +1025,10 @@
   align-items: start;
 }
 
-/* On a phone a payout's facts stand under their names, not beside them. */
+/* On a phone payout and admission facts stand under their names. */
 @media (max-width: 560px) {
-  .op-payout .more-facts > div {
+  .op-payout .more-facts > div,
+  .op-checks .more-facts > div {
     grid-template-columns: minmax(0, 1fr);
     gap: var(--space-snug);
   }

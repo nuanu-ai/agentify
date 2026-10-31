@@ -1,3 +1,4 @@
+import { onboardingAccountView } from "../src/onboarding.js";
 import { presentShopJob } from "../src/shop-job-presentation.js";
 import type { ShopJobState } from "../src/shop-job-view.js";
 /**
@@ -48,6 +49,7 @@ import { NOT_FROM_HERE } from "../src/form-post.js";
 import { type Answer, lateAnswer, type PayoutSplits } from "../src/gateway.js";
 import { integrationsView } from "../src/integrations-view.js";
 import { keysView, newKeyView } from "../src/keys.js";
+import { type LiveSalesMailEvent, liveSalesMessage } from "../src/live-sales-mail.js";
 import { inViewersZone } from "../src/moments.js";
 import { nextStepOf } from "../src/next-step.js";
 import {
@@ -68,13 +70,12 @@ import {
 } from "../src/payout-wallet.js";
 import {
   NAME_CANNOT_BE_TAKEN_AWAY,
-  NAME_NEEDED,
   NAME_RULE,
   SITE_CANNOT_BE_TAKEN_AWAY,
   whatIsWrongWithTheName,
   whatIsWrongWithTheSite,
 } from "../src/seller-name.js";
-import { type Settings, settingsView } from "../src/settings-view.js";
+import { type Settings, settingsView, walletEntryView } from "../src/settings-view.js";
 import { ONBOARDING_CASES } from "../src/testing/onboarding-cases.js";
 import { WOO_SITE_CASES } from "../src/testing/woo-site-cases.js";
 import type { Viewer } from "../src/viewer.js";
@@ -1084,56 +1085,6 @@ const SETTING_UP: GalleryState[] = [
       pressed: { "routes/merchant": { unavailable: true } },
     },
   ),
-  {
-    ...at(
-      {
-        id: "dashboard-choose-name",
-        screen: "Choosing the seller name",
-        when: "A new merchant's dashboard has just been opened.",
-        cause:
-          "The merchant has no seller name yet; this is the last step of setting up, and the button waits for a name to be typed.",
-      },
-      {
-        path: "/choose-name",
-        mode: "live",
-        loaded: { "routes/choose-name": { typed: "", rule: NAME_RULE } },
-      },
-    ),
-    scene: { shows: "Choose a seller name" },
-  },
-  at(
-    {
-      id: "dashboard-choose-name-needed",
-      screen: "Choosing the seller name",
-      when: "A new merchant's browser, which runs no script, sends the name form with the box empty.",
-      cause:
-        "Where the script runs the button waits for a name; here the server refuses the empty one and the page offers to choose later.",
-    },
-    {
-      path: "/choose-name",
-      mode: "live",
-      loaded: { "routes/choose-name": { typed: "", rule: NAME_RULE } },
-      pressed: { "routes/choose-name": { typed: "", problem: NAME_NEEDED, rule: NAME_RULE } },
-    },
-  ),
-  ((typed) =>
-    at(
-      {
-        id: "dashboard-choose-name-refused",
-        screen: "Choosing the seller name",
-        when: "A new merchant types a name with a character outside plain ASCII, such as a long dash.",
-        cause:
-          "The catalogue's rule takes printable ASCII only, so the name is given back to correct.",
-      },
-      {
-        path: "/choose-name",
-        mode: "live",
-        loaded: { "routes/choose-name": { typed: "", rule: NAME_RULE } },
-        pressed: {
-          "routes/choose-name": { typed, problem: whatIsWrongWithTheName(typed), rule: null },
-        },
-      },
-    ))("Freeland — eSIM & VPN"),
 ];
 
 const cards = (
@@ -1151,7 +1102,7 @@ const cards = (
 
 /** The cards at an address that asks for a search, a segment or a page. */
 const cardsAt = (path: string, list: ReturnType<typeof cardsOf>, mode: SurfaceMode = "live") =>
-  cardsView(list, ORIGIN[mode], false, undefined, new URL(path, ORIGIN[mode]).searchParams);
+  cardsView(list, ORIGIN[mode], undefined, new URL(path, ORIGIN[mode]).searchParams);
 
 /**
  * A data plan per country and size, as an eSIM seller lists them: a catalogue
@@ -1724,7 +1675,7 @@ const CARDS: GalleryState[] = [
         "The merchant sells through the shop, which holds nothing against the account, so no banner is drawn; the cards their code published are off sale until they switch back, so they are left out of the list and counted under it.",
     },
     ((shop) =>
-      cardsView(shop, ORIGIN.test, true, {
+      cardsView(shop, ORIGIN.test, {
         through: "woocommerce",
         offSale: CATALOGUE.cards.map((entry) => entry.id),
       }))(
@@ -1752,23 +1703,9 @@ const CARDS: GalleryState[] = [
       cause:
         "The code sells, so the cards the shop published are off sale; they are left out of the list and counted under it.",
     },
-    cardsView(cardsOf("open", ON_SALE), ORIGIN.test, true, {
+    cardsView(cardsOf("open", ON_SALE), ORIGIN.test, {
       through: "api",
       offSale: [idOf("itm", "number")],
-    }),
-    "test",
-  ),
-  cards(
-    {
-      id: "dashboard-cards-shop-before-import",
-      screen: "Products",
-      when: "A merchant whose code had published products connected their WooCommerce shop and has not imported from it yet.",
-      cause:
-        "The shop's keys arrived, so the merchant sells through it, and it has published nothing; the code's cards are off sale and counted under the empty list.",
-    },
-    cardsView(CATALOGUE, ORIGIN.test, true, {
-      through: "woocommerce",
-      offSale: CATALOGUE.cards.map((entry) => entry.id),
     }),
     "test",
   ),
@@ -2913,7 +2850,7 @@ const WOOCOMMERCE: GalleryState[] = [
           },
         },
         "routes/products": {
-          ...cardsView(catalogue, ORIGIN.test, true, { through: "woocommerce", offSale: [] }),
+          ...cardsView(catalogue, ORIGIN.test, { through: "woocommerce", offSale: [] }),
           shop: { ...shopOn(shopRead(CONNECTED)), job },
         },
       },
@@ -2975,7 +2912,6 @@ const WOOCOMMERCE: GalleryState[] = [
               : {}),
           },
           ORIGIN.test,
-          true,
           { through: "woocommerce", offSale: [] },
         ),
         ...(withdrawn
@@ -4392,6 +4328,28 @@ const ONBOARDING: GalleryState[] = ONBOARDING_CASES.map(({ row, when, facts }) =
     contact: facts.contact === null ? null : momentView(facts.contact),
     origin: ORIGIN[facts.mode],
     unread: facts.unread,
+    account: onboardingAccountView(step, {
+      sellerName: facts.sellerName ? "Freeland" : "",
+      savedWallet: facts.payoutWallet ? PAID_INTO : null,
+      nameRule: NAME_RULE,
+      wallet:
+        facts.payoutWallet && step.account !== "test-profile"
+          ? null
+          : walletEntryView(
+              facts.mode,
+              { commissionAllocation: 1, totalAllocation: 1000 },
+              facts.mode === "test" ? 84532 : 8453,
+            ),
+      email: WHO,
+      request: facts.request === "pending" ? { at: momentView("2026-10-30T12:20:00Z") } : null,
+      decision:
+        facts.request === "declined" || facts.withdrawn
+          ? {
+              at: momentView("2026-10-31T09:40:00Z"),
+              note: "Choose a seller name that belongs to your business.\nUse the name buyers know.",
+            }
+          : null,
+    }),
   };
   const notes = accountOf(
     seenBy(facts.mode, {
@@ -4423,7 +4381,6 @@ const ONBOARDING: GalleryState[] = ONBOARDING_CASES.map(({ row, when, facts }) =
         : CATALOGUE
       : cardsOf("open", []),
     ORIGIN[facts.mode],
-    true,
   );
   if (step.page === "shop") {
     const state: ShopState =
@@ -4496,6 +4453,71 @@ const ONBOARDING: GalleryState[] = ONBOARDING_CASES.map(({ row, when, facts }) =
       },
     };
   return state;
+});
+
+const ACCOUNT_FAILURES: GalleryState[] = [
+  {
+    id: "name-refused",
+    row: 22,
+    sellerName: "Freeland — eSIM & VPN",
+    nameProblem: whatIsWrongWithTheName("Freeland — eSIM & VPN") ?? "",
+    problem: null,
+  },
+  {
+    id: "request-unconfirmed",
+    row: 22,
+    sellerName: "Freeland",
+    problem: "We couldn't confirm your request. Check again before asking.",
+  },
+  {
+    id: "profile-wallet-unconfirmed",
+    row: 24,
+    sellerName: "Freeland",
+    problem:
+      "Your seller name was saved. We couldn't confirm your wallet. Check Settings before saving again.",
+  },
+].map(({ id, row, ...press }) => {
+  const situation = ONBOARDING_CASES.find((one) => one.row === row);
+  if (!situation) throw new Error("missing account situation");
+  const facts = situation.facts;
+  const onboarding = {
+    mode: facts.mode,
+    step: nextStepOf(facts),
+    keys: keysView([WORKER]),
+    contact: momentView("2026-10-30T08:00:00Z"),
+    origin: ORIGIN[facts.mode],
+    unread: false,
+    account: onboardingAccountView(nextStepOf(facts), {
+      sellerName: "Freeland",
+      savedWallet: null,
+      nameRule: NAME_RULE,
+      wallet: walletEntryView(
+        facts.mode,
+        { commissionAllocation: 1, totalAllocation: 1000 },
+        facts.mode === "test" ? 84532 : 8453,
+      ),
+      email: WHO,
+      request: null,
+      decision: null,
+    }),
+  };
+  return at(
+    {
+      id: `dashboard-account-${id}`,
+      screen: "Products",
+      when: "A seller's setup press needs another attempt.",
+      cause: "The saved facts and the form's own result remain separate.",
+    },
+    {
+      path: "/products",
+      mode: facts.mode,
+      loaded: {
+        "routes/merchant-only": { account: [], onboarding },
+        "routes/products": cardsView(cardsOf("open", []), ORIGIN[facts.mode]),
+      },
+      pressed: { "routes/products": { screen: "onboarding", wallet: "", ...press } },
+    },
+  );
 });
 
 const SHOP_ESTIMATES: GalleryState[] = [
@@ -4652,6 +4674,71 @@ const CODE_CONNECTIONS: GalleryState[] = (
   );
 });
 
+const REQUEST_MAIL = ["requested", "declined", "reminder"].map((kind): GalleryState => {
+  const event: LiveSalesMailEvent = {
+    kind: kind as LiveSalesMailEvent["kind"],
+    sellerName: "Freeland",
+    hasWallet: false,
+    request: {
+      id: "lrq_gallery",
+      merchantId: "mch_freeland",
+      accountId: "acc_gallery",
+      requestedAt: Date.parse("2026-10-30T12:20:00Z"),
+      evidence: {
+        integration: "woocommerce",
+        host: "shop.example.com",
+        checkedAt: Date.parse("2026-10-30T12:09:00Z"),
+        ready: 72,
+        read: 100,
+        total: 100,
+        complete: true,
+      },
+      state: kind === "declined" ? "declined" : "pending",
+      decline:
+        kind !== "declined"
+          ? null
+          : {
+              sequence: 42,
+              at: Date.parse("2026-10-31T09:40:00Z"),
+              actor: { kind: "account", id: "acc_operator" },
+              action: "decline",
+              subject: { kind: "merchant", id: "mch_freeland" },
+              reason:
+                "Choose a seller name that belongs to your business.\nUse the name buyers know.",
+              outcome: { kind: "done" },
+            },
+      reminderDueAt: Date.parse("2026-11-03T12:20:00Z"),
+      reminderCreatedAt: null,
+    },
+  };
+  const message = liveSalesMessage({
+    to: WHO,
+    event,
+    requesterEmail: WHO,
+    baseUrl: `${ORIGIN.live}/dashboard`,
+    idempotencyKey: "gallery-only",
+  });
+  return {
+    id: `dashboard-live-request-mail-${kind}`,
+    screen: "Live-sales email",
+    address: "Email",
+    when:
+      kind === "requested"
+        ? "A merchant asks for live sales."
+        : kind === "declined"
+          ? "An operator declines the request with a note."
+          : "The request remains pending after two working days.",
+    cause: "The durable mail owner renders the exact HTML sent to the recipient.",
+    draw: () => (
+      <article>
+        <h2>Subject: {message.subject}</h2>
+        {/* biome-ignore lint/security/noDangerouslySetInnerHtml: the shipped mail renderer escapes all text; the gallery must show its actual HTML. */}
+        <div dangerouslySetInnerHTML={{ __html: message.html }} />
+      </article>
+    ),
+  };
+});
+
 export const gallery: GallerySurface = {
   id: "dashboard",
   name: "Seller dashboard",
@@ -4660,6 +4747,8 @@ export const gallery: GallerySurface = {
     ...SIGNING_IN,
     ...SETTING_UP,
     ...ONBOARDING,
+    ...REQUEST_MAIL,
+    ...ACCOUNT_FAILURES,
     ...SHOP_ESTIMATES,
     ...CODE_KEYS,
     ...CODE_CONNECTIONS,

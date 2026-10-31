@@ -14,6 +14,7 @@
 import type { Server } from "node:http";
 import type { CommissionRate } from "@agentify/core/published";
 import type { Gateway } from "@agentify/gateway";
+import type { PostgresLiveSalesNotices } from "@agentify/gateway/live-sales";
 import { postgresOperatorReader } from "@agentify/gateway/operator";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
@@ -25,6 +26,7 @@ import { copierFor, postgresPersonRecords } from "./data-copy.js";
 import { connect } from "./database.js";
 import { gatewayFor } from "./gateway.js";
 import { identityFor } from "./identity.js";
+import { postgresLiveSalesNotices, startLiveSalesMail } from "./live-sales-mail.js";
 import { isSandboxMail, postmanFor } from "./mail.js";
 import { startNuanuAnalytics } from "./nuanu-analytics.js";
 import type { Pages } from "./pages.js";
@@ -62,6 +64,7 @@ interface RunningDashboard {
 }
 
 export interface Dashboard {
+  readonly liveSalesNotices: PostgresLiveSalesNotices;
   /**
    * Handed to the gateway, which announces wallet and key changes through it.
    */
@@ -88,6 +91,7 @@ export function dashboardFor(
   const wooShops = postgresWooShops(pool, config.authSecret, ownershipPool);
   return {
     tell: tellerFor(config, identity, postmanFor(config), rate),
+    liveSalesNotices: postgresLiveSalesNotices(config),
     start: (application) =>
       started(config, application, { pool, ownershipPool, identity, wooShops }, pages),
   };
@@ -164,6 +168,7 @@ function started(
     surfaceMode: config.surfaceMode,
   });
 
+  const liveSalesMail = startLiveSalesMail({ pool, config });
   const reports = startAdReports({ pool, target: config.registrationPostback });
   const analytics = startNuanuAnalytics({ pool, target: config.nuanuAnalytics });
 
@@ -173,7 +178,7 @@ function started(
       await shopJobs.stop();
     },
     stopWorker: async () => {
-      await Promise.all([worker.stop(), reports.stop(), analytics.stop()]);
+      await Promise.all([worker.stop(), reports.stop(), analytics.stop(), liveSalesMail.stop()]);
     },
     close: async () => {
       await Promise.all([identity.close(), ownershipPool.end(), pages.close()]);

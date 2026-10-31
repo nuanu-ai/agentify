@@ -310,13 +310,13 @@ channel and says the money there is not real, and your problem handler stays
 quiet. The first order reaches it on step 6.
 
 Once the process has made its first poll, Products shows that your code
-connected. Return to the dashboard and save the payout wallet in Settings
-before publishing: an address on Base, `0x` followed by forty letters and
+connected. Return to Products and save your seller name and wallet before
+publishing: an address on Base, `0x` followed by forty letters and
 digits. In the test environment it only receives test USDC on Base Sepolia,
 so it needs no money of its own. If you have no wallet yet,
 [Money](/money#if-you-have-no-wallet-yet) says how to get one. Only the
 dashboard can change this address; no API key can change it.
-Continue when Settings shows your seller name and payout wallet.
+Continue when Products offers the publishing guide. You can change the seller name and wallet later in Settings.
 
 ## 4. Publish one card
 
@@ -445,8 +445,12 @@ the same way, with a wallet that receives real USDC on Base and a key that
 starts with `csk_live_`. Nothing is copied from the test environment: your code
 publishes its cards again with the live key and points the client at the live
 address. Live publication also waits for an Agentify operator to approve your
-merchant, which you ask for by writing to admin@agentify.ad; until then
-publishing lists `no_operator_approval`, and nothing of yours sells live. The
+merchant. After your code connects, enter your seller name and press
+**Ask for live sales** on Products. You can ask without a wallet, then add
+one while you wait. The request and any decision note remain on Products.
+A declined request sends an email with the note; correct what it asks and
+press **Ask again**. Until approval, publishing lists
+`no_operator_approval`, and nothing of yours sells live. The
 operator can withdraw that approval later; publishing and new live sales are
 then refused the same way, while the orders you already took are still yours to
 deliver. What changes between the two channels is in one table on [Connecting

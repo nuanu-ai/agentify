@@ -1,24 +1,16 @@
 // @vitest-environment jsdom
 
-/**
- * A new merchant's setup screens, drawn as the server sends them from the
- * views and words the server half hands them. What the person pressed and
- * typed is the subject: a failed press is said and offered again, and a
- * refused name comes back to be corrected with the reason beside the box.
- */
+/** The merchant creation screen, drawn from the view the server hands it. */
 
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/ui/surface";
-import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import type { ReactElement } from "react";
-import { hydrateRoot } from "react-dom/client";
 import { renderToString } from "react-dom/server";
 import { createRoutesStub } from "react-router";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { DRAWN_FOR } from "../../src/drawn-for.js";
-import { NAME_NEEDED, NAME_REFUSED, NAME_RULE } from "../../src/seller-name.js";
 import { formTo, readable } from "../../src/testing/html.js";
 import type { Chrome, Gated } from "../answer.js";
-import { ChooseNameScreen, MerchantScreen } from "./setup.js";
+import { MerchantScreen } from "./setup.js";
 
 const WHO = "owner@example.com";
 
@@ -31,10 +23,7 @@ const chrome: Chrome = {
   },
 };
 
-/**
- * Inside the gate, as the screens are, so a form that posts knows its address;
- * `gated` is what the gate's loader read, a merchant's unless given.
- */
+/** Inside the gate, so the merchant action carries the signed-in address. */
 const gatedPage = (screen: () => ReactElement, gated: Gated = { who: WHO }): ReactElement => {
   const Stub = createRoutesStub([
     { id: "routes/gate", path: "/", children: [{ path: "page", Component: screen }] },
@@ -47,22 +36,7 @@ const gatedPage = (screen: () => ReactElement, gated: Gated = { who: WHO }): Rea
 const served = (screen: () => ReactElement, gated: Gated = { who: WHO }): string =>
   renderToString(gatedPage(screen, gated));
 
-afterEach(cleanup);
-
-/** The box and the line its description names, as a screen reader reads them together. */
-const nameBox = (html: string) => {
-  const input = /<input\b[^>]*name="seller_name"[^>]*>/.exec(html)?.[0] ?? "";
-  const attribute = (name: string) => new RegExp(`\\s${name}="([^"]*)"`).exec(input)?.[1];
-  const described = attribute("aria-describedby");
-  const line =
-    described === undefined
-      ? undefined
-      : readable(
-          new RegExp(`<p[^>]*id="${described}"[^>]*>([\\s\\S]*?)</p>`).exec(html)?.[1] ?? "",
-        );
-  return { value: attribute("value"), invalid: attribute("aria-invalid"), line };
-};
-
+/** Read the merchant action form and its destination. */
 describe("opening a seller dashboard", () => {
   it("names who is signed in, and makes nothing until the press, which carries that address", () => {
     const html = served(() => <MerchantScreen chrome={chrome} view={{ unavailable: false }} />);
@@ -83,144 +57,17 @@ describe("opening a seller dashboard", () => {
   });
 });
 
-describe("choosing the seller name", () => {
-  it("says the rule under the box before anything is typed", () => {
-    const html = served(() => (
-      <ChooseNameScreen chrome={chrome} view={{ typed: "", rule: NAME_RULE }} />
-    ));
+describe("the operator's workspace link on the merchant screen", () => {
+  it("is drawn only when the gate identifies an operator", () => {
+    const screen = () => <MerchantScreen chrome={chrome} view={{ unavailable: false }} />;
+    const withAccess = served(screen, { who: WHO, operator: true });
+    const withoutAccess = served(screen);
+    const doors = /<nav aria-label="Docs and dashboard"[^>]*>([\s\S]*?)<\/nav>/.exec(
+      withAccess,
+    )?.[1];
 
-    const box = nameBox(html);
-    expect(box.value).toBe("");
-    expect(box.invalid).toBeUndefined();
-    expect(box.line).toBe(NAME_RULE);
-    expect(readable(html).split(NAME_RULE)).toHaveLength(2);
-  });
-
-  it("gives a refused name back in the box, marked, with the refusal as what the box says", () => {
-    const typed = 'Кириллица <b>"&amp;"</b>';
-    const html = served(() => (
-      <ChooseNameScreen chrome={chrome} view={{ typed, problem: NAME_REFUSED, rule: null }} />
-    ));
-
-    const box = nameBox(html);
-    expect(readable(box.value ?? "")).toBe(typed);
-    expect(box.invalid).toBe("true");
-    expect(box.line).toBe(NAME_REFUSED);
-    // The refusal already says the rule, so it is not said twice.
-    expect(readable(html)).not.toContain(NAME_RULE);
-  });
-
-  it("follows a refusal that does not say the rule with the rule", () => {
-    const html = served(() => (
-      <ChooseNameScreen
-        chrome={chrome}
-        view={{ typed: "", problem: NAME_NEEDED, rule: NAME_RULE }}
-      />
-    ));
-
-    const text = readable(html);
-    expect(nameBox(html).line).toBe(NAME_NEEDED);
-    expect(text.indexOf(NAME_RULE)).toBeGreaterThan(text.indexOf(NAME_NEEDED));
-  });
-
-  it("leads past the name to the cards, and to the settings where it is set later", () => {
-    const html = served(() => (
-      <ChooseNameScreen
-        chrome={chrome}
-        view={{ typed: "", problem: NAME_NEEDED, rule: NAME_RULE }}
-      />
-    ));
-
-    expect(html).toContain('href="/dashboard/products"');
-    expect(html).toContain('href="/dashboard/settings"');
-    expect(formTo(html, "post", "/choose-name")?.fields.get(DRAWN_FOR)).toBe(WHO);
-  });
-});
-
-describe("the button that takes the seller name", () => {
-  const choosing = () => <ChooseNameScreen chrome={chrome} view={{ typed: "", rule: NAME_RULE }} />;
-
-  it("is served pressable, because only the page's script can give it back once a name is typed", () => {
-    const button = /<button\b[^>]*>Use this name<\/button>/.exec(served(choosing))?.[0] ?? "";
-
-    expect(button).not.toBe("");
-    expect(button).not.toMatch(/\sdisabled(=|\s|>)/);
-  });
-
-  it("waits for a name where the script runs, and takes a box of spaces for an empty one", () => {
-    const { getByRole, getByLabelText } = render(gatedPage(choosing));
-    const button = getByRole("button", { name: "Use this name" }) as HTMLButtonElement;
-    const box = getByLabelText(/name/i);
-
-    expect(button.disabled).toBe(true);
-
-    fireEvent.change(box, { target: { value: "Tea & Co" } });
-    expect(button.disabled).toBe(false);
-
-    fireEvent.change(box, { target: { value: "   " } });
-    expect(button.disabled).toBe(true);
-  });
-
-  it("is pressable once the script arrives for a name typed before it did", async () => {
-    const host = document.createElement("div");
-    document.body.append(host);
-    host.innerHTML = served(choosing);
-    const box = host.querySelector<HTMLInputElement>('input[name="seller_name"]');
-    if (box === null) throw new Error("no name box was served");
-    box.value = "Tea & Co";
-
-    const root = await act(async () => hydrateRoot(host, gatedPage(choosing)));
-    const button = [...host.querySelectorAll("button")].find(
-      (one) => one.textContent === "Use this name",
-    );
-
-    expect(button?.disabled).toBe(false);
-    await act(async () => root.unmount());
-    host.remove();
-  });
-
-  it("is pressable at once for a refused name given back in the box", () => {
-    const { getByRole } = render(
-      gatedPage(() => (
-        <ChooseNameScreen
-          chrome={chrome}
-          view={{ typed: "Freeland \u2014 eSIM", problem: NAME_REFUSED, rule: null }}
-        />
-      )),
-    );
-
-    expect((getByRole("button", { name: "Use this name" }) as HTMLButtonElement).disabled).toBe(
-      false,
-    );
-  });
-});
-
-describe("the door into the operator's workspace on the setup screens", () => {
-  const SCREENS = {
-    "opening a seller dashboard": () => (
-      <MerchantScreen chrome={chrome} view={{ unavailable: false }} />
-    ),
-    "choosing the seller name": () => (
-      <ChooseNameScreen chrome={chrome} view={{ typed: "", rule: NAME_RULE }} />
-    ),
-  };
-
-  it("stands among the header's doors for an account the gate gave the door", () => {
-    for (const [name, screen] of Object.entries(SCREENS)) {
-      const html = served(screen, { who: WHO, operator: true });
-      const doors = /<nav aria-label="Docs and dashboard"[^>]*>([\s\S]*?)<\/nav>/.exec(html)?.[1];
-
-      // The workspace's address is the dashboard's own, under whatever prefix it is drawn at.
-      expect(doors, name).toMatch(/<a [^>]*href="[^"]*\/admin"[^>]*>Admin<\/a>/);
-    }
-  });
-
-  it("is not drawn, nor named, for an account the gate gave none", () => {
-    for (const [name, screen] of Object.entries(SCREENS)) {
-      const html = served(screen);
-
-      expect(html, name).not.toMatch(/href="[^"]*\/admin\b/);
-      expect(readable(html), name).not.toMatch(/\bAdmin\b/);
-    }
+    expect(doors).toMatch(/<a [^>]*href="[^"]*\/admin"[^>]*>Admin<\/a>/);
+    expect(withoutAccess).not.toMatch(/href="[^"]*\/admin\b/);
+    expect(readable(withoutAccess)).not.toMatch(/\bAdmin\b/);
   });
 });

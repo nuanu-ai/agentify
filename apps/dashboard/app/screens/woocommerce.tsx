@@ -1,9 +1,17 @@
 import { lazy, Suspense, useContext } from "react";
 import { Link, Navigate } from "react-router";
+import type { OnboardingPress, OnboardingView } from "../../src/onboarding.js";
 import type { WooShopView } from "../../src/woo-views.js";
 import { useChrome } from "../answer.js";
 import { Frame } from "../components/frame.js";
-import { ProductsShop } from "./shop-context.js";
+
+const OnboardingAccount = lazy(() =>
+  import("./onboarding-account.js").then(({ OnboardingAccount }) => ({
+    default: OnboardingAccount,
+  })),
+);
+
+import { ProductsShop, ShopAccount } from "./shop-context.js";
 import styles from "./woocommerce.module.css";
 
 const NotConnected = lazy(() =>
@@ -15,16 +23,27 @@ const Connected = lazy(() =>
 
 export function WooShopScreen({ view, base }: Readonly<{ view: WooShopView; base: string }>) {
   const onboarding = useContext(ProductsShop);
+  const account = useContext(ShopAccount);
   return (
     <div className={styles.page}>
-      {onboarding && view.connection === null ? (
+      {onboarding && account.view?.step.otherWays && view.connection === null ? (
         <p className={styles.otherWays}>
           <Link to="/products?ways=choose">← Other ways to add products</Link>
         </p>
       ) : null}
+      {view.savedProfile ? <p role="status">{view.savedProfile}</p> : null}
       <Suspense fallback={<p role="status">Loading your shop…</p>}>
         {view.connection === null ? (
-          <NotConnected view={view} base={base} />
+          <>
+            {account.view === undefined ||
+            (account.view.step.account === "none" && !account.press?.problem) ? null : (
+              <OnboardingAccount
+                view={account.view}
+                {...(account.press === undefined ? {} : { press: account.press })}
+              />
+            )}
+            <NotConnected view={view} base={base} />
+          </>
         ) : (
           <Connected connection={view.connection} view={view} base={base} />
         )}
@@ -42,7 +61,11 @@ export function WooPage({
   view,
   onboarding = false,
   elsewhere,
+  account,
+  press,
 }: Readonly<{
+  account?: OnboardingView;
+  press?: OnboardingPress;
   view: WooShopView | undefined;
   onboarding?: boolean;
   elsewhere?: string | null;
@@ -67,7 +90,14 @@ export function WooPage({
           )
         }
       >
-        <WooShopScreen view={view} base={base} />
+        <ShopAccount.Provider
+          value={{
+            ...(account === undefined ? {} : { view: account }),
+            ...(press === undefined ? {} : { press }),
+          }}
+        >
+          <WooShopScreen view={view} base={base} />
+        </ShopAccount.Provider>
         {elsewhere ? <p className="note">{elsewhere}</p> : null}
       </Frame>
     </ProductsShop.Provider>

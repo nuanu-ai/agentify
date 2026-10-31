@@ -99,11 +99,15 @@ and the operator needs no merchant of their own. Approval is live-only,
 granting and withdrawing it are both idempotent, and a merchant whose approval
 is withdrawn stands as one not approved, a pause rather than a cancellation;
 their dashboard says since when their live sales are stopped and shows the
-operator's note. The approval is the one lever the operator holds over a
-merchant: the workspace never sets or takes away a merchant's seller name
-(the product owner, 2026-10-24).
-Neither bypasses another selling guard or asserts a payment outcome; no staff
-queue is promised by this permission. The product owner decided on 2026-10-23
+operator's note. A merchant asks for live sales with a seller name and dated
+connection or catalog evidence; no wallet is required. The gateway retains the
+request and its evidence until answered, and a repeated pending ask preserves
+them. The operator may decline that request with a mandatory note, which the
+merchant reads and can address before asking again. The operator's waiting list
+contains pending requests, oldest first. Admission remains possible without a
+request, name or wallet. The workspace never sets or takes away a merchant's
+seller name. Neither admission nor decline bypasses another selling guard or
+asserts a payment outcome (the product owner, 2026-10-30). The product owner decided on 2026-10-23
 that every administrative action at the terminal, the operator flag's included,
 moves into the operator's workspace (`docs/research/85-operator-admin.md`).
 None is left at the terminal but the statement `deploy/README.md` documents for

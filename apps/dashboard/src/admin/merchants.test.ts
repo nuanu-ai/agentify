@@ -97,7 +97,7 @@ describe("the Merchants list", () => {
     const back = await operator.get(way(second.html, "prev") ?? "");
     expect(shops(back.html)).toStrictEqual(shops(first.html));
 
-    const past = await operator.get("/admin/merchants?after=0.-1.0.mch_none");
+    const past = await operator.get("/admin/merchants?after=0.-1.-1.-1.mch_none");
     expect(text(past.html)).toContain(`Showing ${of - 49}–${of} of ${of}`);
     const malformed = await operator.get("/admin/merchants?after=page-2");
     expect(shops(malformed.html)).toStrictEqual(shops(first.html));

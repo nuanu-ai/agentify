@@ -67,6 +67,7 @@ export interface AdminServed {
 export async function adminServed(
   options: Readonly<{
     channel?: keyof typeof CHANNELS;
+    liveSalesNotices?: NonNullable<Parameters<typeof harness>[1]>["liveSalesNotices"];
     shops?: WooShops;
     workspace?: false;
     /** A decorator, for a test about an identity that fails; the rest goes to the real one. */
@@ -82,12 +83,20 @@ export async function adminServed(
   const channel = CHANNELS[options.channel ?? "test"];
   // The live channel's facilitator takes no request without credentials; these
   // reach nobody, since the harness's facilitator is scripted.
-  const harnessed = await harness({
-    ...channel,
-    ...(options.channel === "live"
-      ? { CDP_API_KEY_ID: "key-id", CDP_API_KEY_SECRET: "key-secret" }
-      : {}),
-  });
+  const harnessed = await harness(
+    {
+      ...channel,
+      ...options.environment,
+      ...(options.channel === "live"
+        ? { CDP_API_KEY_ID: "key-id", CDP_API_KEY_SECRET: "key-secret" }
+        : {}),
+    },
+    {
+      ...(options.liveSalesNotices === undefined
+        ? {}
+        : { liveSalesNotices: options.liveSalesNotices }),
+    },
+  );
   const config = loadConfig({
     DATABASE_URL: "postgres://nobody@nowhere:5432/unused",
     AUTH_SECRET: TEST_AUTH_SECRET,
