@@ -311,7 +311,8 @@ places would repeat what the header and the links already give them.
 The cabinet's screens do not link back to a report. A merchant at work does
 not need the diagnostic, and the cabinet holds no knowledge of scans; the one
 scanner address it names is the page that sends a person without a merchant
-to their latest report, which is where ADR-0026 §1 says such a person starts.
+to their latest report, which is where such a person starts after signing in
+(research note 95).
 
 No page is written for the developer of a buying agent, the address of the
 `/agentic-shop` page is not changed, and the waitlist table is not renamed,
