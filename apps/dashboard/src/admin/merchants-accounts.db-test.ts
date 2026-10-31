@@ -23,6 +23,7 @@ const wanted = (() => {
 })();
 const databaseUrl = await readyDatabase(wanted);
 const migrationsIn = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "drizzle");
+const gatewayMigrations = fileURLToPath(new URL("../../../gateway/drizzle/", import.meta.url));
 
 if (databaseUrl === null) {
   console.log(noDatabaseHere(wanted));
@@ -33,10 +34,12 @@ if (databaseUrl === null) {
   const pool = new Pool({ connectionString: databaseUrl, max: 4 });
   await pool.query("drop schema public cascade");
   await pool.query("create schema public");
-  for (const file of (await readdir(migrationsIn)).filter((name) => name.endsWith(".sql")).sort()) {
-    const source = await readFile(join(migrationsIn, file), "utf8");
-    for (const statement of source.split("--> statement-breakpoint")) {
-      if (statement.trim() !== "") await pool.query(statement);
+  for (const directory of [gatewayMigrations, migrationsIn]) {
+    for (const file of (await readdir(directory)).filter((name) => name.endsWith(".sql")).sort()) {
+      const source = await readFile(join(directory, file), "utf8");
+      for (const statement of source.split("--> statement-breakpoint")) {
+        if (statement.trim() !== "") await pool.query(statement);
+      }
     }
   }
   const identity = identityFor(

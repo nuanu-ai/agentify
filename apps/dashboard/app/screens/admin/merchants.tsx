@@ -1,3 +1,5 @@
+import { useChrome } from "../../answer.js";
+import { ShopJobPanel } from "../shop-job.js";
 /**
  * The workspace's Merchants list and one merchant's page, drawn from their
  * views alone. Every action is a form that posts with no script and is
@@ -408,6 +410,7 @@ function Admission({ view, path }: Readonly<{ view: MerchantView; path: string }
 }
 
 export function MerchantScreen({ view }: Readonly<{ view: MerchantView }>) {
+  const { base } = useChrome();
   const path = `/admin/merchants/${view.id}`;
   const { ready, selling } = view;
   const { integration } = ready;
@@ -432,6 +435,25 @@ export function MerchantScreen({ view }: Readonly<{ view: MerchantView }>) {
           Read <Moment at={view.readAt} />
         </span>
       </div>
+      {view.ready.integration.kind === "woocommerce" ? (
+        <div
+          data-shop-job-observer={base + path}
+          data-shop-job-key={JSON.stringify(
+            view.shopJob ? [view.shopJob.id, view.shopJob.revision, view.shopJob.current] : null,
+          )}
+        >
+          <div data-shop-job-result>
+            {view.shopJob ? (
+              <ShopJobPanel initial={view.shopJob} endpoint={`${base}${path}/shop-job`} />
+            ) : (
+              <p>No product check yet.</p>
+            )}
+          </div>
+          <p role="status" data-shop-job-unread hidden>
+            Progress couldn't be refreshed. The server may still be working. We'll try again.
+          </p>
+        </div>
+      ) : null}
       <div className="op-two">
         <div>
           <section className="op-panel" aria-labelledby="ready-title">

@@ -7,3 +7,5 @@ export const middleware = readsLeadToTheMerchant;
 export const action = pressing(() => ({ kind: "withdraw" }));
 
 export default MerchantPressed;
+
+export { handle } from "./merchant.js";

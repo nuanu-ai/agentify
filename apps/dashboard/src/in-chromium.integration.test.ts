@@ -34,9 +34,9 @@ import { SCRIPT_BUDGET } from "./script-budget.js";
 import { buildApp } from "./server.js";
 import { ONE_CLIENT } from "./testing/link-sends.js";
 import { TEST_AUTH_SECRET } from "./testing/secrets.js";
-
+import { merchantItemIdFor } from "./woo-catalog.js";
 import { publicShopOf } from "./woo-connect.js";
-import { catalogueOf, inspectProductInTheShop, inspectProductsInTheShop } from "./woo-shop.js";
+import { inspectProductInTheShop } from "./woo-shop.js";
 import { memoryWooShops } from "./woo-shops.js";
 
 const PERSON = "owner@example.com";
@@ -246,7 +246,7 @@ const withinScriptBudget = async (state: string, page: Page, scripts: ReadonlySe
   );
   const bytes = files.reduce((sum, file) => sum + file.bytes, 0);
   console.info("[initial scripts]", JSON.stringify({ state, bytes, limit: SCRIPT_BUDGET, files }));
-  expect(bytes, `${state}: initial script bytes`).toBeLessThanOrEqual(SCRIPT_BUDGET);
+  expect.soft(bytes, `${state}: initial script bytes`).toBeLessThanOrEqual(SCRIPT_BUDGET);
 };
 
 describe("a page's first visit in Chromium", () => {
@@ -789,6 +789,23 @@ it("closes fulfillment from a keyboard-accessible order form and preserves the m
 });
 
 describe("a request that fails or stops on its way", () => {
+  it("keeps the unknown-outcome recovery visible when the browser loses both data and asset access", async () => {
+    const page = await onTheCards();
+    try {
+      await page.context().setOffline(true);
+      await page.locator("form[action*='pause='] button").first().click();
+      await page
+        .getByRole("heading", { name: "We don't know if this was done", exact: true })
+        .waitFor({ timeout: 5000 });
+      expect(
+        await page.getByRole("link", { name: "Open Products", exact: true }).getAttribute("href"),
+      ).toBe(`${BASE}/products`);
+    } finally {
+      await page.context().setOffline(false);
+      await page.context().close();
+    }
+  });
+
   /** A failure on the way to the dashboard: the connection dropped, or a proxy answered for it while it restarted. */
   const FAILURES = [
     ["the connection drops", (route: Route) => route.abort("connectionreset")],
@@ -1027,6 +1044,18 @@ it("requires the test acknowledgement, keeps focus inside it and focuses the fir
     gateway: isolated.gateway,
     identity,
     wooShops: testShops,
+    shop: {
+      reference: async () => ({ ok: false, listed: null }),
+      preview: async () => {
+        throw new Error("This stored-result reader does not preview a shop");
+      },
+      grantScreen: async () => {
+        throw new Error("This stored-result reader does not request a grant");
+      },
+      inspectProduct: async () => {
+        throw new Error("This stored-result reader does not buy a product");
+      },
+    },
   });
   const server = app.listen(0, "127.0.0.1");
   await new Promise<void>((resolve) => server.once("listening", resolve));
@@ -1094,7 +1123,8 @@ it("requires the test acknowledgement, keeps focus inside it and focuses the fir
     const existingSession = await identity.openLink(existingLink.searchParams.get("token") ?? "");
     if (existingSession.status !== "opened")
       throw new Error("the existing shop sign-in did not open");
-    for (const state of ["new", "paused", "connected"] as const) {
+    for (const state of ["new", "paused", "connected", "checked", "checked_idr"] as const) {
+      const checked = state === "checked" || state === "checked_idr";
       if (state === "paused") {
         const card = await isolated.gateway.publishCard(isolated.merchant.id, {
           merchant_item_id: "room-101",
@@ -1118,6 +1148,68 @@ it("requires the test acknowledgement, keeps focus inside it and focuses the fir
           connectedAt: new Date("2026-10-30T12:00:00Z"),
           currency: { code: "USD", decimals: 2 },
         });
+      if (checked) {
+        await isolated.gateway.sellThrough(isolated.merchant.id, "woocommerce");
+        const wooCard = await isolated.gateway.publishCard(
+          isolated.merchant.id,
+          {
+            merchant_item_id: merchantItemIdFor("https://woo.nuanu.ai", "28"),
+            title: "Canvas tote bag",
+            description: "A physical item shipped to the buyer.",
+            price: { amount: "20.00", currency: "USD" },
+            fulfillment: "ship",
+            price_check: "handler",
+            ship_within_seconds: 604800,
+          },
+          "woocommerce",
+        );
+        expect(wooCard.ok).toBe(true);
+        await isolated.gateway.setSelling(isolated.merchant.id, "paused");
+        expect(await isolated.store.merchantById(isolated.merchant.id)).toMatchObject({
+          integration: "woocommerce",
+          selling: "paused",
+        });
+        const currency =
+          state === "checked_idr"
+            ? { code: "IDR", decimals: 0 as const }
+            : { code: "USD", decimals: 2 as const };
+        await testShops.noteCurrency(existing.id, currency, "browser-fixture-connection");
+        if (state === "checked_idr")
+          await testShops.saveRate(existing.id, "https://woo.nuanu.ai", {
+            currency: "IDR",
+            rate: "16000",
+            setAt: new Date(),
+            sessionSignedInAt: null,
+            reference: null,
+            confirmed: false,
+          });
+        const { job } = await testShops.jobs.request({
+          accountId: existing.id,
+          merchantId: isolated.merchant.id,
+          connectionRevision: "browser-fixture-connection",
+          shopUrl: "https://woo.nuanu.ai",
+          kind: "check",
+        });
+        expect((await testShops.jobs.claim())?.id).toBe(job.id);
+        await testShops.jobs.currency(job.id, currency);
+        await testShops.jobs.rate(
+          job.id,
+          await testShops.currentRate(existing.id, "https://woo.nuanu.ai", currency.code),
+        );
+        await testShops.jobs.record(
+          job.id,
+          {
+            id: "28",
+            title: "Canvas tote bag",
+            group: "ready",
+            reason: "ready",
+            why: "",
+            published: false,
+          },
+          1,
+        );
+        await testShops.jobs.finish(job.id, { status: "completed", stopCode: null, why: null });
+      }
       const firstVisit = await browser.newContext();
       await firstVisit.addCookies(
         existingSession.setCookies.map((line) => {
@@ -1135,20 +1227,48 @@ it("requires the test acknowledgement, keeps focus inside it and focuses the fir
             ? "TEST and Woo entry"
             : state === "paused"
               ? "TEST, Woo and paused account"
-              : "TEST, connected Woo and paused account",
+              : state === "connected"
+                ? "TEST, connected Woo and paused account"
+                : state === "checked_idr"
+                  ? "TEST, paused Woo account, checked products and saved IDR rate"
+                  : "TEST, paused Woo account and checked products",
           entry,
           initial,
         );
         expect(
           await entry.getByRole("dialog", { name: "This is the test environment" }).isVisible(),
         ).toBe(true);
-        if (state === "connected")
+        if (state === "connected" || checked)
           expect(await entry.getByText("Connected", { exact: true }).count()).toBe(1);
         else
           expect(
             await entry.getByRole("textbox", { name: "Shop address", includeHidden: true }).count(),
           ).toBe(1);
         if (state !== "new") expect(await entry.locator("[data-reason=paused]").count()).toBe(1);
+        if (state === "checked_idr")
+          expect(
+            await entry
+              .getByRole("textbox", { name: "IDR per US dollar", includeHidden: true })
+              .inputValue(),
+          ).toBe("16000");
+        if (checked) {
+          expect(
+            await (await entry.request.get(`${testOrigin}${BASE}/shop-job`)).json(),
+          ).toMatchObject({
+            current: true,
+            currency: state === "checked_idr" ? "IDR" : "USD",
+            status: "completed",
+            ready: 1,
+          });
+          expect(await entry.locator('[aria-label="Shop products"]').textContent()).toContain(
+            "Canvas tote bag",
+          );
+          expect(
+            await entry
+              .getByRole("button", { name: "Check again", exact: true, includeHidden: true })
+              .count(),
+          ).toBe(1);
+        }
       } finally {
         await firstVisit.close();
       }
@@ -1228,9 +1348,7 @@ it("checks a WooCommerce shop on Products, invalidates edited results and keeps 
           ok: false,
           why: "This local browser test never leaves for approval.",
         }),
-        catalogue: catalogueOf,
         inspectProduct: inspectProductInTheShop,
-        inspectProducts: inspectProductsInTheShop,
       },
     }),
   );

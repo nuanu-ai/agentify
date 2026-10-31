@@ -4,6 +4,15 @@
  * lays them out. Only what those panels do not already say is here.
  */
 
+.parent {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  flex-basis: 100%;
+  margin-bottom: var(--space-tight);
+  font-size: var(--text-small);
+}
+
 .page {
   container-type: inline-size;
   padding-top: var(--space-section);
@@ -192,79 +201,6 @@
 :global(.lede) p.saved {
   margin-top: var(--space-block);
   color: var(--pass);
-}
-
-/* What an import run by a saved rate was answered with: the pass colour's tint, once. */
-.done {
-  margin: 0 0 var(--space-card);
-  padding: var(--space-block) 20px;
-  border: var(--hairline) solid color-mix(in srgb, var(--pass) 24%, var(--line));
-  border-radius: var(--radius-card);
-  background: var(--pass-soft);
-  color: var(--pass);
-  font-size: var(--text-small);
-}
-
-/* --- what an import did -------------------------------------------------- */
-
-.read {
-  margin: 0;
-  color: var(--muted);
-  font-size: var(--text-small);
-}
-
-.quiet {
-  color: var(--muted);
-}
-
-/* A row's sentences read from the left at every width, unlike a short note. */
-.findings,
-.left {
-  display: block;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  color: var(--fg-2);
-  text-align: left;
-}
-
-.findings li + li {
-  margin-top: var(--space-snug);
-}
-
-.after {
-  margin: var(--space-control) 0 0;
-  color: var(--muted);
-  font-size: var(--text-small);
-}
-
-.fold > summary {
-  width: fit-content;
-  margin-top: var(--space-tight);
-  color: var(--fg-2);
-  font-size: var(--text-small);
-  cursor: pointer;
-}
-
-.fold[open] > summary {
-  margin-bottom: var(--space-control);
-}
-
-.ends {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-control);
-  margin-top: var(--space-section);
-}
-
-/* On a narrow list a row's way to put it right comes after what it says,
-   rather than beside the product's number in the shop. */
-@container (max-width: 860px) {
-  .fixes :global(.cell-action) {
-    order: 10;
-    margin-top: var(--space-control);
-    margin-left: 0;
-  }
 }
 
 /* The address, its result and the one next action read in that order. */

@@ -31,13 +31,13 @@ try {
     clientDirectory: fileURLToPath(new URL("../dist/client", import.meta.url)),
     assetsAt: `http://127.0.0.1:${port}${pages.assets.path}`,
     limitOf: () => SCRIPT_BUDGET,
-    // As the root decides: a page is sent with no script when any route it is
-    // drawn in says so, the operator's workspace's layout among them.
+    // The nearest explicit handle owns this page, as in the root document.
     scriptless: (id) => {
       for (let at: string | undefined = id; at !== undefined; at = build.routes[at]?.parentId) {
-        const handle = (build.routes[at]?.module as { handle?: { script?: boolean } } | undefined)
-          ?.handle;
-        if (handle?.script === false) return true;
+        const handle = (
+          build.routes[at]?.module as { handle?: { script?: boolean | string } } | undefined
+        )?.handle;
+        if (handle?.script !== undefined) return handle.script === false;
       }
       return false;
     },

@@ -53,3 +53,16 @@
   color: var(--muted);
   font-size: var(--text-small);
 }
+
+.shopStopped {
+  display: grid;
+  gap: var(--space-tight);
+}
+
+:global(.cell-state):has(.shopStopped) {
+  max-width: 100%;
+}
+
+.shopStopped :global(.badge) {
+  white-space: normal;
+}

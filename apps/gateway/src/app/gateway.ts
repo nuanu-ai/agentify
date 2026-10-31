@@ -1063,6 +1063,13 @@ export class Gateway {
     };
   }
 
+  /** One own card, with the same selling decision as the complete catalogue. */
+  async merchantCard(merchantId: string, id: string): Promise<MerchantCard | null> {
+    const stored = await this.runtime.store.cardById(id);
+    if (stored?.merchantId !== merchantId) return null;
+    return merchantCardOf(stored, await this.#howTheySell(merchantId), this.runtime.clock());
+  }
+
   /**
    * The merchant's selling word, the integration they sell through, whether a
    * sale of theirs could be made at all (a payout wallet and a name), whether

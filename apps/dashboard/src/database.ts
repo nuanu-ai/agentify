@@ -21,8 +21,8 @@ const MIGRATIONS_TABLE = "cabinet_migrations";
  * query's bound values, which include session identifiers and one-time-link
  * claims, and a server's message can quote a value too.
  */
-export function connect(databaseUrl: string): Pool {
-  const pool = new Pool({ connectionString: databaseUrl });
+export function connect(databaseUrl: string, max?: number): Pool {
+  const pool = new Pool({ connectionString: databaseUrl, max });
   const noticeTheFailure = (failed: unknown): void => {
     console.error(`[dashboard] a database connection failed: ${failureNamed(failed)}`);
   };
@@ -36,6 +36,7 @@ export function connect(databaseUrl: string): Pool {
   return pool;
 }
 
+/** Gateway migrations precede these: connector ownership observes ordinary card pauses. */
 export async function migrateAccounts(pool: Pool, migrationsFolder: string): Promise<void> {
   await migrate(drizzle(pool), { migrationsFolder, migrationsTable: MIGRATIONS_TABLE });
 }

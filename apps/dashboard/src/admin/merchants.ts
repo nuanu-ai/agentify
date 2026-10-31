@@ -1,3 +1,4 @@
+import { shopJobView } from "../shop-job-view.js";
 /**
  * The workspace's Merchants list and one merchant's page, and every action on
  * a merchant: admit to live sales, withdraw the admission with the note the
@@ -203,6 +204,7 @@ export interface SellingDayView {
 }
 
 export interface MerchantView {
+  readonly shopJob?: import("../shop-job-view.js").ShopJobView | null;
   readonly mode: SurfaceMode;
   readonly readAt: MomentView;
   readonly id: string;
@@ -609,7 +611,11 @@ export type MerchantIntent =
 
 export interface MerchantsPages {
   list(operator: Operator, query: URLSearchParams): Promise<Outcome<MerchantsView>>;
-  one(operator: Operator, merchantId: string): Promise<Outcome<MerchantView>>;
+  one(
+    operator: Operator,
+    merchantId: string,
+    query?: URLSearchParams,
+  ): Promise<Outcome<MerchantView>>;
   /** A press on a merchant's page, answered with the page in its new state. */
   press(
     operator: Operator,
@@ -785,6 +791,7 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
     merchantId: string,
     answers: Answers = {},
     status = 200,
+    query = new URLSearchParams(),
   ): Promise<Outcome<MerchantView>> {
     if (!IDENTIFIER.test(merchantId)) return missing;
     const { at: readAt, surface } = asked();
@@ -793,7 +800,32 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
     const stepUp = signedInFreshly(operator, new Date(readAt))
       ? null
       : stepUpViewOf(operator, `admin/merchants/${record.id}`, parts.pressing.googleEnabled);
-    return { kind: "view", view: await pageOf(record, answers, readAt, stepUp), status };
+    const job =
+      parts.shops === null ? null : await shopJobView(parts.shops, merchantId, query, "operator");
+    const shopJob =
+      job === null
+        ? null
+        : {
+            ...job,
+            groups: job.groups.map((group) => ({
+              ...group,
+              reasons: group.reasons.map((reason) => ({
+                ...reason,
+                more:
+                  reason.more === null
+                    ? null
+                    : { ...reason.more, href: `/admin/merchants/${merchantId}${reason.more.href}` },
+              })),
+            })),
+          };
+    return {
+      kind: "view",
+      view: {
+        ...(await pageOf(record, answers, readAt, stepUp)),
+        shopJob,
+      },
+      status,
+    };
   }
 
   /**
@@ -896,7 +928,7 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
       };
     },
 
-    one: (operator, merchantId) => page(operator, merchantId),
+    one: (operator, merchantId, query) => page(operator, merchantId, {}, 200, query),
 
     async press(operator, merchantId, intent, form) {
       if (!IDENTIFIER.test(merchantId)) return missing;

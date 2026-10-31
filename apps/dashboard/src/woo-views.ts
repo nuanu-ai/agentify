@@ -1,3 +1,5 @@
+import { comeBack } from "./woo-product-words.js";
+import { presentRateView, type RateWords } from "./woo-rate-presentation.js";
 /**
  * What the WooCommerce connector's screens show, as plain values built from
  * our own rows and the gateway's answers; the React pages under `app/` only
@@ -11,17 +13,16 @@
  */
 
 import type { Integration } from "@agentify/gateway";
-import { keepUnits, withUnit } from "@agentify/ui/units";
+import { withUnit } from "@agentify/ui/units";
 import { SellerSiteSchema } from "@nuanu-ai/agentify-contracts";
 import { type MomentView, momentView } from "./views.js";
-import { merchantItemIdFor, type SkippedProduct } from "./woo-catalog.js";
 import type { PublicShopRead } from "./woo-connect.js";
 import { GRANT_MINUTES } from "./woo-connect.js";
 import { gapOf } from "./woo-money.js";
 import type { ReferenceRead } from "./woo-reference.js";
 import type { SavedRate, ShopCurrency } from "./woo-shops.js";
 import { shopNameOf } from "./woo-words.js";
-import { SITE_IN_SETTINGS, type Unset, type Way } from "./words.js";
+import type { Unset, Word } from "./words.js";
 
 /**
  * A shape of its own rather than the stored row, which also holds the shop's
@@ -104,7 +105,7 @@ export const noKeysYet = (state: ShopState): NoKeysYet | null => {
 /** The answer to Import on live before the operator has approved the merchant. */
 export const NOT_APPROVED_YET =
   "Nothing was imported: Agentify hasn't approved your business for live sales yet." +
-  " Import again once it has. To ask, write to admin@agentify.ad.";
+  " Sync with your shop once it has. To ask, write to admin@agentify.ad.";
 
 /** How many of the orders a refusal names are drawn before the rest are counted. */
 const ORDERS_DRAWN = 5;
@@ -203,7 +204,7 @@ const refusalOf = (said: Said | undefined): Refusal | null => {
   if ("why" in said) return { says: said.why, orders: [], more: 0, follow: said.follow ?? null };
   if ("running" in said) {
     return {
-      says: "An import of your shop is already running. Import again once it ends to see a result here.",
+      says: "An import of your shop is already running. Sync with your shop once it ends to see a result here.",
       orders: [],
       more: 0,
       follow: "products",
@@ -235,12 +236,10 @@ const SETTING_NAMES: Readonly<Record<Unset, string>> = Object.freeze({
  * currency publishes nothing until its rate is set. The button is held and
  * says which, so a press is not spent on reading a shop for nothing.
  */
-export type ImportHeld =
-  | Readonly<{ kind: "site" }>
-  | Readonly<{ kind: "settings"; what: string }>
-  | Readonly<{ kind: "rate"; currency: string }>
-  /** Coinbase gives no rate for the shop's currency, so no rate can be saved and nothing sells. */
-  | Readonly<{ kind: "unlisted"; currency: string }>;
+export interface ImportHeld {
+  readonly kind: "site" | "settings" | "rate" | "unlisted";
+  readonly says: string;
+}
 
 /** The shop the keys came from, the one state in which anything can be sold. */
 export interface ConnectionView {
@@ -253,6 +252,8 @@ export interface ConnectionView {
   readonly shopUrl: string;
   readonly shop: string;
   readonly connectedAt: MomentView;
+  readonly state: Word;
+  readonly disconnectPrompt: string;
   /**
    * The shop granted less than read and write, which cannot create a single
    * order, so every purchase is refused before payment.
@@ -279,7 +280,7 @@ export interface ConnectionView {
  * how many units of the shop's currency one US dollar buys, with Coinbase's
  * open rate beside it as a reference that prices nothing.
  */
-export interface RateView {
+export interface RateViewState {
   readonly currency: string;
   /** "Indonesian Rupiah (IDR)". */
   readonly named: string;
@@ -299,7 +300,8 @@ export interface RateView {
     /** Coinbase answered and gives no rate for the currency. */
     | { readonly kind: "unlisted" }
     /** Coinbase did not answer, which says nothing about the currency. */
-    | { readonly kind: "unread" };
+    | { readonly kind: "unread" }
+    | { readonly kind: "not_requested" };
   /** The rate just typed, kept in the field. */
   readonly typed: string;
   /** A rate standing far from the reference, to be typed again before it is saved. */
@@ -311,8 +313,10 @@ export interface RateView {
   /** What a press of Save rate did, where it saved one. */
   readonly saved: string | null;
 }
+export type RateView = RateViewState & Readonly<{ words: RateWords }>;
 
 export interface WooShopView {
+  readonly job?: import("./shop-job-view.js").ShopJobView | null;
   readonly screen: "shop";
   /**
    * Said on coming back from the shop to a connected one, and drawn off the
@@ -421,7 +425,7 @@ export const referenceShown = (rate: string): string => {
 const rateViewOf = (read: NonNullable<ShopRead["rate"]>, answer: ShopAnswer): RateView => {
   const { currency, current, reference } = read;
   const gap = current !== null && reference.ok ? gapOf(current.rate, reference.rate) : null;
-  return {
+  return presentRateView({
     currency: currency.code,
     named: `${CURRENCY_NAMES.of(currency.code) ?? currency.code} (${currency.code})`,
     current:
@@ -452,25 +456,41 @@ const rateViewOf = (read: NonNullable<ShopRead["rate"]>, answer: ShopAnswer): Ra
     problem: answer.rate?.problem ?? null,
     refused: answer.rate?.refused ?? null,
     saved: answer.rate?.saved ?? null,
-  };
+  });
 };
+
+/** The bootstrap observer can discover a currency before the full page is read again. */
+export const initialRateView = (currency: string): RateView =>
+  presentRateView({
+    currency,
+    named: `${CURRENCY_NAMES.of(currency) ?? currency} (${currency})`,
+    current: null,
+    reference: { kind: "not_requested" },
+    typed: "",
+    again: null,
+    problem: null,
+    refused: null,
+    saved: null,
+  });
 
 /** What publishing lacks, in Settings' own names: "seller name and payout wallet". */
 export const settingsNamed = (unset: readonly Unset[]): string =>
   unset.map((one) => SETTING_NAMES[one]).join(" and ");
 
 const heldImport = (read: ShopRead): ImportHeld | null => {
-  if (read.sellerSite === null) return { kind: "site" };
+  if (read.sellerSite === null) return { kind: "site", says: "Set your shop's site first." };
   const unset = read.unset ?? [];
   if (unset.length > 0) {
-    return { kind: "settings", what: settingsNamed(unset) };
+    return { kind: "settings", says: `Set your ${settingsNamed(unset)} in` };
   }
   if (read.rate !== undefined && read.rate.current === null) {
     const { reference, currency } = read.rate;
-    return {
-      kind: !reference.ok && reference.listed === false ? "unlisted" : "rate",
-      currency: currency.code,
-    };
+    return !reference.ok && reference.listed === false
+      ? {
+          kind: "unlisted",
+          says: `A shop priced in ${currency.code} can't sell through Agentify, because Coinbase gives no rate for it.`,
+        }
+      : { kind: "rate", says: `Set the exchange rate for ${currency.code} first.` };
   }
   return null;
 };
@@ -504,6 +524,10 @@ export const wooShopView = (read: ShopRead, answer: ShopAnswer): WooShopView => 
             shopUrl: state.shop.shopUrl,
             shop: shopNameOf(state.shop.shopUrl),
             connectedAt: momentView(state.shop.connectedAt.toISOString()),
+            state:
+              state.shop.permissions === "read_write"
+                ? { text: "Connected", tone: "ok" }
+                : { text: "No Read/Write access", tone: "warn" },
             access:
               state.shop.permissions === "read"
                 ? "read"
@@ -511,6 +535,11 @@ export const wooShopView = (read: ShopRead, answer: ShopAnswer): WooShopView => 
                   ? "read_write"
                   : "other",
             onCode: read.through === "api",
+            disconnectPrompt: `Disconnect ${shopNameOf(state.shop.shopUrl)}? ${
+              read.through === "api"
+                ? "Agentify disconnects it; its products are already off sale."
+                : `Its products go off sale.${read.codeProducts === 0 ? "" : ` ${comeBack(read.codeProducts ?? null)}`} A late parcel marked Completed after that no longer counts as shipped.`
+            }`,
             switching: refusalOf(answer.switching),
             importing: refusalOf(answer.importing),
             held: heldImport(read),
@@ -528,130 +557,5 @@ export const wooShopView = (read: ShopRead, answer: ShopAnswer): WooShopView => 
     codeProducts: read.codeProducts === undefined ? null : read.codeProducts,
     problem: refusalOf(answer.problem ?? (leavingUnplaced ? answer.leaving : undefined)),
     leaving: leavingUnplaced ? null : refusalOf(answer.leaving),
-  };
-};
-
-interface Sent {
-  /** The shop's own identifier. */
-  readonly id: string;
-  readonly title: string;
-}
-
-/** Our catalogue identifier for the card. */
-interface Published extends Sent {
-  readonly published: string;
-}
-
-/** Word for word, one finding per field. */
-interface Refused extends Sent {
-  readonly problems: readonly string[];
-  /** A finding is about a length, which the shop's editor counts with the markup in. */
-  readonly tooLong?: true;
-}
-
-/**
- * The publish step gave no answer about it: whether it was published is not
- * known.
- */
-interface Unanswered extends Sent {
-  readonly failed: true;
-}
-
-interface NotAttempted extends Sent {
-  readonly notAttempted: true;
-}
-
-/**
- * A product the publish step never answered about is a shape of its own, so no
- * screen can fold it into the refusals a merchant can repair in their shop.
- */
-export type ImportOutcome = Published | Refused | Unanswered | NotAttempted;
-
-/** A published product with the product code its card is found by on Products. */
-interface PublishedRow extends Published {
-  readonly code: string;
-}
-
-/**
- * A product the merchant can put right, and the page that does it where that
- * is the dashboard rather than the shop: the shop's site, which the person
- * here sets in Settings.
- */
-interface FixRow extends Sent {
-  readonly says: readonly string[];
-  readonly fix: Way | null;
-}
-
-/**
- * A page rather than a redirect, because it carries a list. Its groups follow
- * what the merchant does next: put right in the shop, import again, nothing,
- * or nothing more than reading.
- */
-export interface WooImportView {
-  readonly screen: "import";
-  readonly shop: string;
-  /** Where the import ran because a rate was saved: what was saved. */
-  readonly rateSaved: string | null;
-  /** Every product the shop listed, whatever became of it. */
-  readonly read: number;
-  /**
-   * False once a product got no verdict: the import stops there, and every
-   * product after it is not attempted.
-   */
-  readonly finished: boolean;
-  /**
-   * Refused by Agentify's rules in their own words, or left by the connector
-   * for something the shop can change.
-   */
-  readonly toFix: readonly FixRow[];
-  readonly tooLong: boolean;
-  readonly unanswered: readonly Sent[];
-  readonly notAttempted: readonly Sent[];
-  /** Left by the connector for what no change in the shop's product puts right. */
-  readonly unsupported: readonly SkippedProduct[];
-  readonly published: readonly PublishedRow[];
-}
-
-const TO_SETTINGS: Way = { to: "/settings", words: "Open Settings" };
-
-export const wooImportView = (
-  shopUrl: string,
-  outcomes: readonly ImportOutcome[],
-  skipped: readonly SkippedProduct[],
-  rateSaved: string | null = null,
-): WooImportView => {
-  const published = outcomes.filter((one): one is Published => "published" in one);
-  const refused = outcomes.filter((one): one is Refused => "problems" in one);
-  const unanswered = outcomes.filter((one): one is Unanswered => "failed" in one);
-  return {
-    screen: "import",
-    shop: shopNameOf(shopUrl),
-    rateSaved,
-    read: outcomes.length + skipped.length,
-    finished: unanswered.length === 0,
-    toFix: [
-      ...refused.map((one) => ({
-        id: one.id,
-        title: keepUnits(one.title),
-        says: one.problems,
-        fix: one.problems.includes(SITE_IN_SETTINGS) ? TO_SETTINGS : null,
-      })),
-      ...skipped
-        .filter((one) => one.fixable)
-        .map((one) => ({ id: one.id, title: keepUnits(one.title), says: [one.why], fix: null })),
-    ],
-    tooLong: refused.some((one) => one.tooLong === true),
-    unanswered: unanswered.map(({ id, title }) => ({ id, title: keepUnits(title) })),
-    notAttempted: outcomes
-      .filter((one): one is NotAttempted => "notAttempted" in one)
-      .map(({ id, title }) => ({ id, title: keepUnits(title) })),
-    unsupported: skipped
-      .filter((one) => !one.fixable)
-      .map((one) => ({ ...one, title: keepUnits(one.title) })),
-    published: published.map((one) => ({
-      ...one,
-      title: keepUnits(one.title),
-      code: merchantItemIdFor(shopUrl, one.id),
-    })),
   };
 };

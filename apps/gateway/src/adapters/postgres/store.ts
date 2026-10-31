@@ -856,11 +856,7 @@ export class PostgresStore implements Store {
     return await this.#db.transaction(async (tx) => {
       // Held from the read to the write, so of two pauses at once only the
       // first finds the card on sale.
-      const [before] = await tx
-        .select({ paused: cards.paused })
-        .from(cards)
-        .where(theirs)
-        .for("no key update");
+      const [before] = await tx.select().from(cards).where(theirs).for("no key update");
       if (before === undefined) {
         return null;
       }

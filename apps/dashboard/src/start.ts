@@ -30,6 +30,7 @@ import { startNuanuAnalytics } from "./nuanu-analytics.js";
 import type { Pages } from "./pages.js";
 import { startReportIdentityServer } from "./report-identity-server.js";
 import { buildApp } from "./server.js";
+import { SHOP_JOB_WORKERS, shopPublisherFor, startShopJobs } from "./shop-job-runner.js";
 import { type Teller, tellerFor } from "./teller.js";
 import { postgresWooShops } from "./woo-shops.js";
 import { startWooWorker } from "./woo-worker.js";
@@ -83,10 +84,12 @@ export function dashboardFor(
 ): Dashboard {
   const pool = connect(config.databaseUrl);
   const identity = identityFor(config, { pool });
-  const wooShops = postgresWooShops(pool, config.authSecret);
+  const ownershipPool = connect(config.databaseUrl, SHOP_JOB_WORKERS);
+  const wooShops = postgresWooShops(pool, config.authSecret, ownershipPool);
   return {
     tell: tellerFor(config, identity, postmanFor(config), rate),
-    start: (application) => started(config, application, { pool, identity, wooShops }, pages),
+    start: (application) =>
+      started(config, application, { pool, ownershipPool, identity, wooShops }, pages),
   };
 }
 
@@ -95,10 +98,12 @@ function started(
   application: Gateway,
   {
     pool,
+    ownershipPool,
     identity,
     wooShops,
   }: Readonly<{
     pool: Pool;
+    ownershipPool: Pool;
     identity: ReturnType<typeof identityFor>;
     wooShops: ReturnType<typeof postgresWooShops>;
   }>,
@@ -146,8 +151,16 @@ function started(
   const worker = startWooWorker({
     shops: wooShops,
     identity,
-    clientFor: (acting) => gatewayFor(application, acting),
+    clientFor: (acting) => gatewayFor(application, acting, undefined, wooShops.cardPauses),
     now: () => new Date(),
+  });
+
+  const shopJobs = startShopJobs({
+    shops: wooShops,
+    identity,
+    clientFor: (acting) => gatewayFor(application, acting, undefined, wooShops.cardPauses),
+    publisherFor: (acting) => shopPublisherFor(application, acting, wooShops),
+    surfaceMode: config.surfaceMode,
   });
 
   const reports = startAdReports({ pool, target: config.registrationPostback });
@@ -156,12 +169,13 @@ function started(
   return {
     async closeListeners() {
       await Promise.all([server, reportIdentityServer].map(closed));
+      await shopJobs.stop();
     },
     stopWorker: async () => {
       await Promise.all([worker.stop(), reports.stop(), analytics.stop()]);
     },
     close: async () => {
-      await Promise.all([identity.close(), pages.close()]);
+      await Promise.all([identity.close(), ownershipPool.end(), pages.close()]);
     },
   };
 }

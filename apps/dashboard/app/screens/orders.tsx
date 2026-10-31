@@ -3,22 +3,14 @@ import { Fragment, type ReactNode } from "react";
 import { Link } from "react-router";
 import type { ClosurePressed, ClosureUnlisted, OrdersView, ToldOrders } from "../../src/views.js";
 import { COUNTS_TOWARD_THE_STOP } from "../../src/words.js";
-import {
-  Cell,
-  DayHeading,
-  Fact,
-  Facts,
-  Group,
-  List,
-  ListEmpty,
-  RowMore,
-} from "../components/list.js";
+import { Fact, Facts } from "../components/list.js";
 import { Moment } from "../components/moment.js";
 import { NotLoaded } from "../components/not-loaded.js";
 import { PostForm } from "../components/post-form.js";
 import { Rest } from "../components/rest.js";
 import { Word } from "../components/word.js";
 import { Ident, shortened } from "../display/copy.js";
+import { Cell, DayHeading, Group, List, ListEmpty, RowMore } from "../display/list.js";
 import { DisclosedRow } from "./disclosed-row.js";
 import { CutNote, KeptPlace, ListTools, NothingHere } from "./listing.js";
 import styles from "./orders.module.css";

@@ -1,9 +1,9 @@
 /**
  * The dashboard's identity, registration and WooCommerce tables. They share a
  * database with the gateway's, so the names are prefixed with their owner. The
- * ad reports read the gateway's `cards` by name and write nothing there; only
- * forgetting an account in the test channel's workspace writes a gateway
- * table. Migration
+ * ad reports read the gateway's `cards` by name. The connector writes an
+ * ordinary card pause with its own ownership record; forgetting an account
+ * also removes gateway rows. Migration
  * bookkeeping is kept in its own table, for the reason `src/database.ts` gives.
  */
 
@@ -18,6 +18,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type { WooCartResourceState } from "./woo-cart-resources.js";
 
@@ -468,4 +469,52 @@ export const wooOrders = pgTable(
     placedAt: timestamp("placed_at", { withTimezone: true, mode: "date" }),
   },
   (table) => [index("dashboard_woo_orders_account_idx").on(table.accountId)],
+);
+
+/** The only unfinished shop task for a merchant; its result is dashboard-owned. */
+export const shopJobs = pgTable(
+  "dashboard_shop_jobs",
+  {
+    id: text("id").primaryKey(),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    merchantId: text("merchant_id").notNull(),
+    kind: text("kind").notNull(),
+    status: text("status").notNull(),
+    data: jsonb("data").$type<import("./shop-jobs.js").ShopJob>().notNull(),
+  },
+  (table) => [
+    uniqueIndex("dashboard_shop_jobs_active")
+      .on(table.merchantId)
+      .where(sql.raw("status in ('queued', 'running')")),
+  ],
+);
+export const shopJobProducts = pgTable(
+  "dashboard_shop_job_products",
+  {
+    jobId: text("job_id")
+      .notNull()
+      .references(() => shopJobs.id, { onDelete: "cascade" }),
+    productId: text("product_id").notNull(),
+    data: jsonb("data").$type<import("./shop-jobs.js").JobProduct>().notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.jobId, table.productId] })],
+);
+
+export const wooCardPauses = pgTable(
+  "dashboard_woo_card_pauses",
+  {
+    merchantId: text("merchant_id").notNull(),
+    itemId: text("item_id").notNull(),
+    reason: text("reason").$type<"stopped_selling" | "changed">().notNull(),
+    pausedAt: timestamp("paused_at", { withTimezone: true, mode: "date" }).notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.merchantId, table.itemId] }),
+    check(
+      "dashboard_woo_card_pause_reason",
+      sql`${table.reason} in ('stopped_selling', 'changed')`,
+    ),
+  ],
 );

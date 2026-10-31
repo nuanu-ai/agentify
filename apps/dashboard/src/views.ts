@@ -1,3 +1,4 @@
+import type { WooCardPause } from "./woo-card-pauses.js";
 /**
  * What the cards, orders and receipts screens show, as plain values built from
  * the documents the gateway answered with. Each view is a function that fetches
@@ -173,7 +174,8 @@ interface CardRow {
    * wallet is set: a card paused before then stays paused, and a Resume
    * pressed meanwhile can be taken back.
    */
-  readonly verb: "pause" | "resume";
+  readonly verb: "pause" | "resume" | null;
+  readonly shopStoppedAt?: MomentView;
 }
 
 export interface CardsView {
@@ -223,7 +225,7 @@ export const cardsPlace = (fields: URLSearchParams): string =>
   placeOf("/products", fields, CARD_SEGMENT_KEYS);
 
 export const cardsView = (
-  cards: MerchantCardList,
+  cards: MerchantCardList & { readonly integrationPauses?: Readonly<Record<string, WooCardPause>> },
   origin: string,
   wooAvailable = false,
   integration: CardsIntegration = ALL_THROUGH_THE_CODE,
@@ -236,7 +238,17 @@ export const cardsView = (
   const listed = cards.cards.filter((entry) => !integration.offSale.includes(entry.id));
   const elsewhere = cards.cards.length - listed.length;
   const rows = listed.map((entry): CardRow => {
-    const state = cardWord(entry);
+    const withdrew = cards.integrationPauses?.[entry.id];
+    const state: Word =
+      withdrew === undefined
+        ? cardWord(entry)
+        : {
+            text:
+              withdrew.reason === "stopped_selling"
+                ? "Off sale: your shop stopped selling it"
+                : "Off sale: it changed in your shop, and Agentify can't sell it now",
+            tone: "warn",
+          };
     return {
       id: entry.id,
       off: state !== CARD_WORDS.onSale,
@@ -247,7 +259,10 @@ export const cardsView = (
       price: money(entry.card.price),
       delivery: deliveryOf(entry.card),
       state,
-      verb: entry.paused ? "resume" : "pause",
+      verb: withdrew === undefined ? (entry.paused ? "resume" : "pause") : null,
+      ...(withdrew === undefined
+        ? {}
+        : { shopStoppedAt: momentView(new Date(withdrew.at).toISOString()) }),
     };
   });
   const asked = askedIn(query, CARD_SEGMENT_KEYS);

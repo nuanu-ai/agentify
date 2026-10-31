@@ -25,10 +25,10 @@ import {
 } from "../../../src/admin/orders-view.js";
 import { useChrome } from "../../answer.js";
 import { CouldNotBeRead, OrderState } from "../../components/admin/unknown.js";
-import { Cell, DayHeading, List, ListEmpty } from "../../components/list.js";
 import { Moment } from "../../components/moment.js";
 import { Word } from "../../components/word.js";
 import { shortened } from "../../display/copy.js";
+import { Cell, DayHeading, List, ListEmpty } from "../../display/list.js";
 import { Pager } from "../listing.js";
 import styles from "./orders.module.css";
 

@@ -16,6 +16,7 @@ import { DRAWN_FOR } from "../drawn-for.js";
 import { type Identity, identityFor } from "../identity.js";
 import type { Handover, Message } from "../mail.js";
 import { buildApp } from "../server.js";
+import type { WooShops } from "../woo-shops.js";
 import { flagRow } from "./account-rows.js";
 import { rewindLinkSends } from "./link-sends.js";
 import { testPages } from "./pages.js";
@@ -43,6 +44,7 @@ interface Visit {
 interface AdminBrowser {
   /** A path under the dashboard's prefix, without it. */
   get(path: string): Promise<Visit>;
+  cookie(name: string, value: string): void;
   post(path: string, form?: Record<string, string>): Promise<Visit>;
 }
 
@@ -65,6 +67,8 @@ export interface AdminServed {
 export async function adminServed(
   options: Readonly<{
     channel?: keyof typeof CHANNELS;
+    shops?: WooShops;
+    workspace?: false;
     /** A decorator, for a test about an identity that fails; the rest goes to the real one. */
     identity?: (real: Identity) => Identity;
     /** A decorator, for a test about an operator's read that fails; the rest goes to the real one. */
@@ -112,11 +116,16 @@ export async function adminServed(
     pages: await testPages(),
     gateway: harnessed.gateway,
     identity: served,
-    admin: {
-      reader: (options.reader ?? ((real) => real))(memoryOperatorReader(harnessed.store)),
-      journal: memoryJournal(harnessed.store),
-      accounts: served,
-    },
+    ...(options.shops === undefined ? {} : { wooShops: options.shops }),
+    ...(options.workspace === false
+      ? {}
+      : {
+          admin: {
+            reader: (options.reader ?? ((real) => real))(memoryOperatorReader(harnessed.store)),
+            journal: memoryJournal(harnessed.store),
+            accounts: served,
+          },
+        }),
   });
   const server = app.listen(0, "127.0.0.1");
   await new Promise<void>((resolve) => server.once("listening", resolve));
@@ -155,6 +164,9 @@ export async function adminServed(
     return {
       jar,
       browser: {
+        cookie: (name: string, value: string) => {
+          jar.set(name, value);
+        },
         get: (path: string) => call("GET", path),
         post: (path: string, form: Record<string, string> = {}) => call("POST", path, form),
       } satisfies AdminBrowser,

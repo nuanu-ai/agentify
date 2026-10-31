@@ -57,6 +57,7 @@ export function Frame({
   tab,
   title,
   heading = title,
+  parent,
   action,
   drawn,
   children,
@@ -65,6 +66,7 @@ export function Frame({
   tab?: Tab;
   title: string;
   heading?: string;
+  parent?: ReactNode;
   action?: ReactNode;
   drawn?: DrawnFor & Readonly<{ chrome: Chrome }>;
   children: ReactNode;
@@ -127,6 +129,7 @@ export function Frame({
           <main id="main">
             <div className="top">
               <div className="top-inner">
+                {parent}
                 <h1 className="top-title">{heading}</h1>
                 {action}
               </div>

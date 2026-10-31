@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Form, Link } from "react-router";
 import type { CutView, Listing } from "../../src/listing.js";
 import { useGoingTo } from "../components/going-to.js";
-import { ListEmpty } from "../components/list.js";
+import { ListEmpty } from "../display/list.js";
 
 /**
  * The search box and the segments over a long list. The search is a GET form

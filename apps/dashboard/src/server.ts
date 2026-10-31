@@ -12,7 +12,9 @@
 import type { Gateway } from "@agentify/gateway";
 import type { OperatorReader } from "@agentify/gateway/operator";
 import { classifyHttpRoute, telemetry } from "@agentify/observability/source";
+import { zoneIn } from "@agentify/ui/zone";
 import express, { type Express, type Request, type Response } from "express";
+import { operatorOf } from "./admin/access.js";
 import type { AccountsDirectory } from "./admin/accounts.js";
 import { type WorkspaceDoor, workspaceDoorFor } from "./admin/index.js";
 import type { DashboardJournal } from "./admin/journal.js";
@@ -27,10 +29,12 @@ import {
 } from "./gateway.js";
 import type { Identity } from "./identity.js";
 import type { Postman } from "./mail.js";
+import { inViewersZone } from "./moments.js";
 import { noted } from "./noted.js";
 import { pageServicesFor } from "./page-services.js";
 import { type Pages, pagesHandler } from "./pages.js";
 import { printable } from "./printable.js";
+import { shopJobView } from "./shop-job-view.js";
 import { type ShopCalls, wooPagesFor } from "./woo-pages.js";
 import type { WooShops } from "./woo-shops.js";
 
@@ -97,7 +101,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
   const clientFor =
     parts.clientFor ??
     ((acting: Acting, answerWithinMs?: number) =>
-      gatewayFor(parts.gateway, acting, answerWithinMs));
+      gatewayFor(parts.gateway, acting, answerWithinMs, parts.wooShops?.cardPauses));
 
   app.disable("x-powered-by");
   // No `trust proxy`: nothing reads the client's address, and express would put
@@ -230,6 +234,46 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
       }
     });
   });
+
+  const jobRead = (operator: boolean) => (request: Request, response: Response) => {
+    void (async () => {
+      response.setHeader("Cache-Control", "no-store");
+      const shops = parts.wooShops;
+      if (!shops) {
+        response.sendStatus(404);
+        return;
+      }
+      let merchantId: string;
+      if (operator) {
+        if (!parts.admin || !(await operatorOf(identity, request.headers.cookie))) {
+          response.sendStatus(404);
+          return;
+        }
+        merchantId = String(request.params.merchant_id ?? "");
+      } else {
+        const session = await identity.whoIs(request.headers.cookie, { renew: false });
+        if (!session?.person.merchant) {
+          response.sendStatus(404);
+          return;
+        }
+        merchantId = session.person.merchant.id;
+      }
+      if (!/^[A-Za-z0-9_-]{1,64}$/.test(merchantId)) {
+        response.sendStatus(404);
+        return;
+      }
+      const query = new URL(request.originalUrl, config.publicBaseUrl).searchParams;
+      response.json(
+        await inViewersZone(zoneIn(request.headers.cookie), () =>
+          shopJobView(shops, merchantId, query, operator ? "operator" : "merchant"),
+        ),
+      );
+    })().catch(() => {
+      if (!response.headersSent) response.sendStatus(503);
+    });
+  };
+  app.get(`${base}/shop-job`, jobRead(false));
+  app.get(`${base}/admin/merchants/:merchant_id/shop-job`, jobRead(true));
 
   app.use(
     pagesHandler(

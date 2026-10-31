@@ -1,10 +1,11 @@
 import { Button } from "@agentify/ui";
 import type { CardsView } from "../../src/views.js";
-import { Cell, List, ListEmpty, Row } from "../components/list.js";
+import { Moment } from "../components/moment.js";
 import { PostForm } from "../components/post-form.js";
 import { Rest } from "../components/rest.js";
 import { Word } from "../components/word.js";
 import { CodeCopy } from "../display/copy.js";
+import { Cell, List, ListEmpty, Row } from "../display/list.js";
 import styles from "./cards.module.css";
 import { CutNote, KeptPlace, ListTools, NothingHere } from "./listing.js";
 
@@ -121,9 +122,18 @@ export function CardsScreen({ view, base }: Readonly<{ view: CardsView; base: st
                 ) : null}
               </Cell>
               <Cell at="state">
-                <Word word={row.state} />
+                {row.shopStoppedAt ? (
+                  <span className={styles.shopStopped}>
+                    <Word word={row.state} />
+                    <Moment at={row.shopStoppedAt} />
+                  </span>
+                ) : (
+                  <Word word={row.state} />
+                )}
               </Cell>
-              <Switch id={row.id} verb={row.verb} place={listing.place} />
+              {row.verb === null ? null : (
+                <Switch id={row.id} verb={row.verb} place={listing.place} />
+              )}
             </Row>
           ))}
         </List>

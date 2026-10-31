@@ -88,7 +88,7 @@ import {
   receiptsView,
 } from "./views.js";
 import type { WooPages } from "./woo-pages.js";
-import type { ShopTile, WooImportView, WooShopView } from "./woo-views.js";
+import type { ShopTile, WooShopView } from "./woo-views.js";
 
 /** A view to draw, a place to send the browser, or a problem to show instead. */
 export type Outcome<View> =
@@ -286,7 +286,7 @@ export interface PageServices {
       operation: string,
       form: FormData,
       cookie: string | undefined,
-    ): Promise<Outcome<WooShopView | WooImportView>>;
+    ): Promise<Outcome<WooShopView>>;
   };
   readonly surface: Surface;
   readonly gate: Gate;
@@ -1149,11 +1149,14 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
             kind: "problem",
             problem: { status: 404, said: "There is no shop connector on this dashboard." },
           };
-        const operations: Readonly<
-          Record<string, () => Promise<Outcome<WooShopView | WooImportView>>>
-        > = {
+        const operations: Readonly<Record<string, () => Promise<Outcome<WooShopView>>>> = {
           connect: () => woo.connect(person, form),
-          import: () => woo.importCatalogue(person),
+          check: () => woo.checkCatalogue(person),
+          import: () =>
+            woo.importCatalogue(
+              person,
+              typeof form.get("checked_job") === "string" ? String(form.get("checked_job")) : null,
+            ),
           site: () => woo.useShopSite(person),
           rate: () => woo.setRate(person, form, cookie),
           switch: () => woo.switchToShop(person),
@@ -1664,7 +1667,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
           integration.document,
           query,
         );
-        if (view.empty !== null && parts.woo !== null) {
+        if (parts.woo !== null) {
           const [choices, shop] = await Promise.all([
             identity.onboardingChoices(person.id),
             parts.woo.stateOf(person.id),

@@ -8,6 +8,7 @@
  */
 
 import { createServer, type Server } from "node:http";
+import { createRequire } from "node:module";
 import type { AddressInfo } from "node:net";
 import type { Gateway } from "@agentify/gateway";
 import type { AnalyticsEvent, SetupResult } from "@agentify/gateway/analytics";
@@ -27,6 +28,7 @@ import { type Acting, gatewayFor } from "./gateway.js";
 import { type Identity, identityFor } from "./identity.js";
 import type { Message } from "./mail.js";
 import { buildApp } from "./server.js";
+import { shopPublisherFor, workShopJob } from "./shop-job-runner.js";
 import { formsIn, formTo, importFormOf, readable, shownMarkIn } from "./testing/html.js";
 import { rewindLinkSends } from "./testing/link-sends.js";
 import { testPages } from "./testing/pages.js";
@@ -43,10 +45,10 @@ import type { ReferenceRead } from "./woo-reference.js";
 import type { WooRequest } from "./woo-request.js";
 import {
   type CatalogueRead,
-  catalogueOf,
+  type ConnectedCatalogueEvent,
+  connectedCatalogue,
   guestCartRefusedWith,
   inspectProductInTheShop,
-  inspectProductsInTheShop,
   type OrderMade,
   type ProductInspection,
   type SoldItem,
@@ -129,8 +131,9 @@ interface Running {
    * only a route above the sign-in gate can be reached by it.
    */
   postJson(path: string, body: unknown): Promise<Visit>;
-  signIn(destination?: "default" | "woocommerce"): Promise<Visit>;
+  signIn(destination?: "default" | "woocommerce", email?: string): Promise<Visit>;
   signOut(): Promise<void>;
+  finishJobs(): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -190,13 +193,8 @@ interface Standing {
    * so a test can put a row there to be read.
    */
   readonly breakTheShopsRead?: () => never;
-  /**
-   * Every gateway call never finishing (nothing answers an import); only
-   * publishing never finishing (the gateway stopped mid-import, after answering
-   * what the merchant has set); or publishing failing in our own code, as when
-   * a database goes away.
-   */
-  readonly silent?: "everything" | "publishing" | "publishing fails" | "site writing";
+  /** A gateway or seller-site write that does not answer the HTTP request. */
+  readonly silent?: "everything" | "site writing";
   /** The sandbox where a test does not say. */
   readonly channel?: Channel;
   /**
@@ -330,20 +328,9 @@ const started = async (standing: Standing = {}): Promise<Running> => {
           clientFor: (acting: Acting, answerWithinMs?: number) => {
             const quiet = gatewayFor(silenced(harnessed.gateway), acting, SILENT_FOR_MS);
             if (silent === "everything") return quiet;
-            if (silent === "site writing") {
-              return {
-                ...gatewayFor(harnessed.gateway, acting, answerWithinMs),
-                fillSellerSite: gatewayFor(harnessed.gateway, acting, SILENT_FOR_MS).fillSellerSite,
-              };
-            }
             return {
               ...gatewayFor(harnessed.gateway, acting, answerWithinMs),
-              publishCard:
-                silent === "publishing"
-                  ? quiet.publishCard
-                  : async () => {
-                      throw new Error("the database went away");
-                    },
+              fillSellerSite: gatewayFor(harnessed.gateway, acting, SILENT_FOR_MS).fillSellerSite,
             };
           },
         }),
@@ -373,24 +360,7 @@ const started = async (standing: Standing = {}): Promise<Running> => {
         standing.reference === undefined
           ? { ok: true, rate: "18035.292596", source: "Coinbase", readAt: COINBASE_READ_AT }
           : await standing.reference(currency),
-      catalogue: async (shopUrl, atMost) => {
-        read.push(shopUrl);
-        if (standing.shop !== undefined) return await catalogueOf(shopUrl, atMost, standing.shop);
-        return standing.catalogue === undefined
-          ? { ok: true, products: [] }
-          : await standing.catalogue(shopUrl);
-      },
       inspectProduct,
-      guestCart: (shopUrl) =>
-        guestCartRefusedWith(
-          shopUrl,
-          standing.cart ??
-            (async () => Response.json({ items: [] }, { headers: { "Cart-Token": "guest" } })),
-        ),
-      inspectProducts: async (keys, merchantItemIds) =>
-        standing.shop === undefined
-          ? await Promise.all(merchantItemIds.map((id) => inspectProduct(keys, id)))
-          : await inspectProductsInTheShop(keys, merchantItemIds, standing.shop),
       ...(standing.readOrder === undefined
         ? {}
         : { readOrder: (_keys, id) => standing.readOrder?.(id) as Promise<WooOrderLookup> }),
@@ -476,6 +446,61 @@ const started = async (standing: Standing = {}): Promise<Running> => {
     ownKey,
     messages,
     sessions: rows.dashboard_sessions ?? [],
+    async finishJobs() {
+      for (let job = await shops.jobs.claim(); job !== null; job = await shops.jobs.claim()) {
+        try {
+          await workShopJob(job, {
+            shops,
+            identity,
+            surfaceMode: config.surfaceMode,
+            clientFor: (who) => gatewayFor(harnessed.gateway, who),
+            publisherFor: (who) => shopPublisherFor(harnessed.gateway, who, shops),
+            catalogue: standing.shop
+              ? (keys) => connectedCatalogue(keys, standing.shop)
+              : async function* (keys): AsyncGenerator<ConnectedCatalogueEvent> {
+                  read.push(keys.shopUrl);
+                  const found = await (standing.catalogue?.(keys.shopUrl) ??
+                    Promise.resolve({ ok: true as const, products: [] }));
+                  if (!found.ok) {
+                    yield { kind: "stopped", why: found.why, reconnect: false };
+                    return;
+                  }
+                  const saved = await shops.connectionOf(person.id);
+                  const first = found.products[0]?.prices;
+                  const currency = first
+                    ? { code: first.currency_code, decimals: first.currency_minor_unit as 0 | 2 }
+                    : (saved?.currency ?? { code: "USD", decimals: 2 as const });
+                  yield { kind: "currency", currency };
+                  for (const product of found.products) {
+                    yield {
+                      kind: "product",
+                      product,
+                      inspected: await inspectProduct(
+                        keys,
+                        merchantItemIdFor(keys.shopUrl, String(product.id)),
+                      ),
+                    };
+                  }
+                  yield { kind: "complete", total: found.products.length };
+                },
+            inspect: inspectProduct,
+            guestCart: (url) =>
+              guestCartRefusedWith(
+                url,
+                standing.cart ??
+                  (async () =>
+                    Response.json({ items: [] }, { headers: { "Cart-Token": "guest" } })),
+              ),
+          });
+        } catch {
+          await shops.jobs.finish(job.id, {
+            status: "stopped",
+            stopCode: "unknown",
+            why: "The work stopped. We don't know about the rest yet.",
+          });
+        }
+      }
+    },
     get: (path) => visit("GET", `${base}${path}`),
     getWithoutCookie: (path) => visit("GET", `${base}${path}`, { noCookie: true }),
     post: (path, form = {}, origin) =>
@@ -492,14 +517,14 @@ const started = async (standing: Standing = {}): Promise<Running> => {
         type: "application/json;charset=UTF-8",
         noCookie: true,
       }),
-    async signIn(destination = "default") {
+    async signIn(destination = "default", email = PERSON) {
       // A minute must pass between two links to one address; these tests sign
       // in twice and are about where WooCommerce sends a merchant, so the
       // minute is moved out of the way.
       rewindLinkSends(rows);
       await visit("POST", `${base}/sign-in`, {
         body: new URLSearchParams({
-          email: PERSON,
+          email,
           ...(destination === "default" ? {} : { destination }),
         }).toString(),
       });
@@ -532,13 +557,6 @@ const started = async (standing: Standing = {}): Promise<Running> => {
   return open;
 };
 
-/** The Import panel of the shop screen: its heading, what the last press came to, and its form. */
-const importFormPanelOf = (html: string): string => {
-  const form = html.indexOf('action="/woocommerce/import"');
-  const opened = html.lastIndexOf("<section", form);
-  return form === -1 || opened === -1 ? "" : html.slice(opened, html.indexOf("</section>", form));
-};
-
 /**
  * Disconnect pressed as a browser presses it: from the shop screen as it is
  * drawn now, with the shop its form was drawn for.
@@ -550,6 +568,16 @@ const disconnectAsDrawn = async (running: Running) => {
   const shop = /name="shop" value="([^"]*)"/.exec(form)?.[1];
   if (shop === undefined) throw new Error("the shop screen draws no Disconnect");
   return await running.post("/woocommerce/disconnect", { shop: shop.replaceAll("&amp;", "&") });
+};
+
+const publishFromPage = async (running: Running, path = "/woocommerce"): Promise<Visit> => {
+  const page = await running.get(path);
+  const action = path === "/products" ? "/products?woo=import" : "/woocommerce/import";
+  const form = formsIn(page.html).find(
+    (form) => form.method === "post" && form.action.endsWith(action),
+  );
+  if (!form) throw new Error("the page draws no Publish or Sync form");
+  return running.post(action, Object.fromEntries(form.fields));
 };
 
 const tokenIn = (authorizeUrl: string): string =>
@@ -1291,6 +1319,15 @@ describe("importing the catalogue", () => {
       consumer_secret: "cs_b",
       key_permissions: "read_write",
     });
+    const person = await running.identity.byId(running.accountId);
+    if (!person?.merchant) throw new Error("the connected account has no merchant");
+    // The fulfillment worker's actual poll makes the integration reachable for sales.
+    await gatewayFor(running.harnessed.gateway, {
+      merchantId: person.merchant.id,
+      email: person.email,
+    }).pollWorker(0);
+    await running.finishJobs();
+    running.read.length = 0;
   };
 
   interface Held {
@@ -1311,13 +1348,22 @@ describe("importing the catalogue", () => {
     return (answered.body as { cards: Held[] }).cards;
   };
 
+  const importAreaOf = (html: string): string => {
+    const form = importFormOf(html);
+    const at = form === "" ? -1 : html.indexOf(form);
+    return at === -1 ? "" : html.slice(at, html.indexOf("</section>", at));
+  };
+
   it("publishes what it found, through the door every card goes through", async () => {
     const running = await started({
       catalogue: async () => ({ ok: true, products: [aProduct()] }),
     });
     await connected(running);
 
-    const imported = await running.post("/woocommerce/import");
+    const accepted = await publishFromPage(running);
+    expect(accepted.status).toBe(200);
+    await running.finishJobs();
+    const imported = await running.get("/woocommerce");
 
     expect(imported.status).toBe(200);
     expect(imported.html).toContain("Canvas tote bag");
@@ -1327,6 +1373,121 @@ describe("importing the catalogue", () => {
     const listed = await cardsOf(running);
     expect(listed).toHaveLength(1);
     expect(listed[0]?.card.price.amount).toBe("25.00");
+  });
+
+  it("refuses publication without the checked job shown to the merchant", async () => {
+    const running = await started({
+      catalogue: async () => ({ ok: true, products: [aProduct()] }),
+    });
+    await connected(running);
+    const checked = JSON.parse((await running.get("/shop-job")).html);
+    expect(checked).toMatchObject({ kind: "check", status: "completed", ready: 1 });
+
+    const refused = await running.post("/woocommerce/import");
+
+    expect(refused.status).toBe(409);
+    expect(readable(refused.html)).toMatch(/check.*first|check.*again/i);
+    expect(JSON.parse((await running.get("/shop-job")).html).id).toBe(checked.id);
+    await running.finishJobs();
+    expect(await cardsOf(running)).toEqual([]);
+  });
+
+  it("refuses a publish form checked before the shop granted new keys", async () => {
+    const running = await started({
+      catalogue: async () => ({ ok: true, products: [aProduct()] }),
+    });
+    await connected(running);
+    const former = JSON.parse((await running.get("/shop-job")).html);
+    const renewed = await running.post("/woocommerce/connect", {
+      shop_url: "https://SHOP.example.com:443/",
+      checked_shop: SHOP,
+    });
+    expect(renewed.status).toBe(303);
+    await running.postJson("/woocommerce/callback", {
+      ...grantedBody(tokenIn(renewed.to ?? "")),
+      consumer_key: "ck_renewed",
+      consumer_secret: "cs_renewed",
+    });
+    await running.finishJobs();
+    const current = JSON.parse((await running.get("/shop-job")).html);
+    expect(current).toMatchObject({ kind: "check", status: "completed", ready: 1 });
+    expect(current.id).not.toBe(former.id);
+
+    const refused = await running.post("/woocommerce/import", { checked_job: former.id });
+
+    expect(refused.status).toBe(409);
+    expect(readable(refused.html)).toMatch(/check.*first|check.*again/i);
+    expect(JSON.parse((await running.get("/shop-job")).html).id).toBe(current.id);
+    await running.finishJobs();
+    expect(await cardsOf(running)).toEqual([]);
+  });
+
+  it("keeps the rejected sync explanation on Products when earlier shop cards are already listed", async () => {
+    const running = await started({
+      catalogue: async () => ({ ok: true, products: [aProduct()] }),
+    });
+    await connected(running);
+    await publishFromPage(running);
+    await running.finishJobs();
+    const connection = await running.shops.connectionOf(running.accountId);
+    if (!connection) throw new Error("Missing connection");
+    await running.shops.jobs.request({
+      accountId: running.accountId,
+      merchantId: running.harnessed.merchant.id,
+      connectionRevision: connection.revision,
+      shopUrl: connection.shopUrl,
+      kind: "check",
+    });
+    const refused = await running.post("/products?woo=import");
+    expect(refused.status).toBe(409);
+    expect(readable(refused.html)).toMatch(/check.*running|check.*progress/i);
+    expect(readable(refused.html)).toContain("Canvas tote bag");
+  });
+
+  it("refuses a stale seller Resume for a product withdrawn by the shop until the seller takes pause ownership", async () => {
+    const running = await started({
+      catalogue: async () => ({ ok: true, products: [aProduct()] }),
+    });
+    await connected(running);
+    expect((await publishFromPage(running)).status).toBe(200);
+    await running.finishJobs();
+    const [published] = await cardsOf(running);
+    if (published === undefined) throw new Error("the job published no card");
+    await shopPublisherFor(
+      running.harnessed.gateway,
+      { merchantId: running.harnessed.merchant.id, email: "owner@example.com" },
+      running.shops,
+    ).pause(published.id, "stopped_selling");
+
+    const products = await running.get("/products");
+    const { JSDOM } = createRequire(import.meta.url)("jsdom") as {
+      JSDOM: new (html: string) => { window: { document: Document; close(): void } };
+    };
+    const page = new JSDOM(products.html);
+    try {
+      const sync = page.window.document.querySelector(
+        '[aria-label="Products"] a[href="/woocommerce"]',
+      );
+      expect(sync).toBeNull();
+      expect(readable(products.html)).toContain("Off sale: your shop stopped selling it");
+    } finally {
+      page.window.close();
+    }
+    const destination = await running.get("/woocommerce");
+    expect(formTo(destination.html, "post", "/woocommerce/import")).toBeDefined();
+    expect(readable(destination.html)).toMatch(/\bOn sale 1\b/);
+
+    const refused = await running.post(`/products?resume=${published.id}`);
+    expect(refused.status).toBe(409);
+    expect(readable(refused.html)).not.toContain("Product resumed");
+    expect(await running.harnessed.store.cardById(published.id)).toMatchObject({
+      paused: true,
+    });
+
+    await running.post(`/products?pause=${published.id}`);
+    expect(await running.harnessed.store.cardById(published.id)).toMatchObject({
+      paused: true,
+    });
   });
 
   it("publishes a physical product as a parcel, once the merchant has given the shop's site", async () => {
@@ -1350,7 +1511,8 @@ describe("importing the catalogue", () => {
     });
     await connected(running);
 
-    expect((await running.post("/woocommerce/import")).status).toBe(200);
+    expect((await publishFromPage(running)).status).toBe(200);
+    await running.finishJobs();
 
     const listed = (await cardsOf(running)) as unknown as readonly {
       card: { fulfillment: string; ship_within_seconds?: number; result?: unknown };
@@ -1419,16 +1581,17 @@ describe("importing the catalogue", () => {
     });
     await connected(running);
 
-    const imported = await running.post("/woocommerce/import");
+    const accepted = await publishFromPage(running);
+    expect(accepted.status).toBe(200);
+    await running.finishJobs();
+    const imported = await running.get("/woocommerce");
 
     expect(imported.status).toBe(200);
     const listed = (await cardsOf(running)) as unknown as readonly {
       card: { fulfillment: string };
     }[];
     expect(listed.map((one) => one.card.fulfillment)).toEqual(published);
-    expect(readable(imported.html).includes("would not open a cart for a visitor (HTTP 401)")).toBe(
-      published.length === 1,
-    );
+    expect(readable(imported.html).includes("visitor cart")).toBe(published.length === 1);
   });
 
   it("keeps imported cards when the merchant forgets the shop", async () => {
@@ -1436,7 +1599,8 @@ describe("importing the catalogue", () => {
       catalogue: async () => ({ ok: true, products: [aProduct()] }),
     });
     await connected(running);
-    await running.post("/woocommerce/import");
+    await publishFromPage(running);
+    await running.finishJobs();
 
     await disconnectAsDrawn(running);
 
@@ -1476,9 +1640,17 @@ describe("importing the catalogue", () => {
         );
       }
       if (at.pathname === "/wp-json/wc/v3/products") {
+        const page = Number(at.searchParams.get("page") ?? "1");
+        const per = Number(at.searchParams.get("per_page") ?? "100");
+        const first = (page - 1) * per + 1;
+        const last = Math.min(page * per, count);
         return json(
-          (at.searchParams.get("include") ?? "").split(",").map((id) => ({
-            id: Number(id),
+          Array.from({ length: Math.max(0, last - first + 1) }, (_, index) => ({
+            id: first + index,
+            name: `Guide ${first + index}`,
+            sku: `guide-${first + index}`,
+            description: "A guide sold through this shop.",
+            short_description: "",
             type: "simple",
             status: "publish",
             purchasable: true,
@@ -1512,45 +1684,39 @@ describe("importing the catalogue", () => {
       return new Response("Forbidden", { status: 403 });
     };
 
-  const storePages = (seen: readonly string[]) =>
-    seen.filter(
-      (one) =>
-        one.startsWith("/wp-json/wc/store/v1/products") &&
-        new URL(one, SHOP).searchParams.has("page"),
-    );
-
-  it("imports a shop of exactly two thousand products whole", async () => {
+  it("keeps a complete two-thousand-product check readable after the callback request ends", async () => {
     const seen: string[] = [];
     const running = await started({ shop: shopOfDownloads(2_000, seen) });
     await connected(running);
 
-    const imported = await running.post("/woocommerce/import");
-
-    expect(imported.status).toBe(200);
-    expect(await cardsOf(running)).toHaveLength(2_000);
-    // The products' documents came in lists, not one request each.
+    const read = await running.get("/shop-job");
+    expect(read.status).toBe(200);
+    expect(JSON.parse(read.html)).toMatchObject({
+      kind: "check",
+      status: "completed",
+      read: 2_000,
+      total: 2_000,
+      ready: 2_000,
+    });
+    expect(await cardsOf(running)).toEqual([]);
     expect(seen.some((one) => /^\/wp-json\/wc\/v3\/products\/\d+/.test(one))).toBe(false);
-    expect(storePages(seen)).toHaveLength(21);
   }, 60_000);
 
-  it("refuses a shop of two thousand and one products whole, a page past the ceiling at most", async () => {
+  it("reports the bounded partial check of a shop over two thousand without claiming the remainder", async () => {
     const seen: string[] = [];
     const running = await started({ shop: shopOfDownloads(2_001, seen) });
     await connected(running);
 
-    const refused = await running.post("/woocommerce/import");
+    const read = JSON.parse((await running.get("/shop-job")).html);
+    expect(read).toMatchObject({ kind: "check", status: "stopped", read: 2_000, total: null });
+    expect(read.why).toContain("2,000");
+    expect(await cardsOf(running)).toEqual([]);
+    const protectedPages = seen.filter((url) => url.startsWith("/wp-json/wc/v3/products?"));
+    expect(protectedPages.length).toBeLessThanOrEqual(21);
+  }, 60_000);
 
-    expect(readable(refused.html)).toContain("Your shop offers more than 2,000 products");
-    expect(readable(refused.html)).toContain("Nothing was imported");
-    expect(await cardsOf(running)).toHaveLength(0);
-    expect(storePages(seen).length).toBeLessThanOrEqual(21);
-    // Refused before a single protected request reached the shop.
-    expect(seen.some((one) => one.startsWith("/wp-json/wc/v3/"))).toBe(false);
-  });
-
-  it("walks a shop once at a time: a second press while an import runs reads nothing", async () => {
-    // A large import takes a while, and a merchant who presses again, or opens
-    // a second tab, would otherwise send the whole walk to the same shop twice.
+  it("accepts publication before the shop answers and keeps the result after its requester signs out", async () => {
+    let hold = false;
     let release = (): void => undefined;
     const held = new Promise<void>((resolve) => {
       release = resolve;
@@ -1559,32 +1725,105 @@ describe("importing the catalogue", () => {
     const reading = new Promise<void>((resolve) => {
       reached = resolve;
     });
-    const seen: string[] = [];
     const running = await started({
-      shop: shopOfDownloads(3, seen, async (at) => {
-        if (at.searchParams.get("page") === "1") {
+      catalogue: async () => {
+        if (hold) {
           reached();
           await held;
         }
-      }),
+        return { ok: true, products: [aProduct()] };
+      },
     });
     await connected(running);
+    expect((await publishFromPage(running)).status).toBe(200);
+    await running.finishJobs();
+    const previous = JSON.parse((await running.get("/shop-job")).html);
+    expect(previous).toMatchObject({ kind: "publish", status: "completed", published: 1 });
+    hold = true;
+    const page = await running.get("/woocommerce");
+    const form = formTo(page.html, "post", "/woocommerce/import");
+    if (!form) throw new Error("the shop screen draws no Publish form");
+    const sent = Object.fromEntries(form.fields);
+    const accepted = await running.post("/woocommerce/import", sent);
+    expect(accepted.status).toBe(200);
+    const queued = JSON.parse((await running.get("/shop-job")).html);
+    expect(queued).toMatchObject({
+      kind: "publish",
+      status: "queued",
+      read: 0,
+    });
+    expect(queued.id).not.toBe(previous.id);
+    expect(await cardsOf(running)).toHaveLength(1);
 
-    const first = running.post("/woocommerce/import");
+    const working = running.finishJobs();
     await reading;
-    const second = await running.post("/woocommerce/import");
+    const again = await running.post("/woocommerce/import", sent);
+    expect(again.status).toBe(200);
+    expect(JSON.parse((await running.get("/shop-job")).html)).toMatchObject({
+      id: queued.id,
+      kind: "publish",
+      status: "running",
+      read: 0,
+    });
+    await running.signOut();
     release();
-    const done = await first;
+    await working;
+    await running.signIn();
 
-    expect(second.status).toBe(409);
-    // The first may have been started from a page since closed, so the words
-    // send the merchant to Products rather than to its result.
-    const panel = importFormPanelOf(second.html);
-    expect(readable(panel)).toContain("already running");
-    expect(panel).toContain('<a href="/products">');
-    expect(storePages(seen)).toHaveLength(1);
-    expect(done.status).toBe(200);
-    expect(await cardsOf(running)).toHaveLength(3);
+    const result = await running.get("/shop-job");
+    expect(JSON.parse(result.html)).toMatchObject({
+      kind: "publish",
+      status: "completed",
+      read: 1,
+      published: 1,
+    });
+    expect((await running.get("/woocommerce")).html).toContain("Canvas tote bag");
+    expect(await cardsOf(running)).toHaveLength(1);
+  });
+
+  it("queues a callback check without reading the shop and refuses publication until it ends", async () => {
+    const seen: string[] = [];
+    const running = await started({ shop: shopOfDownloads(1, seen) });
+    await running.signIn();
+    const pressed = await connectAsDrawn(running, SHOP);
+    seen.length = 0;
+    const callback = await running.postJson(
+      "/woocommerce/callback",
+      grantedBody(tokenIn(pressed.to ?? "")),
+    );
+    expect(callback.status).toBe(200);
+    expect(seen).toEqual([]);
+    const queued = JSON.parse((await running.get("/shop-job")).html);
+    expect(queued).toMatchObject({ kind: "check", status: "queued" });
+    expect((await running.post("/woocommerce/import")).status).toBe(409);
+    expect(seen).toEqual([]);
+    await running.finishJobs();
+    expect(seen.some((url) => url.startsWith("/wp-json/wc/v3/products?"))).toBe(true);
+    expect((await publishFromPage(running)).status).toBe(200);
+    expect(JSON.parse((await running.get("/shop-job")).html)).toMatchObject({
+      kind: "publish",
+      status: "queued",
+    });
+  });
+
+  it("keeps the job projection private to its merchant and denies a merchant the operator reader", async () => {
+    const running = await started({
+      catalogue: async () => ({ ok: true, products: [aProduct()] }),
+    });
+    await connected(running);
+    const merchant = running.harnessed.merchant.id;
+    const own = await running.get("/shop-job");
+    expect(JSON.parse(own.html)).toMatchObject({ kind: "check", read: 1 });
+    expect(own.html).not.toMatch(/consumer|ck_a|cs_b|accountId|merchantId/);
+    expect((await running.get(`/admin/merchants/${merchant}/shop-job`)).status).toBe(404);
+    expect((await running.getWithoutCookie("/shop-job")).status).toBe(404);
+
+    const other = await registered(running.harnessed.gateway, true);
+    await running.identity.make("other@example.com", other);
+    await running.signOut();
+    await running.signIn("default", "other@example.com");
+    expect(JSON.parse((await running.get(`/shop-job?merchant_id=${merchant}`)).html)).toBeNull();
+    expect((await running.get(`/admin/merchants/${merchant}/shop-job`)).status).toBe(404);
   });
 
   it("lets the next import run after one that failed inside Agentify", async () => {
@@ -1594,57 +1833,45 @@ describe("importing the catalogue", () => {
     const running = await started({
       catalogue: async () => {
         reads += 1;
-        if (reads === 1) throw new Error("the shop's answer could not be handled");
+        if (reads === 2) throw new Error("the shop's answer could not be handled");
         return { ok: true, products: [aProduct()] };
       },
     });
     await connected(running);
 
     await loggedDuring(async () => {
-      await running.post("/woocommerce/import");
+      await publishFromPage(running);
+      await running.finishJobs();
     });
-    const again = await running.post("/woocommerce/import");
+    const failed = await running.get("/woocommerce");
+    const check = formsIn(failed.html).find((form) => form.action.endsWith("/woocommerce/check"));
+    if (!check) throw new Error("The stopped publication offered no Check again");
+    expect(
+      (await running.post("/woocommerce/check", Object.fromEntries(check.fields))).status,
+    ).toBe(200);
+    await running.finishJobs();
+    const again = await publishFromPage(running);
+    await running.finishJobs();
 
     expect(again.status).toBe(200);
     expect(await cardsOf(running)).toHaveLength(1);
   });
 
-  it("lets the next import run once the one before it has ended", async () => {
-    const seen: string[] = [];
-    const running = await started({ shop: shopOfDownloads(3, seen) });
-    await connected(running);
-
-    await running.post("/woocommerce/import");
-    const again = await running.post("/woocommerce/import");
-
-    expect(again.status).toBe(200);
-    expect(storePages(seen)).toHaveLength(2);
-  });
-
-  it("counts a card it published again and does not call it on sale while it is paused", async () => {
-    // Republishing a paused card leaves it paused, and the gateway's answer
-    // says nothing about selling, so "on sale" over it would tell the merchant
-    // agents can buy what they cannot. Two products and one pause, the list a
-    // merchant actually reads.
+  it("lets the next publication run once the stored prior run has ended", async () => {
     const running = await started({
-      catalogue: async () => ({
-        ok: true,
-        products: [aProduct(), aProduct({ id: 10, name: "Access code", sku: "agentify-code" })],
-      }),
+      catalogue: async () => ({ ok: true, products: [aProduct()] }),
     });
     await connected(running);
-    await running.post("/woocommerce/import");
-    const tote = (await cardsOf(running)).find((one) => one.card.title === "Canvas tote bag");
-    await running.post(`/products?${new URLSearchParams({ pause: tote?.id ?? "" })}`);
-
-    const imported = await running.post("/woocommerce/import");
-    const text = readable(imported.html);
-
-    expect(imported.status).toBe(200);
-    expect(text).toContain("Published 2");
-    expect(text).toContain("Canvas tote bag");
-    expect(text).not.toMatch(/on sale/i);
-    expect((await cardsOf(running)).find((one) => one.id === tote?.id)?.paused).toBe(true);
+    await publishFromPage(running);
+    await running.finishJobs();
+    const before = JSON.parse((await running.get("/shop-job")).html);
+    const again = await publishFromPage(running);
+    expect(again.status).toBe(200);
+    const next = JSON.parse((await running.get("/shop-job")).html);
+    expect(next).toMatchObject({ kind: "publish", status: "queued" });
+    expect(next.id).not.toBe(before.id);
+    await running.finishJobs();
+    expect(await cardsOf(running)).toHaveLength(1);
   });
 
   it("shows the door's own refusal word for word", async () => {
@@ -1658,84 +1885,13 @@ describe("importing the catalogue", () => {
     });
     await connected(running);
 
-    const imported = await running.post("/woocommerce/import");
+    const imported = await running.get("/woocommerce");
 
     expect(imported.html).toContain("To fix");
     // The ceiling and the length they wrote: the second says how much to cut,
     // and a summary would lose it.
     expect(readable(imported.html)).toContain("at most 500");
     expect(readable(imported.html)).toContain("900 characters");
-  });
-
-  it("writes down a publish that failed in our own code without what the failure carried", async () => {
-    // A store's exception can carry the values it was given; the log goes
-    // places the database does not.
-    const running = await started({
-      catalogue: async () => ({ ok: true, products: [aProduct()] }),
-      silent: "publishing fails",
-    });
-    await connected(running);
-
-    const written = await loggedDuring(async () => {
-      await running.post("/woocommerce/import");
-    });
-
-    expect(written).toMatch(/publishing a card failed/);
-    expect(written).not.toContain("the database went away");
-  });
-
-  it.each(["publishing", "publishing fails"] as const)(
-    "stops after an unknown publish, %s, naming unattempted products",
-    async (silent) => {
-      const running = await started({
-        catalogue: async () => ({
-          ok: true,
-          products: [aProduct(), aProduct({ id: 10, name: "Access code" })],
-        }),
-        silent,
-      });
-      await connected(running);
-
-      const imported = await running.post("/woocommerce/import");
-      const text = readable(imported.html);
-      expect(imported.status).toBe(200);
-      expect(text).toMatch(/don't know if these were published/i);
-      expect(text).toMatch(/stopped/i);
-      expect(text).not.toMatch(/finished|change these in your shop|to fix/i);
-
-      expect(text).toContain("No verdict 1");
-      expect(text).toContain("Not attempted 1");
-      expect(text).toContain("Canvas tote bag");
-      expect(text).toContain("Access code");
-    },
-  );
-
-  it("leads from each product it published to Cards by its product code, not by a title it shares", async () => {
-    // Two products of one name, as a shop selling a size apart may list them:
-    // a way found by the title would land on both. Cards finds any card whose
-    // code contains the one asked for, so product 1's way would also list
-    // product 11; these two are chosen apart from that.
-    const running = await started({
-      catalogue: async () => ({
-        ok: true,
-        products: [aProduct(), aProduct({ id: 10, sku: "canvas-tote-large" })],
-      }),
-    });
-    await connected(running);
-
-    const imported = await running.post("/woocommerce/import");
-    const ways = [...imported.html.matchAll(/href="(\/products\?[^"]+)"/g)].map(([, to = ""]) =>
-      to.replaceAll("&amp;", "&"),
-    );
-    const listed = await Promise.all(
-      ways.map(
-        async (to) => readable((await running.get(to)).html).split("Canvas tote bag").length - 1,
-      ),
-    );
-
-    expect(ways).toHaveLength(2);
-    expect(new Set(ways).size).toBe(2);
-    expect(listed).toStrictEqual([1, 1]);
   });
 
   it("names the products it could not turn into a card at all", async () => {
@@ -1747,7 +1903,7 @@ describe("importing the catalogue", () => {
     });
     await connected(running);
 
-    const imported = await running.post("/woocommerce/import");
+    const imported = await running.get("/woocommerce");
 
     expect(imported.html).toContain("Not supported");
     expect(imported.html).toContain("A set of things");
@@ -1766,9 +1922,9 @@ describe("importing the catalogue", () => {
     await connected(running);
 
     const before = await cardsOf(running);
-    const imported = await running.post("/woocommerce/import");
+    const imported = await running.get("/woocommerce");
 
-    expect(imported.status).toBe(502);
+    expect(imported.status).toBe(200);
     expect(imported.html).toContain("Forbidden");
     expect(await cardsOf(running)).toStrictEqual(before);
     expect(inspected).toStrictEqual([]);
@@ -1785,10 +1941,13 @@ describe("importing the catalogue", () => {
       catalogue: async () => ({ ok: true, products: [aProduct()] }),
     });
     await connected(running);
-    await running.post("/woocommerce/import");
+    await publishFromPage(running);
 
     const saved = await running.post("/settings/payout-wallet", { payout_wallet: A_WALLET });
-    const imported = await running.post("/woocommerce/import");
+    const accepted = await publishFromPage(running);
+    expect(accepted.status).toBe(200);
+    await running.finishJobs();
+    const imported = await running.get("/woocommerce");
 
     expect(saved.status).toBe(303);
     expect(imported.status).toBe(200);
@@ -1805,7 +1964,10 @@ describe("importing the catalogue", () => {
     });
     await connected(running);
 
-    const imported = await running.post("/woocommerce/import");
+    const accepted = await publishFromPage(running);
+    expect(accepted.status).toBe(200);
+    await running.finishJobs();
+    const imported = await running.get("/woocommerce");
 
     expect(imported.status).toBe(200);
     expect(await cardsOf(running)).toHaveLength(1);
@@ -1820,7 +1982,10 @@ describe("importing the catalogue", () => {
 
     const integrations = await running.get("/integrations");
     const shopScreen = await running.get("/woocommerce");
-    const imported = await running.post("/woocommerce/import");
+    const accepted = await publishFromPage(running);
+    expect(accepted.status).toBe(200);
+    await running.finishJobs();
+    const imported = await running.get("/woocommerce");
 
     expect(integrations.html).toContain('href="/woocommerce"');
     expect(shopScreen.status).toBe(200);
@@ -1869,7 +2034,10 @@ describe("importing the catalogue", () => {
     });
     await connected(running);
 
-    const imported = await running.post("/woocommerce/import");
+    const accepted = await publishFromPage(running);
+    expect(accepted.status).toBe(200);
+    await running.finishJobs();
+    const imported = await running.get("/woocommerce");
 
     expect(imported.status).toBe(200);
     const listed = (await cardsOf(running)) as unknown as readonly {
@@ -1898,7 +2066,11 @@ describe("importing the catalogue", () => {
   });
 
   it("holds Import before it is pressed while no wallet is set, and says beside it where to set one", async () => {
-    const running = await started({ channel: "test", fresh: "named" });
+    const running = await started({
+      channel: "test",
+      fresh: "named",
+      catalogue: async () => ({ ok: true, products: [aProduct()] }),
+    });
     await connected(running);
 
     const screen = await running.get("/woocommerce");
@@ -1906,13 +2078,16 @@ describe("importing the catalogue", () => {
 
     expect(screen.status).toBe(200);
     expect(screen.html).not.toContain('data-reason="no_payout_wallet"');
-    expect(form).toMatch(/<button[^>]*\bdisabled\b[^>]*>Import products</);
-    expect(readable(form)).toMatch(/wallet/i);
-    expect(form).toContain('href="/settings"');
+    expect(form).toMatch(/<button[^>]*\bdisabled\b[^>]*>Publish/);
+    expect(readable(importAreaOf(screen.html))).toMatch(/wallet/i);
+    expect(importAreaOf(screen.html)).toContain('href="/settings"');
   });
 
   it("says nothing about a wallet on the shop screen once one is set", async () => {
-    const running = await started({ channel: "test" });
+    const running = await started({
+      channel: "test",
+      catalogue: async () => ({ ok: true, products: [aProduct()] }),
+    });
     await connected(running);
 
     const screen = await running.get("/woocommerce");
@@ -1924,7 +2099,7 @@ describe("importing the catalogue", () => {
     ).not.toBeNull();
     expect(screen.html).not.toContain('data-reason="no_payout_wallet"');
     const form = importFormOf(screen.html);
-    expect(form).toMatch(/<button(?![^>]*\bdisabled\b)[^>]*>Import products</);
+    expect(form).toMatch(/<button(?![^>]*\bdisabled\b)[^>]*>Publish/);
     expect(readable(form)).not.toMatch(/set.*payout wallet/i);
   });
 
@@ -1959,184 +2134,6 @@ describe("importing the catalogue", () => {
     expect(imported.status).toBe(504);
     expect(readable(imported.html)).toContain("We don't know if this was done");
     expect(running.read).toEqual([]);
-  });
-
-  /**
-   * The real product check against an in-process shop that stores each `wc/v3`
-   * price as typed, with the given number of decimals.
-   */
-  const shopStoring =
-    (typed: Readonly<Record<string, string>>, decimals = "2"): WooRequest =>
-    async (url) => {
-      const path = new URL(url).pathname;
-      if (path === "/protected/guide.txt") return new Response(null, { status: 403 });
-      const setting = /\/settings\/\w+\/(\w+)$/.exec(path)?.[1];
-      if (setting !== undefined) {
-        const safe: Readonly<Record<string, string>> = {
-          woocommerce_currency: "USD",
-          woocommerce_calc_taxes: "no",
-          woocommerce_file_download_method: "force",
-          woocommerce_downloads_require_login: "no",
-          woocommerce_downloads_grant_access_after_payment: "yes",
-          woocommerce_downloads_redirect_fallback_allowed: "no",
-          woocommerce_price_num_decimals: decimals,
-        };
-        return Response.json({ id: setting, value: safe[setting] });
-      }
-      const id = /\/products\/(\d+)$/.exec(path)?.[1] ?? "";
-      return Response.json({
-        id: Number(id),
-        type: "simple",
-        status: "publish",
-        purchasable: true,
-        stock_status: "instock",
-        manage_stock: false,
-        sold_individually: false,
-        virtual: true,
-        downloadable: true,
-        download_limit: -1,
-        download_expiry: -1,
-        price: typed[id],
-        downloads: [{ id: "dl_guide", name: "Guide", file: `${SHOP}/protected/guide.txt` }],
-      });
-    };
-
-  /**
-   * Each product left in the shop by its number in the shop, with the reason
-   * given, whether the shop can put it right or the connector does not sell it.
-   */
-  const leftInTheShop = (html: string): Record<string, string> =>
-    Object.fromEntries(
-      [
-        ...html.matchAll(
-          /<ul[^>]*aria-label="(?:To fix|Not supported)"[^>]*>([\s\S]*?)<\/section>/g,
-        ),
-      ]
-        .flatMap(([, list = ""]) => [
-          ...list.matchAll(/<li class="list-row[^"]*">([\s\S]*?)<\/li>/g),
-        ])
-        .map((item) => readable(item[1] ?? ""))
-        .flatMap((line) => {
-          const found = /^(.*?) Product (\d+) in your shop (.*)$/.exec(line);
-          return found === null ? [] : [[found[2], found[3]]];
-        }),
-    );
-
-  it("imports a price typed without cents, or with one decimal, at the amount the shop charges", async () => {
-    // `wc/v3` says "25" or "19.9" where the Store API says 2500 or 1990 cents:
-    // the same money, typed this way in ordinary shops.
-    const usd = (cents: string) => ({ price: cents, currency_code: "USD", currency_minor_unit: 2 });
-    const running = await started({
-      catalogue: async () => ({
-        ok: true,
-        products: [
-          aProduct({ id: 11, name: "Whole dollars", prices: usd("2500") }),
-          aProduct({ id: 12, name: "One decimal", prices: usd("1990") }),
-          aProduct({ id: 13, name: "Two decimals", prices: usd("2500") }),
-        ],
-      }),
-      inspectProduct: (keys, item) =>
-        inspectProductInTheShop(keys, item, shopStoring({ 11: "25", 12: "19.9", 13: "25.00" })),
-    });
-    await connected(running);
-
-    const imported = await running.post("/woocommerce/import");
-
-    expect(imported.status).toBe(200);
-    expect(leftInTheShop(imported.html)).toEqual({});
-    const priced = Object.fromEntries(
-      (await cardsOf(running)).map((held) => [held.card.title, held.card.price.amount]),
-    );
-    expect(priced).toEqual({
-      "Whole dollars": "25.00",
-      "One decimal": "19.90",
-      "Two decimals": "25.00",
-    });
-  });
-
-  it("still refuses a public price that differs, and a price it would have to round", async () => {
-    const usd = (cents: string) => ({ price: cents, currency_code: "USD", currency_minor_unit: 2 });
-    const running = await started({
-      catalogue: async () => ({
-        ok: true,
-        products: [
-          aProduct({ id: 11, name: "Changed price", prices: usd("2600") }),
-          aProduct({ id: 12, name: "Fraction of a cent", prices: usd("2500") }),
-        ],
-      }),
-      inspectProduct: (keys, item) =>
-        inspectProductInTheShop(keys, item, shopStoring({ 11: "25", 12: "25.001" })),
-    });
-    await connected(running);
-
-    const imported = await running.post("/woocommerce/import");
-    const left = leftInTheShop(imported.html);
-
-    expect(await cardsOf(running)).toHaveLength(0);
-    expect(left["11"]).toContain("does not match");
-    // Not "does not match": the Store API rounded it to 2500 cents, so the
-    // prices look equal on screen. Nor the decimals setting: the price is what
-    // to change.
-    expect(left["12"]).toContain("25.001");
-    expect(left["12"]).not.toContain("Number of decimals");
-  });
-
-  it("tells a shop set to another number of decimals about the setting, not about a mismatch", async () => {
-    // With Number of decimals at 0, the Store API writes $25 as "25" at scale
-    // 0. The import sells at two decimals and names the setting; retyping
-    // prices would change nothing.
-    const noCents = (whole: string) => ({
-      price: whole,
-      currency_code: "USD",
-      currency_minor_unit: 0,
-    });
-    const running = await started({
-      catalogue: async () => ({
-        ok: true,
-        products: [
-          aProduct({ id: 11, name: "Typed without cents", prices: noCents("25") }),
-          aProduct({ id: 12, name: "Typed with cents", prices: noCents("25") }),
-        ],
-      }),
-      inspectProduct: (keys, item) =>
-        inspectProductInTheShop(keys, item, shopStoring({ 11: "25", 12: "25.00" }, "0")),
-    });
-    await connected(running);
-
-    const imported = await running.post("/woocommerce/import");
-    const left = leftInTheShop(imported.html);
-
-    expect(await cardsOf(running)).toHaveLength(0);
-    expect(left["11"]).toContain("Number of decimals");
-    expect(left["12"]).toContain("Number of decimals");
-  });
-
-  it("names the setting when the catalogue is written at another scale than the setting says", async () => {
-    // The setting reads 2 while the catalogue writes scale 0, as when a plugin
-    // changes the shop's decimals; the refusal is about the decimals, not a
-    // mismatch.
-    const running = await started({
-      catalogue: async () => ({
-        ok: true,
-        products: [
-          aProduct({
-            id: 11,
-            name: "Written without cents",
-            prices: { price: "25", currency_code: "USD", currency_minor_unit: 0 },
-          }),
-        ],
-      }),
-      inspectProduct: (keys, item) =>
-        inspectProductInTheShop(keys, item, shopStoring({ 11: "25" }, "2")),
-    });
-    await connected(running);
-
-    const imported = await running.post("/woocommerce/import");
-    const left = leftInTheShop(imported.html);
-
-    expect(await cardsOf(running)).toHaveLength(0);
-    expect(left["11"]).toContain("Number of decimals");
-    expect(left["11"]).not.toContain("does not match");
   });
 
   describe("agrees with the publish door about what the merchant lacks", () => {
@@ -2176,7 +2173,7 @@ describe("importing the catalogue", () => {
 
     /** Read the way a merchant reads it: the line under the held button. */
     const lineIn = (html: string): string =>
-      readable(/<p class="quiet"[^>]*>[\s\S]*?<\/p>/.exec(importFormOf(html))?.[0] ?? "");
+      readable(/<p class="quiet"[^>]*>[\s\S]*?<\/p>/.exec(importAreaOf(html))?.[0] ?? "");
 
     /** In the gateway's words for the same things. */
     const named = (line: string): readonly string[] => [
@@ -2209,12 +2206,16 @@ describe("importing the catalogue", () => {
           }
           const door = await theDoorSays(running);
           const beforeCards = await cardsOf(running);
+          running.read.length = 0;
           if (hasWallet) {
             // The fixture took: a wallet saved is a wallet the gateway has.
             expect(door).not.toContain(MERCHANT_FINDINGS.NO_PAYOUT_WALLET);
           }
           const screen = (await running.get("/woocommerce")).html;
-          const pressed = await running.post("/woocommerce/import");
+          const pressed =
+            door.length === 0
+              ? await publishFromPage(running)
+              : await running.post("/woocommerce/import");
           const after = lineIn(pressed.html);
 
           // Before a press the button is held and the line under it names
@@ -2227,10 +2228,11 @@ describe("importing the catalogue", () => {
             expect(named(after)).toStrictEqual(door);
             expect(running.read).toStrictEqual([]);
             expect(await cardsOf(running)).toStrictEqual(beforeCards);
-            expect(importFormOf(pressed.html)).toContain('href="/settings"');
-            expect(readable(importFormOf(pressed.html))).not.toContain("/v0/");
+            expect(importAreaOf(pressed.html)).toContain('href="/settings"');
+            expect(readable(pressed.html)).not.toContain("/v0/");
             expect(readable(pressed.html)).toMatch(/Nothing was imported/i);
           } else {
+            await running.finishJobs();
             const imported = await cardsOf(running);
             expect(imported).toHaveLength(beforeCards.length + 1);
             expect(imported.map((one) => one.card.merchant_item_id)).toContain(
@@ -3014,7 +3016,9 @@ describe("one integration at a time", () => {
     });
     await running.signIn();
     await connectTheShop(running);
-    await running.post("/woocommerce/import");
+    await running.finishJobs();
+    await publishFromPage(running);
+    await running.finishJobs();
     const [imported] = await onSale(running);
     if (imported === undefined) throw new Error("nothing was imported");
     const worker = workUntilStopped(running.harnessed, {
@@ -3240,10 +3244,13 @@ describe("one integration at a time", () => {
     // sales, so the banner says nothing of it. The code's cards go on sale
     // again only when the merchant switches back, which no switch of theirs
     // can do, so they are counted under the list rather than listed.
-    const running = await started();
+    const running = await started({
+      catalogue: async () => ({ ok: true, products: [aProduct()] }),
+    });
     await running.signIn();
     await publishedByTheCode(running);
     await connectTheShop(running);
+    await running.finishJobs();
 
     const html = (await running.get("/products")).html;
 
@@ -3260,12 +3267,6 @@ describe("the analytics of a shop's connection and its imports", () => {
     const pressed = await connectAsDrawn(running, SHOP);
     await running.postJson("/woocommerce/callback", grantedBody(tokenIn(pressed.to ?? "")));
   };
-
-  /** The publication results the gateway recorded, as the analytics team reads them. */
-  const publications = (running: Running) =>
-    running.harnessed.store.recordedAnalytics
-      .map(({ event }) => event)
-      .filter((event) => event.name === "agc_card_publish_result");
 
   const imports = (running: Running) =>
     running
@@ -3319,108 +3320,6 @@ describe("the analytics of a shop's connection and its imports", () => {
     ]);
   });
 
-  it("records one result for an import with its three counts, and a publication result per card it published or was refused", async () => {
-    const running = await started({
-      catalogue: async () => ({
-        ok: true,
-        products: [
-          aProduct({ id: 11 }),
-          aProduct({
-            id: 12,
-            name: "Coffee beans",
-            virtual: false,
-            downloadable: false,
-            downloads: [],
-          }),
-          aProduct({ id: 13, name: "A set of mugs", type: "grouped" }),
-        ],
-      }),
-      inspectProduct: parcelsAndDownloads,
-    });
-    // A prior API card owns this product identifier, so importing it is refused.
-    await running.harnessed.store.publishCard(
-      running.harnessed.merchant.id,
-      {
-        merchant_item_id: merchantItemIdFor(SHOP, "12"),
-        title: "Coffee beans",
-        description: "Coffee beans sold through the merchant's code",
-        price: { amount: "25.00", currency: "USD" },
-        fulfillment: "sync",
-        result: { access_code: { type: "string" } },
-      },
-      running.harnessed.now(),
-    );
-    await connectedFor(running);
-
-    await running.post("/woocommerce/import");
-
-    const merchant = running.harnessed.merchant.id;
-    expect(imports(running)).toStrictEqual([
-      {
-        name: "agc_setup_result",
-        actor: "human",
-        source: "dashboard",
-        refs: { merchant, person: running.accountId },
-        fields: {
-          step: "woo_import",
-          integration: "woocommerce",
-          outcome: "partial",
-          imported_count: 1,
-          failed_count: 1,
-          skipped_count: 1,
-        },
-      },
-    ]);
-    const published = (await running.harnessed.store.cards(merchant)).find(
-      (stored) => stored.integration === "woocommerce",
-    );
-    expect(publications(running)).toStrictEqual([
-      {
-        name: "agc_card_publish_result",
-        actor: "human",
-        source: "dashboard",
-        refs: { merchant, item: published?.id },
-        fields: { integration: "woocommerce", outcome: "completed" },
-      },
-      {
-        name: "agc_card_publish_result",
-        actor: "human",
-        source: "dashboard",
-        refs: { merchant },
-        fields: {
-          integration: "woocommerce",
-          outcome: "blocked",
-          reason_code: "integration_mismatch",
-        },
-      },
-    ]);
-  });
-
-  it("records an import again as a run of its own, with no publication for a card already published", async () => {
-    const running = await started({
-      catalogue: async () => ({ ok: true, products: [aProduct()] }),
-    });
-    await connectedFor(running);
-
-    await running.post("/woocommerce/import");
-    await running.post("/woocommerce/import");
-
-    expect(imports(running).map((event) => event.fields)).toStrictEqual([
-      { ...COMPLETED_IMPORT, imported_count: 1 },
-      { ...COMPLETED_IMPORT, imported_count: 1 },
-    ]);
-    expect(publications(running)).toHaveLength(1);
-  });
-
-  it("records an import of an empty catalogue as completed with nothing imported", async () => {
-    const running = await started();
-    await connectedFor(running);
-
-    await running.post("/woocommerce/import");
-
-    expect(imports(running).map((event) => event.fields)).toStrictEqual([COMPLETED_IMPORT]);
-  });
-
   it("records the missing site before reading any product when filling it failed", async () => {
     const running = await started({
       sellerSite: null,
@@ -3467,29 +3366,9 @@ describe("the analytics of a shop's connection and its imports", () => {
     expect([
       ...reasons,
       ...imports(walletless).map((event) => event.fields.reason_code),
-    ]).toStrictEqual(["no_connection", "catalogue_unavailable", "wallet_missing"]);
+    ]).toStrictEqual(["no_connection", "wallet_missing"]);
     expect(imports(walletless).map((event) => event.fields)).toMatchObject([
       { outcome: "blocked", imported_count: 0, failed_count: 0, skipped_count: 0 },
-    ]);
-  });
-
-  it("records an import cut short by a publication that failed as unknown, since that card may have been published", async () => {
-    const running = await started({
-      catalogue: async () => ({ ok: true, products: [aProduct({ id: 11 }), aProduct({ id: 14 })] }),
-      silent: "publishing fails",
-    });
-    await connectedFor(running);
-
-    await running.post("/woocommerce/import");
-
-    expect(imports(running).map((event) => event.fields)).toStrictEqual([
-      {
-        ...COMPLETED_IMPORT,
-        outcome: "unknown",
-        reason_code: "internal_error",
-        failed_count: 1,
-        skipped_count: 1,
-      },
     ]);
   });
 });
@@ -3537,6 +3416,7 @@ describe("a shop priced in another currency than US dollars", () => {
     const pressed = await connectAsDrawn(running, SHOP);
     expect(pressed.status).toBe(303);
     await running.postJson("/woocommerce/callback", grantedBody(tokenIn(pressed.to ?? "")));
+    await running.finishJobs();
     await running.get("/woocommerce");
   };
 
@@ -3612,18 +3492,38 @@ describe("a shop priced in another currency than US dollars", () => {
   });
 
   describe("on the shop screen", () => {
-    it("asks for the rate in units of the shop's currency per dollar, beside Coinbase's open rate and when it was read", async () => {
+    it("offers a blank seller-chosen IDR rate with a readable Coinbase reference", async () => {
       const running = await started(inRupiah);
       await connectedIn(running);
 
       const screen = await running.get("/woocommerce");
 
-      const said = readable(screen.html);
-      expect(said).toContain("Indonesian Rupiah (IDR)");
-      expect(said).toContain("Nothing is published until you set it");
-      expect(said).toContain("Coinbase 18,035 IDR per US dollar");
-      expect(said).toContain("2026-10-21 14:52:48 UTC");
-      expect(screen.html).toContain('name="rate"');
+      const form = formTo(screen.html, "post", "/woocommerce/rate");
+      expect(form?.fields.get("currency")).toBe("IDR");
+      expect(form?.fields.get("rate")).toBe("");
+
+      const { JSDOM } = createRequire(import.meta.url)("jsdom") as {
+        JSDOM: new (html: string) => { window: { document: Document; close(): void } };
+      };
+      const page = new JSDOM(screen.html);
+      try {
+        const { document } = page.window;
+        const field = document.querySelector<HTMLInputElement>(
+          'form[action="/woocommerce/rate"] input[name="rate"]',
+        );
+        expect(field?.labels?.[0]?.textContent).toContain("IDR per US dollar");
+        expect(field?.required).toBe(true);
+        const reference = (field?.getAttribute("aria-describedby") ?? "")
+          .split(/\s+/)
+          .map((id) => document.getElementById(id))
+          .find((line) => line?.textContent?.includes("Coinbase"));
+        expect(reference?.textContent).toContain("18,035");
+        expect(reference?.textContent).toContain("IDR per US dollar");
+        expect(reference?.hidden).toBe(false);
+        expect(reference?.closest('[hidden], [aria-hidden="true"]')).toBeNull();
+      } finally {
+        page.window.close();
+      }
     });
 
     it("shows a shop priced in US dollars no rate at all", async () => {
@@ -3642,25 +3542,25 @@ describe("a shop priced in another currency than US dollars", () => {
       const running = await started(inRupiah);
       await connectedIn(running);
 
-      const imported = await running.post("/woocommerce/import");
-
+      const checked = JSON.parse((await running.get("/shop-job")).html);
+      expect((await running.post("/woocommerce/import", { checked_job: checked.id })).status).toBe(
+        409,
+      );
+      const result = JSON.parse((await running.get("/shop-job")).html);
+      expect(result).toMatchObject({
+        id: checked.id,
+        kind: "check",
+        status: "stopped",
+        stopCode: "rate_required",
+        published: 0,
+      });
       expect(await pricesOnSale(running)).toEqual([]);
-      expect(readable(imported.html)).toContain("Nothing was imported");
-      expect(imported.html).toContain('name="rate"');
-      expect(
-        running
-          .connectorAnalytics()
-          .filter(
-            (event) => event.name === "agc_setup_result" && event.fields.step === "woo_import",
-          ),
-      ).toMatchObject([
-        { fields: { outcome: "blocked", reason_code: "profile_missing", imported_count: 0 } },
-      ]);
+      expect((await running.get("/woocommerce")).html).toContain('name="rate"');
     });
   });
 
   describe("saving a rate", () => {
-    it("saves a rate near Coinbase's, tells the account's email, and imports the shop at it", async () => {
+    it("saves a rate, queues checking without publication, and publishes only after an explicit press", async () => {
       const running = await started(inRupiah);
       await connectedIn(running);
 
@@ -3673,12 +3573,48 @@ describe("a shop priced in another currency than US dollars", () => {
         reference: { rate: "18035.292596", source: "Coinbase", readAt: COINBASE_READ_AT },
         confirmed: false,
       });
+      expect(JSON.parse((await running.get("/shop-job")).html)).toMatchObject({
+        kind: "check",
+        status: "queued",
+      });
+      expect(await pricesOnSale(running)).toEqual([]);
+      await running.finishJobs();
+      expect(JSON.parse((await running.get("/shop-job")).html)).toMatchObject({
+        kind: "check",
+        status: "completed",
+        ready: 1,
+      });
+      expect(await pricesOnSale(running)).toEqual([]);
+      expect((await publishFromPage(running)).status).toBe(200);
+      await running.finishJobs();
       // Rp 240.000 at 18000 rupiah to the dollar, rounded up to the cent.
       expect(await pricesOnSale(running)).toEqual(["13.34"]);
       const [notice] = rateNotices(running);
       expect(notice?.to).toBe(PERSON);
       expect(notice?.body).toContain("18000 IDR per US dollar");
       expect(notice?.body).toContain("No rate was set before");
+    });
+
+    it("a publication queued from a checked rate cannot publish at a rate changed before it starts", async () => {
+      const running = await started(inRupiah);
+      await connectedIn(running);
+      expect(
+        (await running.post("/woocommerce/rate", { currency: "IDR", rate: "18000" })).status,
+      ).toBe(200);
+      await running.finishJobs();
+      expect((await publishFromPage(running)).status).toBe(200);
+      expect(
+        (await running.post("/woocommerce/rate", { currency: "IDR", rate: "17000" })).status,
+      ).toBe(200);
+      await running.finishJobs();
+      expect(JSON.parse((await running.get("/shop-job")).html)).toMatchObject({
+        kind: "publish",
+        status: "stopped",
+        stopCode: "changed",
+        published: 0,
+        current: false,
+      });
+      expect(await pricesOnSale(running)).toEqual([]);
     });
 
     it("names no address as who entered a rate, and says when the session that saved it signed in, as its notice does", async () => {
@@ -3723,9 +3659,8 @@ describe("a shop priced in another currency than US dollars", () => {
       expect(told).not.toContain(PERSON);
     });
 
-    it("keeps a rate saved while the shop is being imported, and asks for an import once that one ends", async () => {
-      // The import already running may have read the rate before this one was
-      // saved, so publishing at it is left to the next press.
+    it("saves a changed rate while publication runs and leaves the result available for another sync", async () => {
+      let hold = false;
       let release = (): void => undefined;
       const held = new Promise<void>((resolve) => {
         release = resolve;
@@ -3734,31 +3669,54 @@ describe("a shop priced in another currency than US dollars", () => {
       const reading = new Promise<void>((resolve) => {
         reached = resolve;
       });
-      let reads = 0;
       const running = await started({
         ...inRupiah,
-        catalogue: async () => {
-          reads += 1;
-          reached();
-          await held;
-          return { ok: true, products: [rupiahProduct] };
+        inspectProduct: async (keys, item) => {
+          if (hold) {
+            reached();
+            await held;
+          }
+          if (inRupiah.inspectProduct === undefined)
+            throw new Error("missing rupiah product inspection");
+          return inRupiah.inspectProduct(keys, item);
         },
       });
       await connectedIn(running);
-
-      const first = running.post("/woocommerce/import");
+      await running.post("/woocommerce/rate", { currency: "IDR", rate: "18000" });
+      await running.finishJobs();
+      const checked = JSON.parse((await running.get("/shop-job")).html);
+      expect((await publishFromPage(running)).status).toBe(200);
+      hold = true;
+      const working = running.finishJobs();
       await reading;
-      const saved = await running.post("/woocommerce/rate", { currency: "IDR", rate: "18000" });
+      const saved = await running.post("/woocommerce/rate", { currency: "IDR", rate: "17500" });
       release();
-      await first;
-
-      expect(saved.status).toBe(409);
+      await working;
+      expect(saved.status).toBe(200);
       expect(await running.shops.currentRate(running.accountId, SHOP, "IDR")).toMatchObject({
-        rate: "18000",
+        rate: "17500",
       });
-      expect(readable(saved.html)).toContain("already running");
-      expect(readable(saved.html)).toContain("publish at this rate");
-      expect(reads).toBe(1);
+      const result = JSON.parse((await running.get("/shop-job")).html);
+      expect(result).toMatchObject({
+        kind: "publish",
+        status: "stopped",
+        stopCode: "changed",
+        current: false,
+      });
+      expect(await pricesOnSale(running)).toEqual([]);
+      expect((await running.post("/woocommerce/import", { checked_job: checked.id })).status).toBe(
+        409,
+      );
+      const page = await running.get("/woocommerce");
+      const check = formsIn(page.html).find((form) => form.action.endsWith("/woocommerce/check"));
+      if (!check) throw new Error("the shop screen draws no Check form");
+      expect(
+        (await running.post("/woocommerce/check", Object.fromEntries(check.fields))).status,
+      ).toBe(200);
+      await running.finishJobs();
+      expect((await publishFromPage(running)).status).toBe(200);
+      await running.finishJobs();
+      expect(await pricesOnSale(running)).toEqual(["13.72"]);
     });
 
     it("tells, in the notice, when the session that entered the rate signed in, and names no address as who did", async () => {
@@ -3792,6 +3750,10 @@ describe("a shop priced in another currency than US dollars", () => {
       await running.post("/woocommerce/rate", { currency: "IDR", rate: "17500" });
 
       expect(rateNotices(running).at(-1)?.body).toContain("The previous rate was 18000 IDR");
+      expect(await pricesOnSale(running)).toEqual([]);
+      await running.finishJobs();
+      await publishFromPage(running);
+      await running.finishJobs();
       expect(await pricesOnSale(running)).toEqual(["13.72"]);
     });
 
@@ -3992,15 +3954,21 @@ describe("a shop priced in another currency than US dollars", () => {
       expect(await running.shops.currentRate(running.accountId, SHOP, "IDR")).toBeNull();
     });
 
-    it("says the rate was saved when the import it runs finds the shop now sells in another currency", async () => {
+    it("keeps the saved rate when its later check finds the shop now sells in another currency", async () => {
+      let changed = false;
       const running = await started({
         ...inRupiah,
-        catalogue: async () => ({
-          ok: true,
-          products: [
-            aProduct({ prices: { price: "1450", currency_code: "EUR", currency_minor_unit: 2 } }),
-          ],
-        }),
+        catalogue: async () =>
+          changed
+            ? {
+                ok: true,
+                products: [
+                  aProduct({
+                    prices: { price: "1450", currency_code: "EUR", currency_minor_unit: 2 },
+                  }),
+                ],
+              }
+            : { ok: true, products: [rupiahProduct] },
         inspectProduct: async (_keys, merchantItemId) => ({
           ok: true,
           product: {
@@ -4018,10 +3986,17 @@ describe("a shop priced in another currency than US dollars", () => {
 
       const saved = await running.post("/woocommerce/rate", { currency: "IDR", rate: "18000" });
 
+      changed = true;
+      await running.finishJobs();
       const said = readable(saved.html);
       expect(said).toContain("Rate saved: 18,000 IDR per US dollar");
       expect(saved.html).toContain("18,000\u00a0IDR per US dollar");
-      expect(said).toContain("your shop sells in EUR");
+      expect((await running.shops.connectionOf(running.accountId))?.currency?.code).toBe("EUR");
+      expect(JSON.parse((await running.get("/shop-job")).html)).toMatchObject({
+        status: "stopped",
+        stopCode: "rate_required",
+        currency: "EUR",
+      });
       expect(await pricesOnSale(running)).toEqual([]);
     });
 
@@ -4042,7 +4017,9 @@ describe("a shop priced in another currency than US dollars", () => {
 
 describe("the WooCommerce path on Products", () => {
   it("opens the existing shop form directly and keeps Products active through Connect and callback return", async () => {
-    const running = await started();
+    const running = await started({
+      catalogue: async () => ({ ok: true, products: [aProduct()] }),
+    });
     await running.signIn();
     await running.identity.choosePlatform(running.accountId, "woocommerce");
     expect((await running.post("/products?woo=constructor")).status).toBe(404);
@@ -4075,9 +4052,21 @@ describe("the WooCommerce path on Products", () => {
     expect(returned.to).toBe("/products?from=shop");
     const connected = await running.get(returned.to ?? "/products");
     expect(connected.html).toMatch(/<span aria-current="page">Products<\/span>/);
-    expect(formTo(connected.html, "post", "/products?woo=import")).toBeDefined();
+    expect(formTo(connected.html, "post", "/products?woo=import")).toBeUndefined();
+    expect(JSON.parse((await running.get("/shop-job")).html)).toMatchObject({
+      kind: "check",
+      status: "queued",
+    });
+    await running.finishJobs();
+    const checkedShop = await running.get(returned.to ?? "/products");
+    expect(formTo(checkedShop.html, "post", "/products?woo=import")).toBeDefined();
     const integrations = await running.get("/woocommerce");
     expect(integrations.html).toMatch(/<span aria-current="page">Integrations<\/span>/);
     expect(formTo(integrations.html, "post", "/woocommerce/import")).toBeDefined();
+    expect((await publishFromPage(running, "/products")).status).toBe(200);
+    expect(JSON.parse((await running.get("/shop-job")).html)).toMatchObject({
+      kind: "publish",
+      status: "queued",
+    });
   });
 });

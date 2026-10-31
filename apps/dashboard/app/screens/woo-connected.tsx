@@ -1,19 +1,20 @@
 import { Button, Field } from "@agentify/ui";
-import { withUnit } from "@agentify/ui/units";
-import type { ReactNode } from "react";
+import { lazy, Suspense, useContext } from "react";
+import type { ShopJobView } from "../../src/shop-job-view.js";
 import type { ConnectionView, ImportHeld, RateView, WooShopView } from "../../src/woo-views.js";
-import type { Word as WordView } from "../../src/words.js";
 import { Fact, Facts } from "../components/list.js";
 import { Moment } from "../components/moment.js";
 import { Word } from "../components/word.js";
-import { ShopForm } from "./shop-context.js";
-import { codeProducts, comeBack, GUIDE, offSaleOnKeys, PanelHead, Problem } from "./woo-panels.js";
+import { PanelHead } from "../display/panel-head.js";
+import { ProductsShop, ShopForm } from "./shop-context.js";
 import styles from "./woocommerce.module.css";
 
-const CONNECTED: WordView = { text: "Connected", tone: "ok" };
-
-/** Every purchase is refused before payment, so the connection is not a success to show green. */
-const NO_READ_WRITE: WordView = { text: "No Read/Write access", tone: "warn" };
+const ShopJobPanel = lazy(() =>
+  import("./shop-job.js").then(({ ShopJobPanel }) => ({ default: ShopJobPanel })),
+);
+const WooProblem = lazy(() =>
+  import("./woo-problem.js").then(({ WooProblem }) => ({ default: WooProblem })),
+);
 
 /**
  * The connection's state, and beside it the small action that ends it. One
@@ -24,15 +25,23 @@ function Status({
   connection,
   view,
   base,
-}: Readonly<{ connection: ConnectionView; view: WooShopView; base: string }>) {
+  job,
+}: Readonly<{
+  connection: ConnectionView;
+  view: WooShopView;
+  base: string;
+  job: ShopJobView | null;
+}>) {
   return (
     <div className={styles.status}>
       <p className={styles.state}>
-        <Word word={connection.access !== "read_write" ? NO_READ_WRITE : CONNECTED} />
+        <Word word={job?.words.connectionState ?? connection.state} />
         <span className={styles.shop}>{connection.shop}</span>
-        <span className={styles.since}>
-          since <Moment at={connection.connectedAt} />
-        </span>
+        {job?.words.connectionState ? null : (
+          <span className={styles.since}>
+            since <Moment at={connection.connectedAt} />
+          </span>
+        )}
       </p>
       <details className={styles.disconnect} open={view.leaving !== null}>
         <summary>
@@ -40,13 +49,12 @@ function Status({
           <span className={styles.opened}>Cancel</span>
         </summary>
         <div className={styles.confirm}>
-          <Problem said={view.leaving} base={base} />
-          <p>
-            Disconnect {connection.shop}?{" "}
-            {connection.onCode
-              ? "Agentify disconnects it; its products are already off sale."
-              : `Its products go off sale.${view.codeProducts === 0 ? "" : ` ${comeBack(view.codeProducts)}`} A late parcel marked Completed after that no longer counts as shipped.`}
-          </p>
+          {view.leaving === null ? null : (
+            <Suspense fallback={<p className="problem">{view.leaving.says}</p>}>
+              <WooProblem said={view.leaving} base={base} />
+            </Suspense>
+          )}
+          <p>{connection.disconnectPrompt}</p>
           <ShopForm action="/woocommerce/disconnect" className={styles.confirmPress}>
             {(pending) => (
               <>
@@ -63,119 +71,29 @@ function Status({
   );
 }
 
-function ReadOnlyPanel({
-  connection,
-  view,
-  base,
-}: Readonly<{ connection: ConnectionView; view: WooShopView; base: string }>) {
-  return (
-    <section className="settings-panel">
-      <PanelHead
-        title="Approve read and write access"
-        said={<Problem said={view.problem} base={base} />}
-      >
-        <p>
-          {connection.access === "read"
-            ? "Your shop gave Agentify read-only access, so Agentify can't create orders there and agents can't buy. Connect again and approve Read/Write access."
-            : "Your shop didn't grant Read/Write access, so Agentify can't create orders there and agents can't buy. Connect again and approve Read/Write access."}
-          {connection.onCode && view.codeProducts !== 0
-            ? ` When the shop connects, ${offSaleOnKeys(view.codeProducts)}.`
-            : null}
-        </p>
-      </PanelHead>
-      <ShopForm action="/woocommerce/connect" className="issue">
-        {(pending) => (
-          <>
-            <input
-              type="hidden"
-              name="checked_shop"
-              value={connection.shopUrl}
-              autoComplete="off"
-            />
-            <input type="hidden" name="shop_url" value={connection.shopUrl} autoComplete="off" />
-            <Button pending={pending}>Connect again</Button>
-          </>
-        )}
-      </ShopForm>
-    </section>
-  );
-}
+const ReadOnlyPanel = lazy(() =>
+  import("./woo-read-only.js").then(({ ReadOnlyPanel }) => ({ default: ReadOnlyPanel })),
+);
 
-function SwitchPanel({
-  connection,
-  view,
-  base,
-}: Readonly<{ connection: ConnectionView; view: WooShopView; base: string }>) {
-  return (
-    <section className="settings-panel settings-wide">
-      <PanelHead
-        title="Sell through this shop"
-        said={<Problem said={connection.switching} base={base} />}
-      >
-        <p>
-          This shop's products are off sale while you sell through your own code.
-          {view.codeProducts === 0
-            ? null
-            : ` Switching takes ${codeProducts(view.codeProducts)} off sale until you disconnect the shop.`}
-        </p>
-      </PanelHead>
-      <ShopForm action="/woocommerce/switch" className="issue">
-        {(pending) => <Button pending={pending}>Sell through this shop</Button>}
-      </ShopForm>
-    </section>
-  );
-}
+const SwitchPanel = lazy(() =>
+  import("./woo-read-only.js").then(({ SwitchPanel }) => ({ default: SwitchPanel })),
+);
+const SitePanel = lazy(() =>
+  import("./woo-read-only.js").then(({ SitePanel }) => ({ default: SitePanel })),
+);
 
 /** Why Import is held, in a line under it, with the page that puts it right. */
 function HeldLine({ held, base }: Readonly<{ held: ImportHeld; base: string }>) {
-  switch (held.kind) {
-    case "site":
-      return <p className="quiet">Set your shop's site first.</p>;
-    case "settings":
-      return (
-        <p className="quiet">
-          Set your {held.what} in <a href={`${base}/settings`}>Settings</a> first.
-        </p>
-      );
-    case "rate":
-      return <p className="quiet">Set the exchange rate for {held.currency} first.</p>;
-    case "unlisted":
-      return (
-        <p className="quiet">
-          A shop priced in {held.currency} can't sell through Agentify, because Coinbase gives no
-          rate for it.
-        </p>
-      );
-  }
-}
-
-function ImportPanel({
-  connection,
-  keysArrived,
-  wide,
-  base,
-}: Readonly<{ connection: ConnectionView; keysArrived: boolean; wide: boolean; base: string }>) {
   return (
-    <section className={wide ? "settings-panel settings-wide" : "settings-panel"}>
-      <PanelHead title="Import products" said={<Problem said={connection.importing} base={base} />}>
-        <p>
-          {keysArrived
-            ? "Your shop is connected. Import your products to start selling."
-            : "Imports every product the connector supports. Run it again after you change products in your shop."}{" "}
-          <a href={`${GUIDE}#what-can-be-imported`}>What can be imported</a>
-        </p>
-      </PanelHead>
-      <ShopForm action="/woocommerce/import" className="issue">
-        {(pending) => (
-          <>
-            <Button pending={pending} disabled={connection.held !== null}>
-              Import products
-            </Button>
-            {connection.held === null ? null : <HeldLine held={connection.held} base={base} />}
-          </>
-        )}
-      </ShopForm>
-    </section>
+    <p className="quiet">
+      {held.says}
+      {held.kind === "settings" ? (
+        <>
+          {" "}
+          <a href={`${base}/settings`}>Settings</a> first.
+        </>
+      ) : null}
+    </p>
   );
 }
 
@@ -195,80 +113,72 @@ function RatePanel({ rate }: Readonly<{ rate: RateView }>) {
             {rate.saved === null ? null : <p className={styles.saved}>{rate.saved}</p>}
             {rate.refused === null ? null : <p className="problem">{rate.refused}</p>}
             {reference.kind === "unlisted" ? (
-              <p className="problem">
-                Coinbase gives no rate for {rate.currency}, so no rate can be saved for this shop.
-              </p>
+              <p className="problem">{rate.words.unlisted}</p>
             ) : null}
           </>
         }
       >
-        <p>
-          Your shop sells in {rate.named}. Agents pay in US dollars at your rate.
-          {current === null ? " Nothing is published until you set it." : null}
-        </p>
+        <p>{rate.words.explanation}</p>
       </PanelHead>
-      {current === null && reference.kind !== "read" ? null : (
+      {current === null ? null : (
         <div className={styles.facts}>
           <Facts>
-            {current === null ? null : (
-              <>
-                <Fact label="Your rate">
-                  <span className={current.far ? styles.far : undefined}>
-                    {withUnit(current.rate, rate.currency)} per US dollar
-                    {current.gap === null ? null : `, ${current.gap} Coinbase's`}
-                  </span>
-                </Fact>
-                <Fact label="Saved">
-                  <Moment at={current.setAt} />
-                  {current.sessionSignedInAt === null ? (
-                    ". When its session signed in isn't recorded."
-                  ) : (
-                    <>
-                      , from a session that signed in <Moment at={current.sessionSignedInAt} />.
-                      That time doesn't prove who saved it.
-                    </>
-                  )}
-                </Fact>
-              </>
-            )}
+            <Fact label="Your rate">
+              <span className={current.far ? styles.far : undefined}>{rate.words.yourRate}</span>
+            </Fact>
+            <Fact label="Saved">
+              <Moment at={current.setAt} />
+              {current.sessionSignedInAt === null ? (
+                rate.words.noSession
+              ) : (
+                <>
+                  {rate.words.sessionLead}
+                  <Moment at={current.sessionSignedInAt} />
+                  {rate.words.sessionTail}
+                </>
+              )}
+            </Fact>
             {reference.kind === "read" ? (
               <Fact label="Coinbase">
-                {withUnit(reference.rate, rate.currency)} per US dollar, read{" "}
-                <Moment at={reference.readAt} />
+                {rate.words.referenceRate} <Moment at={reference.readAt} />
               </Fact>
             ) : reference.kind === "unread" ? (
-              <Fact label="Coinbase">
-                Couldn't be read just now, so a rate saved now isn't compared with anything.
-              </Fact>
+              <Fact label="Coinbase">{rate.words.unavailable}</Fact>
             ) : null}
           </Facts>
         </div>
       )}
-      <ShopForm
-        action="/woocommerce/rate"
-        className={rate.again === null ? `issue ${styles.row}` : styles.again}
-      >
-        {(pending) => (
-          <>
-            <input type="hidden" name="currency" value={rate.currency} autoComplete="off" />
-            <Field
-              label={`${rate.currency} per US dollar`}
-              name="rate"
-              inputMode="decimal"
-              defaultValue={rate.typed === "" ? (current?.raw ?? "") : rate.typed}
-              {...(rate.problem === null ? {} : { error: rate.problem })}
-              required
-            />
-            {rate.again === null ? null : (
-              <>
-                <p className={styles.check}>{rate.again}</p>
-                <Field label="Type the rate again" name="again" inputMode="decimal" required />
-              </>
-            )}
-            <Button pending={pending}>Save rate</Button>
-          </>
-        )}
-      </ShopForm>
+      {current !== null && reference.kind === "not_requested" ? <p>{rate.words.pending}</p> : null}
+      {reference.kind === "unlisted" ? null : (
+        <ShopForm
+          action="/woocommerce/rate"
+          className={rate.again === null ? `issue ${styles.row}` : styles.again}
+        >
+          {(pending) => (
+            <>
+              <input type="hidden" name="currency" value={rate.currency} autoComplete="off" />
+              <Field
+                label={rate.words.field}
+                name="rate"
+                inputMode="decimal"
+                defaultValue={rate.typed === "" ? (current?.raw ?? "") : rate.typed}
+                {...(rate.problem === null ? {} : { error: rate.problem })}
+                {...(current === null ? { hint: rate.words.hint } : {})}
+                required
+              />
+              {rate.again === null ? null : (
+                <>
+                  <p className={styles.check}>{rate.again}</p>
+                  <Field label="Type the rate again" name="again" inputMode="decimal" required />
+                </>
+              )}
+              <Button pending={pending} variant={current === null ? "primary" : "secondary"}>
+                Save rate
+              </Button>
+            </>
+          )}
+        </ShopForm>
+      )}
     </section>
   );
 }
@@ -278,67 +188,107 @@ export function Connected({
   view,
   base,
 }: Readonly<{ connection: ConnectionView; view: WooShopView; base: string }>) {
+  const onboarding = useContext(ProductsShop);
   const { rate } = connection;
   const site = connection.site;
   const needsSite = site !== null && site.kind !== "saved";
-  const rateFirst = rate !== null && rate.current === null;
-  // Selling through the code, nothing can be imported; the rate is the
-  // shop's setting all the same, kept for when the merchant switches.
-  const panels: ReactNode[] = connection.onCode
-    ? [
-        <SwitchPanel key="switch" connection={connection} view={view} base={base} />,
-        ...(rate === null ? [] : [<RatePanel key="rate" rate={rate} />]),
-      ]
-    : [
-        ...(rateFirst ? [<RatePanel key="rate" rate={rate} />] : []),
-        <ImportPanel
-          key="import"
-          connection={connection}
-          keysArrived={view.keysArrived}
-          wide={rate === null && connection.access === "read_write"}
-          base={base}
-        />,
-        ...(rate !== null && !rateFirst ? [<RatePanel key="rate" rate={rate} />] : []),
-      ];
-  return (
+  const header = (job: ShopJobView | null) => (
     <>
-      <Status connection={connection} view={view} base={base} />
-      {site === null ? null : site.kind === "saved" ? (
+      <Status connection={connection} view={view} base={base} job={job} />
+      {connection.access !== "read_write" || site === null ? null : site.kind === "saved" ? (
         <p className={styles.site}>
           Buyers' agents will see {site.origin} as your shop's site.{" "}
           <a href={`${base}/settings`}>Change it in Settings</a>.
         </p>
-      ) : site.kind === "invalid" ? (
-        <div className={styles.site}>
-          <p>
-            {site.origin} can't be your shop's site
-            {new URL(site.origin).port !== ""
-              ? " because it has a port."
-              : ". Set an https domain without a port in Settings."}
-          </p>
-          <a className="button button-primary" href={`${base}/settings`}>
-            Set your site in Settings
-          </a>
-        </div>
       ) : (
-        <div className={styles.site}>
-          {site.problem === null ? null : (
-            <p className="problem" role="alert">
-              {site.problem}
-            </p>
-          )}
-          <ShopForm action="/woocommerce/site" className="issue">
-            {(pending) => <Button pending={pending}>Use {site.origin} as your shop's site</Button>}
-          </ShopForm>
-        </div>
+        <Suspense fallback={null}>
+          <SitePanel site={site} base={base} />
+        </Suspense>
       )}
-      {needsSite ? null : (
-        <div className="settings-grid">
-          {connection.access !== "read_write" ? (
-            <ReadOnlyPanel connection={connection} view={view} base={base} />
-          ) : null}
-          {panels}
-        </div>
+      {connection.access === "read_write" && !connection.onCode && connection.importing !== null ? (
+        <Suspense fallback={<p className="problem">{connection.importing.says}</p>}>
+          <WooProblem said={connection.importing} base={base} />
+        </Suspense>
+      ) : null}
+    </>
+  );
+  return (
+    <>
+      {connection.access === "read_write" && !connection.onCode ? (
+        <Suspense fallback={null}>
+          <ShopJobPanel
+            header={header}
+            initial={view.job ?? null}
+            secondaryCheck={needsSite}
+            endpoint={`${base}/shop-job`}
+            // Products enters this onboarding branch only for an empty unfiltered catalogue.
+            noProducts={onboarding}
+            checkAction={onboarding ? "/products?woo=check" : "/woocommerce/check"}
+            reconnect={
+              <ShopForm action="/woocommerce/connect">
+                {(pending) => (
+                  <>
+                    <input
+                      type="hidden"
+                      name="checked_shop"
+                      value={connection.shopUrl}
+                      autoComplete="off"
+                    />
+                    <input
+                      type="hidden"
+                      name="shop_url"
+                      value={connection.shopUrl}
+                      autoComplete="off"
+                    />
+                    <Button pending={pending}>Connect again</Button>
+                  </>
+                )}
+              </ShopForm>
+            }
+            rate={(job) =>
+              rate !== null || job.initialRate === null ? null : (
+                <RatePanel rate={job.initialRate} />
+              )
+            }
+            publish={(job) =>
+              job.ready > 0 && !needsSite ? (
+                <>
+                  <ShopForm action="/woocommerce/import">
+                    {(pending) => (
+                      <>
+                        <input type="hidden" name="checked_job" value={job.id} />
+                        <Button pending={pending} disabled={connection.held !== null}>
+                          {job.words.publish}
+                        </Button>
+                      </>
+                    )}
+                  </ShopForm>
+                  {connection.held === null ? null : (
+                    <HeldLine held={connection.held} base={base} />
+                  )}
+                </>
+              ) : null
+            }
+          />
+        </Suspense>
+      ) : (
+        header(null)
+      )}
+      {connection.access !== "read_write" ? (
+        <Suspense fallback={<p role="status">Loading connection settings…</p>}>
+          <ReadOnlyPanel connection={connection} view={view} base={base} />
+        </Suspense>
+      ) : connection.onCode ? (
+        needsSite ? null : (
+          <div className="settings-grid">
+            <Suspense fallback={null}>
+              <SwitchPanel connection={connection} view={view} base={base} />
+            </Suspense>
+            {rate === null ? null : <RatePanel rate={rate} />}
+          </div>
+        )
+      ) : rate === null ? null : (
+        <RatePanel rate={rate} />
       )}
     </>
   );

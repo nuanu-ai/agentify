@@ -1,3 +1,5 @@
+import { presentShopJob } from "../src/shop-job-presentation.js";
+import type { ShopJobState } from "../src/shop-job-view.js";
 /**
  * The dashboard's screens in the states a person can meet them in, for the
  * gallery (`pnpm gallery`). Each state is drawn through the dashboard's own
@@ -101,10 +103,9 @@ import {
   type ShopAnswer,
   type ShopRead,
   type ShopState,
-  wooImportView,
   wooShopView,
 } from "../src/woo-views.js";
-import { money, SITE_IN_SETTINGS } from "../src/words.js";
+import { money } from "../src/words.js";
 import { ADMIN_STATES, frameIn } from "./admin-gallery/index.js";
 import type { Chrome, Gated, Trouble } from "./answer.js";
 import { shortened } from "./display/copy.js";
@@ -568,7 +569,29 @@ const shopRead = (state: ShopState, more: Partial<ShopRead> = {}): ShopRead => (
   ...more,
 });
 
-const shopOn = (read: ShopRead, answer: ShopAnswer = {}) => wooShopView(read, answer);
+const shopOn = (read: ShopRead, answer: ShopAnswer = {}): ReturnType<typeof wooShopView> => {
+  const view = wooShopView(read, answer);
+  if (view.connection?.access !== "read_write" || view.connection.onCode) return view;
+  const rate = view.connection.rate;
+  return {
+    ...view,
+    job: presentShopJob({
+      ...JOB_RESULT,
+      shopHost: view.connection.shop,
+      ...(rate === null ? {} : { currency: rate.currency }),
+      ...(rate?.current === null
+        ? {
+            status: "stopped" as const,
+            stopCode: "rate_required" as const,
+            read: 0,
+            total: null,
+            ready: 0,
+            groups: [],
+          }
+        : {}),
+    }),
+  };
+};
 
 const CONNECTED: ShopState = {
   kind: "connected",
@@ -1399,7 +1422,7 @@ const CARDS: GalleryState[] = [
         "The menu holds what the header's row leaves out, the door into the operator's workspace with it.",
     }),
     scene: {
-      steps: [{ shows: "Products", does: openTheMenu }],
+      steps: [{ shows: PRODUCTS.number.title, does: openTheMenu }],
       shows: "Admin",
     },
   },
@@ -1426,7 +1449,7 @@ const CARDS: GalleryState[] = [
       "live",
     ),
     scene: {
-      steps: [{ shows: "Products", does: openTheMenu }],
+      steps: [{ shows: PRODUCTS.number.title, does: openTheMenu }],
       shows: "Sign out",
     },
   },
@@ -1442,7 +1465,7 @@ const CARDS: GalleryState[] = [
       "live",
     ),
     scene: {
-      steps: [{ shows: WHO, does: openTheAccount }],
+      steps: [{ shows: PRODUCTS.number.title, does: openTheAccount }],
       shows: "Sign out",
     },
   },
@@ -2562,7 +2585,7 @@ const shop = (
 const shopPress = (
   told: Told,
   press: "connect" | "import" | "rate" | "switch" | "disconnect",
-  view: ReturnType<typeof wooShopView> | ReturnType<typeof wooImportView>,
+  view: ReturnType<typeof wooShopView>,
   account: ShopAccount = {},
 ) =>
   at(told, {
@@ -2572,7 +2595,409 @@ const shopPress = (
     pressed: { [`routes/woocommerce-${press}`]: view },
   });
 
+/** The same anonymized WooCommerce examples used by the product-result gallery. */
+const JOB_READY = [
+  "Coffee beans, one kilogram",
+  "Ubud Cooking Class Recipe Book: 40 Balinese Dishes from Market to Table (PDF)",
+];
+const JOB_RESULT: ShopJobState = {
+  id: "shop-job-gallery",
+  shopHost: "shop.example.com",
+  revision: 12,
+  kind: "check",
+  status: "completed",
+  read: 6,
+  total: 6,
+  ready: 2,
+  published: 0,
+  excluded: 0,
+  publicationUnknown: null,
+  currency: "USD",
+  when: momentView("2026-10-30T12:09:00Z"),
+  why: null,
+  stopCode: null,
+  current: true,
+  groups: [
+    {
+      group: "ready",
+      title: "Ready",
+      count: 2,
+      reasons: [
+        {
+          why: "",
+          code: "ready",
+          count: 2,
+          rows: JOB_READY.map((title) => ({ id: imported(title).id, title, why: "" })),
+          more: null,
+        },
+      ],
+    },
+    {
+      group: "fix",
+      title: "To fix in your shop",
+      count: 1,
+      reasons: [
+        {
+          why: refusedByTheDoor(
+            "Handwoven Endek Table Runner, Klungkung Weave, Ceremonial Red and Gold, 35 × 200 cm",
+          ).problems.join(" "),
+          code: "card",
+          count: 1,
+          rows: [
+            {
+              id: "17",
+              title:
+                "Handwoven Endek Table Runner, Klungkung Weave, Ceremonial Red and Gold, 35 × 200 cm",
+              why: "",
+            },
+          ],
+          more: null,
+        },
+      ],
+    },
+    {
+      group: "not_selling",
+      title: "Not for sale in your shop",
+      count: 1,
+      reasons: [
+        {
+          why: "",
+          code: "withdrawn",
+          count: 1,
+          rows: [
+            {
+              id: "15",
+              title:
+                "Batik Sarong, Hand-Stamped Cap Technique, Indigo on Cream Rayon (115 × 180 cm)",
+              why: "Not published in your shop.",
+            },
+          ],
+          more: null,
+        },
+      ],
+    },
+    {
+      group: "unsupported",
+      title: "Not supported yet",
+      count: 2,
+      reasons: [
+        {
+          why: "Has options such as size or colour",
+          code: "variants",
+          count: 1,
+          rows: [{ id: "13", title: "Monthly membership", why: "" }],
+          more: null,
+        },
+        {
+          why: "Uses stock tracking or sells one at a time",
+          code: "stock_tracking",
+          count: 1,
+          rows: [{ id: "14", title: "Canvas tote bag", why: "" }],
+          more: null,
+        },
+      ],
+    },
+  ],
+};
+const JOB_UNANSWERED: ShopJobState["groups"][number] = {
+  group: "unanswered",
+  title: "No answer from your shop",
+  count: 1,
+  reasons: [
+    {
+      why: "",
+      code: "shop_check",
+      count: 1,
+      rows: [
+        {
+          id: "11",
+          title: "Coffee & Brunch Gift Card",
+          why: "Your shop did not answer this product's check.",
+        },
+      ],
+      more: null,
+    },
+  ],
+};
+const JOB_PUBLISHED: ShopJobState = {
+  ...JOB_RESULT,
+  kind: "publish",
+  published: 1,
+  excluded: 1,
+  groups: JOB_RESULT.groups.map((group) =>
+    group.group === "ready"
+      ? {
+          ...group,
+          title: "On sale",
+          count: 1,
+          reasons: group.reasons.map((reason) => ({
+            ...reason,
+            count: 1,
+            rows: reason.rows.slice(0, 1),
+          })),
+        }
+      : group,
+  ),
+};
+const JOB_STATES: readonly [string, string, Partial<ShopJobState>][] = [
+  [
+    "running",
+    "The server is checking products while the merchant may leave.",
+    { status: "running", read: 1234, total: 1990, groups: [] },
+  ],
+  [
+    "running-total-unknown",
+    "The shop has not supplied a total while the check runs.",
+    { status: "running", read: 2, total: null, groups: [] },
+  ],
+  ["checked", "The stored check has ready, fixable, unavailable and unsupported products.", {}],
+  [
+    "unanswered",
+    "Every product was listed but one product check has no answer.",
+    {
+      status: "completed",
+      stopCode: null,
+      read: 7,
+      total: 7,
+      groups: [...JOB_RESULT.groups, JOB_UNANSWERED],
+    },
+  ],
+  ["empty", "A complete read confirms an empty shop.", { read: 0, total: 0, ready: 0, groups: [] }],
+  [
+    "stopped",
+    "A stopped read retains known rows and distinguishes the unknown remainder.",
+    { status: "stopped", stopCode: "interrupted", total: 20 },
+  ],
+  [
+    "rate",
+    "Protected settings found a non-dollar currency and the first rate is needed.",
+    {
+      status: "stopped",
+      stopCode: "rate_required",
+      currency: "IDR",
+      read: 0,
+      total: null,
+      ready: 0,
+      groups: [],
+    },
+  ],
+  [
+    "reconnect",
+    "The shop revoked granted access.",
+    { status: "stopped", stopCode: "reconnect", read: 0, total: null, ready: 0, groups: [] },
+  ],
+  [
+    "publishing",
+    "A publication runs independently of the browser.",
+    { kind: "publish", status: "running", read: 3, published: 1, ready: 1, groups: [] },
+  ],
+  [
+    "published",
+    "A publication keeps seller-paused products outside its on-sale count.",
+    JOB_PUBLISHED,
+  ],
+  [
+    "publication-stopped",
+    "A partial publication retains its result and offers synchronization.",
+    {
+      ...JOB_PUBLISHED,
+      status: "stopped",
+      stopCode: "interrupted",
+      read: 3,
+      ready: 1,
+      excluded: 0,
+      groups: JOB_PUBLISHED.groups.filter((group) => group.group !== "unsupported"),
+    },
+  ],
+  [
+    "publication-unknown",
+    "The shop qualified a product, but Agentify's publication reply was lost.",
+    {
+      kind: "publish",
+      status: "stopped",
+      stopCode: "unknown",
+      read: 1,
+      total: 6,
+      ready: 1,
+      published: 0,
+      excluded: 0,
+      publicationUnknown: JOB_READY[0] ?? null,
+      groups: [],
+    },
+  ],
+  [
+    "publication-unread",
+    "A shop that did not answer added no products; earlier products may still sell.",
+    {
+      kind: "publish",
+      status: "stopped",
+      stopCode: "unread",
+      read: 0,
+      total: null,
+      ready: 0,
+      published: 0,
+      excluded: 0,
+      groups: [],
+    },
+  ],
+  [
+    "publication-unread-first",
+    "A first publication could not read the shop and Products confirms no products are on sale.",
+    {
+      kind: "publish",
+      status: "stopped",
+      stopCode: "unread",
+      read: 0,
+      total: null,
+      ready: 0,
+      published: 0,
+      excluded: 0,
+      groups: [],
+    },
+  ],
+  [
+    "earlier-result",
+    "The stored result belongs to an earlier connection or rate.",
+    { current: false },
+  ],
+];
+
 const WOOCOMMERCE: GalleryState[] = [
+  ...JOB_STATES.map(([id, when, result]) => {
+    const job = presentShopJob({ ...JOB_RESULT, ...result });
+    const told = {
+      id: `dashboard-shop-job-${id}`,
+      screen: job.kind === "publish" && job.status === "completed" ? "WooCommerce" : "Products",
+      when,
+      cause: "The persisted shop job is the source of its progress and result.",
+    };
+    if (job.kind === "publish" && job.status === "completed")
+      return shop(told, { ...shopOn(shopRead(CONNECTED)), job });
+    const onSaleCards =
+      id === "publication-unread-first"
+        ? []
+        : JOB_READY.slice(0, 1).map((title) => ({
+            id: idOf("itm", title),
+            as_of: "2026-10-30T12:09:00Z",
+            card: imported(title).card,
+            selling: "open" as const,
+            paused: false,
+          }));
+    const catalogue =
+      job.kind === "publish"
+        ? MerchantCardListSchema.parse({ selling: "open", cards: onSaleCards })
+        : cardsOf("open", []);
+    const connected = ONBOARDING_CASES.find((one) => one.row === 14);
+    if (!connected) throw new Error("The onboarding situations lack the connected shop.");
+    const facts = {
+      ...connected.facts,
+      mode: "test" as const,
+      payoutWallet: true,
+      liveApproved: true,
+      testAcknowledged: true,
+      cards: catalogue.cards.length,
+    };
+    const state = at(told, {
+      path: "/products",
+      mode: "test",
+      loaded: {
+        "routes/merchant-only": {
+          account: [],
+          onboarding: {
+            mode: "test",
+            step: nextStepOf(facts),
+            keys: keysView([]),
+            contact: null,
+            origin: ORIGIN.test,
+            unread: false,
+          },
+        },
+        "routes/products": {
+          ...cardsView(catalogue, ORIGIN.test, true, { through: "woocommerce", offSale: [] }),
+          shop: { ...shopOn(shopRead(CONNECTED)), job },
+        },
+      },
+    });
+    return id === "publication-unread-first" || id === "publication-unread"
+      ? {
+          ...state,
+          scene: {
+            shows:
+              id === "publication-unread-first" ? "Publication stopped" : "Sync with your shop",
+            answers: { "GET /shop-job": { status: 200, body: job } },
+          },
+        }
+      : state;
+  }),
+
+  ...([null, "stopped_selling", "changed"] as const).map((withdrawn) => {
+    const catalogue = MerchantCardListSchema.parse({
+      selling: "open",
+      cards: JOB_READY.map((title, index) => ({
+        id: idOf("itm", title),
+        as_of: "2026-10-30T12:09:00Z",
+        card: imported(title).card,
+        selling: withdrawn !== null && index === 0 ? "paused" : "open",
+        paused: withdrawn !== null && index === 0,
+      })),
+    });
+    return cards(
+      {
+        id:
+          withdrawn === "changed"
+            ? "dashboard-shop-product-changed"
+            : withdrawn
+              ? "dashboard-shop-product-withdrawn"
+              : "dashboard-shop-products-fix-one",
+        screen: "Products",
+        when: withdrawn
+          ? withdrawn === "changed"
+            ? "A published product changed to conditions Agentify cannot sell."
+            : "A shop stopped selling one previously published product."
+          : "Published products sell and one more product needs a fix in the shop.",
+        cause: withdrawn
+          ? "A complete synchronization stored a connector-owned pause, which only a later synchronization can resume."
+          : "The stored publication result has one fixable product; the other result groups are on WooCommerce in Integrations.",
+      },
+      {
+        ...cardsView(
+          {
+            ...catalogue,
+            ...(withdrawn
+              ? {
+                  integrationPauses: {
+                    [idOf("itm", "Coffee beans, one kilogram")]: {
+                      at: Date.parse("2026-10-30T12:09:00Z"),
+                      reason: withdrawn,
+                    },
+                  },
+                }
+              : {}),
+          },
+          ORIGIN.test,
+          true,
+          { through: "woocommerce", offSale: [] },
+        ),
+        ...(withdrawn
+          ? {}
+          : {
+              shop: {
+                ...shopOn(shopRead(CONNECTED)),
+                job: presentShopJob({
+                  ...JOB_RESULT,
+                  kind: "publish" as const,
+                  published: 2,
+                  groups: JOB_RESULT.groups.map((group) =>
+                    group.group === "ready" ? { ...group, title: "On sale" } : group,
+                  ),
+                }),
+              },
+            }),
+      },
+      "test",
+    );
+  }),
+
   ...WOO_SITE_CASES.map((one) =>
     shop(
       {
@@ -2672,9 +3097,12 @@ const WOOCOMMERCE: GalleryState[] = [
       id: "dashboard-woocommerce-connected",
       screen: "WooCommerce",
       when: "A merchant approves access in their shop and is sent back here.",
-      cause: "The shop's server posted its keys, and the browser came back from the shop.",
+      cause: "Access was saved and the server's automatic product check has started.",
     },
-    shopOn(shopRead(CONNECTED, { codeProducts: 0, unset: [] }), { cameBack: true }),
+    {
+      ...shopOn(shopRead(CONNECTED, { codeProducts: 0, unset: [] }), { cameBack: true }),
+      job: presentShopJob({ ...JOB_RESULT, status: "running", read: 2, groups: [] }),
+    },
     { path: "/woocommerce?from=shop" },
   ),
   shop(
@@ -2814,67 +3242,6 @@ const WOOCOMMERCE: GalleryState[] = [
       problem: PRICES_RUNNING,
       typed: SHOP,
     }),
-  ),
-  shopPress(
-    {
-      id: "dashboard-woocommerce-import",
-      screen: "WooCommerce import",
-      when: "A merchant presses Import products.",
-      cause:
-        "The shop's catalogue was read, and each product was published, refused or left in the shop.",
-    },
-    "import",
-    wooImportView(
-      SHOP,
-      [
-        {
-          id: imported("Coffee & Brunch Gift Card").id,
-          title: "Coffee & Brunch Gift Card",
-          published: idOf("itm", "gift card"),
-        },
-        {
-          id: imported("Coffee beans, one kilogram").id,
-          title: "Coffee beans, one kilogram",
-          problems: [SITE_IN_SETTINGS],
-        },
-        {
-          id: imported(
-            "Ubud Cooking Class Recipe Book: 40 Balinese Dishes from Market to Table (PDF)",
-          ).id,
-          title: "Ubud Cooking Class Recipe Book: 40 Balinese Dishes from Market to Table (PDF)",
-          published: idOf("itm", "recipe book"),
-        },
-        refusedByTheDoor(
-          "Handwoven Endek Table Runner, Klungkung Weave, Ceremonial Red and Gold, 35 × 200 cm",
-        ),
-      ],
-      IMPORTED.skipped,
-    ),
-  ),
-  shopPress(
-    {
-      id: "dashboard-woocommerce-import-interrupted",
-      screen: "WooCommerce import",
-      when: "A merchant presses Import while Agentify is failing to answer.",
-      cause: "The first product got no verdict, so the import stopped and the rest were not sent.",
-    },
-    "import",
-    wooImportView(
-      SHOP,
-      [
-        {
-          id: imported("Coffee beans, one kilogram").id,
-          title: "Coffee beans, one kilogram",
-          failed: true,
-        },
-        {
-          id: imported("Coffee & Brunch Gift Card").id,
-          title: "Coffee & Brunch Gift Card",
-          notAttempted: true,
-        },
-      ],
-      IMPORTED.skipped,
-    ),
   ),
   shopPress(
     {
@@ -4119,7 +4486,16 @@ const ONBOARDING: GalleryState[] = ONBOARDING_CASES.map(({ row, when, facts }) =
       loaded: { "routes/merchant-only": { account: notes, onboarding }, "routes/products": view },
     },
   );
-  return row === 5 ? { ...state, scene: { shows: "This is the test environment" } } : state;
+  if (row === 5) return { ...state, scene: { shows: "This is the test environment" } };
+  if (view.shop?.connection?.access === "read_write")
+    return {
+      ...state,
+      scene: {
+        shows: "Products",
+        answers: { "GET /shop-job": { status: 200, body: view.shop.job } },
+      },
+    };
+  return state;
 });
 
 const SHOP_ESTIMATES: GalleryState[] = [

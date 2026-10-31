@@ -1,10 +1,11 @@
 import { Fragment } from "react";
 import { Link } from "react-router";
 import type { ReceiptsView } from "../../src/views.js";
-import { Cell, DayHeading, Fact, Facts, Group, List, ListEmpty } from "../components/list.js";
+import { Fact, Facts } from "../components/list.js";
 import { Moment } from "../components/moment.js";
 import { Word } from "../components/word.js";
 import { Ident } from "../display/copy.js";
+import { Cell, DayHeading, Group, List, ListEmpty } from "../display/list.js";
 import { DisclosedRow } from "./disclosed-row.js";
 import { CutNote } from "./listing.js";
 import styles from "./orders.module.css";

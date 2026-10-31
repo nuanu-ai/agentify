@@ -4,18 +4,14 @@
  * The WooCommerce screens drawn as the server sends them, from views built by
  * the same functions the server half calls, and alive in a document where the
  * application moves between them.
- *
- * One HTTP import gives either kind of stopped product, never both, because the
- * harness's gateway is up or gone for the whole import. The page must tell the
- * two apart (a product repairable in the shop under the gateway's own sentence,
- * and a product nobody read), so the list is built here by hand in the shapes
- * the import makes.
+
  */
 
 import type { ReactElement } from "react";
 import { prerender } from "react-dom/static";
 import { createRoutesStub } from "react-router";
 import { describe, expect, it } from "vitest";
+import { presentShopJob } from "../../src/shop-job-presentation.js";
 import { formTo, readable } from "../../src/testing/html.js";
 import type { Viewer } from "../../src/viewer.js";
 import {
@@ -23,11 +19,8 @@ import {
   heldBy,
   type ShopAnswer,
   type ShopRead,
-  wooImportView,
   wooShopView,
 } from "../../src/woo-views.js";
-import { SITE_IN_SETTINGS } from "../../src/words.js";
-import { WooImportScreen } from "./woo-import.js";
 import { WooShopScreen } from "./woocommerce.js";
 
 const SEEN_BY: Viewer = {
@@ -57,17 +50,41 @@ const served = async (screen: () => ReactElement): Promise<string> => {
 const shopPage = async (read: Partial<ShopRead>, answer: ShopAnswer = {}): Promise<string> =>
   await served(() => (
     <WooShopScreen
-      view={wooShopView(
-        {
-          state: { kind: "none" },
-          through: "api",
-          codeProducts: 0,
-          unset: [],
-          testMoney: true,
-          ...read,
-        },
-        answer,
-      )}
+      view={{
+        ...wooShopView(
+          {
+            state: { kind: "none" },
+            through: "api",
+            codeProducts: 0,
+            unset: [],
+            testMoney: true,
+            ...read,
+          },
+          answer,
+        ),
+        job:
+          read.state?.kind === "connected" && read.through === "woocommerce"
+            ? presentShopJob({
+                id: "checked-shop",
+                shopHost: "shop.example.com",
+                revision: 2,
+                kind: "check",
+                status: read.rate?.current === null ? "stopped" : "completed",
+                stopCode: read.rate?.current === null ? "rate_required" : null,
+                read: read.rate?.current === null ? 0 : 1,
+                total: read.rate?.current === null ? null : 1,
+                ready: read.rate?.current === null ? 0 : 1,
+                published: 0,
+                excluded: 0,
+                publicationUnknown: null,
+                currency: read.rate?.currency.code ?? "USD",
+                when: { text: "30 Oct 2026" },
+                why: null,
+                current: true,
+                groups: [],
+              })
+            : null,
+      }}
       base=""
     />
   ));
@@ -96,155 +113,6 @@ const blockOf = (html: string, action: string): string => {
   if (opened === undefined) return "";
   return html.slice(opened.index, html.indexOf(`</${opened[1]}>`, at));
 };
-
-/** The invitation to change the shop, which must not stand over a product nobody read. */
-const SENT_TO_THE_SHOP = /change these in your shop/i;
-
-const imported = async (
-  outcomes: Parameters<typeof wooImportView>[1],
-  skipped: Parameters<typeof wooImportView>[2] = [],
-) => await served(() => <WooImportScreen view={wooImportView(SHOP, outcomes, skipped)} base="" />);
-
-describe("what the import screen says about a product the door never answered about", () => {
-  it("lists it apart from a refused product, counts it apart, and sends nobody to their shop for it", async () => {
-    const text = readable(
-      await imported([
-        { id: "11", title: "Canvas tote bag", published: "item_1" },
-        {
-          id: "12",
-          title: "Абонемент на месяц",
-          problems: [
-            "Description: this description is 856 characters and a listing carries at most 500",
-          ],
-        },
-        { id: "10", title: "Access code", failed: true },
-      ]),
-    );
-
-    expect(text).toContain("To fix 1");
-    expect(text).toContain("No verdict 1");
-    expect(text).toContain("Published 1");
-
-    // The unanswered product stands under its own heading only, after the
-    // refused one, and the invitation to change the shop is not repeated over
-    // it.
-    const unanswered = text.indexOf("No verdict");
-    expect(unanswered).toBeGreaterThan(-1);
-    const before = text.slice(0, unanswered);
-    const after = text.slice(unanswered);
-    expect(before).toContain("Абонемент на месяц");
-    expect(before).toMatch(SENT_TO_THE_SHOP);
-    expect(before).not.toContain("Access code");
-    expect(after).toContain("Access code");
-    expect(after).toMatch(/don't know if these were published/);
-    expect(after).not.toContain("Абонемент на месяц");
-    expect(after).not.toMatch(SENT_TO_THE_SHOP);
-  });
-
-  it("keeps an operator-approval finding among the gateway's escaped publication reasons", async () => {
-    const finding =
-      "operator approval: ask Agentify to approve this seller <script>alert(1)</script>";
-    const html = await imported([
-      {
-        id: "12",
-        title: "Monthly membership",
-        problems: ["seller name: choose one in the dashboard", finding],
-      },
-    ]);
-    const text = readable(html);
-
-    expect(text).toContain("seller name: choose one in the dashboard");
-    expect(text).toContain(finding);
-    expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
-    expect(html).not.toContain("<script>alert(1)</script>");
-  });
-});
-
-describe("the order of what an import did", () => {
-  it("puts what the merchant can put right first, and folds the products that went through last", async () => {
-    const html = await imported(
-      [
-        { id: "11", title: "Canvas tote bag", published: "item_1" },
-        { id: "12", title: "Coffee beans, one kilogram", problems: [SITE_IN_SETTINGS] },
-      ],
-      [
-        {
-          id: "13",
-          title: "Monthly membership",
-          why: "Variable products aren't supported.",
-          fixable: false,
-        },
-        {
-          id: "14",
-          title: "Batik sarong",
-          why: "The product is not published in the shop.",
-          fixable: true,
-        },
-      ],
-    );
-    const text = readable(html);
-
-    const toFix = text.indexOf("To fix 2");
-    const unsupported = text.indexOf("Not supported 1");
-    const published = text.indexOf("Published 1");
-    expect(toFix).toBeGreaterThan(-1);
-    expect(text.indexOf("Batik sarong")).toBeGreaterThan(toFix);
-    expect(text.indexOf("Batik sarong")).toBeLessThan(unsupported);
-    expect(unsupported).toBeLessThan(published);
-    // Folded: the published list is drawn closed.
-    const page = new DOMParser().parseFromString(html, "text/html");
-    const publishedList = page.querySelector('[aria-label="Published"]');
-    expect(publishedList?.textContent).toContain("Canvas tote bag");
-    expect(publishedList?.closest("details")?.open).toBe(false);
-    expect(page.querySelector('[aria-label="To fix"]')?.textContent).toContain("Batik sarong");
-    expect(page.querySelector('[aria-label="Not supported"]')?.textContent).toContain(
-      "Monthly membership",
-    );
-  });
-
-  it("says a length is counted without formatting only where a length was refused", async () => {
-    const measured = readable(
-      await imported([
-        {
-          id: "12",
-          title: "Handwoven table runner",
-          problems: ["Description: this description is 856 characters"],
-          tooLong: true,
-        },
-      ]),
-    );
-    const other = readable(
-      await imported([{ id: "12", title: "Coffee beans", problems: [SITE_IN_SETTINGS] }]),
-    );
-
-    expect(measured).toContain("without formatting");
-    expect(other).not.toContain("without formatting");
-  });
-});
-
-describe("what the import screen offers beside a product it could not publish", () => {
-  it("offers Settings beside a parcel held for want of the shop's site, and nothing beside one the shop must change", async () => {
-    const html = await imported([
-      { id: "12", title: "Coffee beans, one kilogram", problems: [SITE_IN_SETTINGS] },
-      {
-        id: "13",
-        title: "Canvas tote bag",
-        problems: [
-          "Description: this description is 856 characters and a listing carries at most 500",
-        ],
-      },
-    ]);
-
-    const page = new DOMParser().parseFromString(html, "text/html");
-    const rows = [...page.querySelectorAll("li")];
-    const missingSite = rows.find((row) => row.textContent?.includes("Coffee beans, one kilogram"));
-    const needsShopEdit = rows.find((row) => row.textContent?.includes("Canvas tote bag"));
-    expect(missingSite).toBeDefined();
-    expect(needsShopEdit).toBeDefined();
-    expect(missingSite?.querySelector('a[href="/settings"]')).not.toBeNull();
-    expect(needsShopEdit?.querySelector('a[href="/settings"]')).toBeNull();
-  });
-});
 
 describe("the Connect form's note about test purchases", () => {
   it("is drawn where a purchase is paid in test USDC, and not where the money is real", async () => {
@@ -301,15 +169,13 @@ describe("where the shop screen says why a press was refused", () => {
     },
   );
 
-  it("says what the shop answered to an import in the import's panel, not beside the way out", async () => {
+  it("keeps a publication refusal visible with the job, apart from the way out", async () => {
     const html = await shopPage(
       { state: CONNECTED, through: "woocommerce" },
       { importing: "Your shop answered 403: Forbidden" },
     );
 
-    expect(problemsIn(blockOf(html, "/woocommerce/import"))).toStrictEqual([
-      "Your shop answered 403: Forbidden",
-    ]);
+    expect(problemsIn(html)).toStrictEqual(["Your shop answered 403: Forbidden"]);
     expect(problemsIn(blockOf(html, "/woocommerce/disconnect"))).toStrictEqual([]);
   });
 
@@ -460,7 +326,7 @@ describe("where the shop screen says why a press was refused", () => {
 
 describe("what the shop screen holds before it is pressed", () => {
   const importButton = (html: string): string =>
-    /<button[^>]*>Import products<\/button>/.exec(formOf(html, "/woocommerce/import"))?.[0] ?? "";
+    /<button[^>]*>Publish 1 product<\/button>/.exec(formOf(html, "/woocommerce/import"))?.[0] ?? "";
 
   it("holds Import, naming the setting and where to set it, while every product would be refused", async () => {
     const html = await shopPage({
@@ -468,26 +334,41 @@ describe("what the shop screen holds before it is pressed", () => {
       through: "woocommerce",
       unset: ["no_payout_wallet"],
     });
-    const form = formOf(html, "/woocommerce/import");
-
     expect(importButton(html)).toMatch(/\bdisabled\b/);
-    expect(readable(form)).toContain("payout wallet");
-    expect(form).toContain('href="/settings"');
+    expect(readable(html)).toContain("payout wallet");
+    expect(html).toContain('href="/settings"');
   });
 
   it("holds Import until a shop priced in another currency has its rate", async () => {
-    const html = await shopPage({
-      state: CONNECTED,
-      through: "woocommerce",
-      rate: {
-        currency: { code: "IDR", decimals: 0 },
-        current: null,
-        reference: { ok: false, listed: null },
-      },
-    });
+    for (const reference of [
+      { ok: false, listed: null },
+      { ok: true, rate: "16350", source: "Coinbase", readAt: new Date("2026-10-30T12:09:00Z") },
+    ] as const) {
+      const html = await shopPage({
+        state: CONNECTED,
+        through: "woocommerce",
+        rate: {
+          currency: { code: "IDR", decimals: 0 },
+          current: null,
+          reference,
+        },
+      });
 
-    expect(importButton(html)).toMatch(/\bdisabled\b/);
-    expect(readable(formOf(html, "/woocommerce/import"))).toContain("exchange rate");
+      expect(formOf(html, "/woocommerce/import")).toBe("");
+      expect(readable(html)).toContain("We check your products once the rate is saved.");
+      expect(formOf(html, "/woocommerce/rate")).toContain('name="rate"');
+      expect(readable(html)).not.toContain("Check stopped");
+      expect(readable(html)).not.toContain("The total is unknown.");
+      const page = new DOMParser().parseFromString(html, "text/html");
+      const field = page.querySelector('form[action="/woocommerce/rate"] input[name="rate"]');
+      const hint = page.getElementById(field?.getAttribute("aria-describedby") ?? "");
+      expect(hint?.textContent).toContain("Coinbase");
+      if (reference.ok)
+        expect(hint?.textContent?.replaceAll("\u00a0", " ")).toBe(
+          "Coinbase today: 16,350 IDR per US dollar",
+        );
+      expect(field?.getAttribute("value")).toBe("");
+    }
   });
 
   it("says a shop in a currency Coinbase gives no rate for cannot sell, and asks for no rate", async () => {
@@ -500,11 +381,11 @@ describe("what the shop screen holds before it is pressed", () => {
         reference: { ok: false, listed: false },
       },
     });
-    const held = readable(formOf(html, "/woocommerce/import"));
-
-    expect(importButton(html)).toMatch(/\bdisabled\b/);
-    expect(held).toMatch(/can't sell/);
-    expect(held).not.toMatch(/Set the exchange rate/);
+    expect(formOf(html, "/woocommerce/import")).toBe("");
+    expect(readable(html)).toContain(
+      "Coinbase gives no rate for XAF, so no rate can be saved for this shop.",
+    );
+    expect(formOf(html, "/woocommerce/rate")).toBe("");
   });
 
   it("offers Import where nothing stands in its way, and where what stands could not be read", async () => {
@@ -546,15 +427,17 @@ describe("what the shop screen holds before it is pressed", () => {
 
   it("says a grant short of Read/Write as a warning rather than as connected, and never calls a write grant read-only", async () => {
     for (const permissions of ["read", "write"]) {
-      const text = readable(
-        await shopPage({
-          state: {
-            kind: "connected",
-            shop: { shopUrl: SHOP, permissions, connectedAt: new Date() },
-          },
-          through: "woocommerce",
-        }),
-      );
+      const html = await shopPage({
+        state: {
+          kind: "connected",
+          shop: { shopUrl: SHOP, permissions, connectedAt: new Date() },
+        },
+        through: "woocommerce",
+      });
+      const text = readable(html);
+      expect(formTo(html, "post", "/woocommerce/connect")).toBeDefined();
+      for (const action of ["import", "rate", "switch"])
+        expect(formTo(html, "post", `/woocommerce/${action}`)).toBeUndefined();
 
       expect(text, permissions).toContain("can't create orders");
       if (permissions === "write") expect(text).not.toMatch(/read-only/i);

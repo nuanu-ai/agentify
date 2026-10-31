@@ -10,7 +10,8 @@ used again and that a new one is opened automatically at most once per shop
 every ten minutes. On 2026-10-07 he chose to refuse at once a paid download
 whose shop did not answer, because five hand-overs could not wait out an
 outage; since hand-overs last three hours (ADR-0004, his word of 2026-10-28)
-such a download waits for the shop instead.
+such a download waits for the shop instead. Synchronization follows the shop's
+products and preserves merchant pauses (the product owner, 2026-10-30).
 
 ## Context
 
@@ -34,7 +35,18 @@ pinned public address, with TLS host verification and no redirect off the shop.
 
 Simple products of two classes are imported by the conditions the merchant
 guide lists (`apps/docs/woocommerce.md`); anything else is named and skipped. A
-card is priced at every purchase. The price answer's `quote_reference`, stamped
+card is priced at every purchase. A completed synchronization takes a card off
+sale only when a direct product read confirms deletion, an unpublished or
+unpurchasable product, an unsupported product type, stock tracking or changed
+file and download limits. Temporary lack of stock, whole-shop settings,
+missing text and card validation errors leave the last published card on sale;
+each purchase still asks the shop for its current price and availability. A
+missing list entry alone or an incomplete or unknown answer establishes no
+withdrawal. The dashboard stores connector pause ownership separately from the
+gateway's ordinary card pause; synchronization resumes only a connector pause
+when the product qualifies again and preserves a merchant's pause.
+
+The price answer's `quote_reference`, stamped
 with the price (ADR-0049), names the product and the settings it is sold under,
 and the fresh read at payment must match it. A download, with one non-public
 file on the shop's origin and no download limit or expiry, sells on an

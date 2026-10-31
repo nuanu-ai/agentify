@@ -7,7 +7,7 @@
  */
 
 import { randomBytes } from "node:crypto";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -16,7 +16,7 @@ import express from "express";
 import type { ServerBuild } from "react-router";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { precompressedFrom } from "./assets.js";
-import { brokenBudget } from "./budget.js";
+import { brokenBudget, firstVisitScripts, type ViteManifest } from "./budget.js";
 
 /** Each script the build wrote, and how many random bytes it holds, so it compresses little. */
 const SCRIPTS = {
@@ -144,7 +144,42 @@ const fits = async (
   return !failures.some((failure) => failure.startsWith("routes/home "));
 };
 
+const nativeFits = async (script: string, limit: number): Promise<boolean> => {
+  const build = built("lazy");
+  Object.assign(build.routes["routes/home"]?.module ?? {}, { handle: { script } });
+  const failures = await brokenBudget({
+    label: "[test]",
+    build,
+    clientDirectory: client,
+    assetsAt,
+    limitOf: () => limit,
+  });
+  return !failures.some((failure) => failure.startsWith("routes/home "));
+};
+
 describe("a page's first visit, as the speed budget weighs it", () => {
+  it("loads no script for an explicit scriptless page even under a native parent", async () => {
+    const build = built("lazy");
+    Object.assign(build.routes.root?.module ?? {}, { handle: { script: at("other") } });
+    Object.assign(build.routes["routes/home"]?.module ?? {}, { handle: { script: false } });
+    const manifest = JSON.parse(
+      await readFile(join(client, ".vite", "manifest.json"), "utf8"),
+    ) as ViteManifest;
+    expect([...firstVisitScripts(build, manifest, "routes/home")]).toEqual([]);
+  });
+
+  it("counts an explicitly native page's actual script instead of the React runtime", async () => {
+    expect(await nativeFits(at("other"), weight("other"))).toBe(true);
+    expect(await nativeFits(at("other"), weight("other") - 1)).toBe(false);
+  });
+
+  it.each([at("other").replace(".js", ".css"), "/assets/missing-AbCdEf01.js"])(
+    "refuses an unresolved or non-script native asset: %s",
+    async (script) => {
+      await expect(nativeFits(script, 100_000)).rejects.toThrow(/native script/i);
+    },
+  );
+
   it("is its own scripts and what they import, not the route table, where routes are discovered as they are needed", async () => {
     expect(await fits("lazy", weight(...PAGE))).toBe(true);
     expect(await fits("lazy", weight(...PAGE) - 1)).toBe(false);

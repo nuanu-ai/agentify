@@ -1,3 +1,4 @@
+import type { WooCardPause, WooCardPauses } from "./woo-card-pauses.js";
 /**
  * The dashboard calls the gateway's application in-process, as the merchant on
  * the signed-in account's row. A refusal comes back with the sentence and
@@ -201,7 +202,11 @@ const broughtWithin = async (
 };
 
 export interface GatewayClient {
-  cards(): Promise<Answer<MerchantCardList>>;
+  cards(): Promise<
+    Answer<
+      MerchantCardList & { readonly integrationPauses?: Readonly<Record<string, WooCardPause>> }
+    >
+  >;
   pauseCard(itemId: string, paused: boolean): Promise<Answer<MerchantCard>>;
   setSelling(selling: boolean): Promise<Answer<MerchantCardList>>;
   /** The orders accepted for payment, optionally narrowed to the open list. */
@@ -589,6 +594,7 @@ export const gatewayFor = (
   application: Gateway,
   acting: Acting,
   answerWithinMs: number = ANSWER_WITHIN_MS,
+  cardPauses?: WooCardPauses,
 ): GatewayClient => {
   const { merchantId } = acting;
   const session = { kind: "signed_in", email: acting.email } as const;
@@ -609,13 +615,37 @@ export const gatewayFor = (
 
   return {
     cards: () =>
-      call("reading the cards", async () =>
-        answered(API_ROUTES.list_merchant_cards, await application.merchantCards(merchantId)),
-      ),
+      call("reading the cards", async () => {
+        const document = API_ROUTES.list_merchant_cards.response.document.parse(
+          await application.merchantCards(merchantId),
+        ) as MerchantCardList;
+        const integrationPauses = (await cardPauses?.list(merchantId)) ?? {};
+        return done({ ...document, integrationPauses });
+      }),
     pauseCard: (itemId, paused) =>
       call(paused ? "pausing a card" : "resuming a card", async () => {
-        const card = await application.setCardPaused(merchantId, itemId, paused, caller);
-        return card === null ? refusedAs(NO_SUCH_ITEM) : answered(API_ROUTES.pause_card, card);
+        const change = async (
+          ownership?: Parameters<Parameters<WooCardPauses["withLock"]>[2]>[0],
+        ): Promise<Answer<MerchantCard>> => {
+          const stored = await application.runtime.store.cardById(itemId);
+          if (!stored || stored.merchantId !== merchantId) return refusedAs(NO_SUCH_ITEM);
+          if (
+            !paused &&
+            stored.paused &&
+            ownership?.pause !== null &&
+            ownership?.pause !== undefined
+          )
+            return {
+              ok: false,
+              status: 409,
+              why: "This product is off sale after a shop check. Sync with your shop to check it again and return it to sale if it's ready.",
+            };
+          // Relinquish connector ownership before the seller acts, including an already paused card.
+          await ownership?.save(null);
+          const card = await application.setCardPaused(merchantId, itemId, paused, caller);
+          return card === null ? refusedAs(NO_SUCH_ITEM) : answered(API_ROUTES.pause_card, card);
+        };
+        return cardPauses ? cardPauses.withLock(merchantId, itemId, change) : change();
       }),
     setSelling: (selling) =>
       call(selling ? "resuming the selling" : "stopping the selling", async () => {

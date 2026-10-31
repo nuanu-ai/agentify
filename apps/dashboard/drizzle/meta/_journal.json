@@ -197,6 +197,13 @@
       "when": 1793371457825,
       "tag": "0027_onboarding_choices",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1793379863954,
+      "tag": "0028_shop_jobs",
+      "breakpoints": true
     }
   ]
 }

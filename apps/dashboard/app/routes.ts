@@ -82,6 +82,7 @@ export default [
       layout("routes/woocommerce-presses.tsx", [
         route("woocommerce/connect", "routes/woocommerce-connect.tsx"),
         route("woocommerce/import", "routes/woocommerce-import.tsx"),
+        route("woocommerce/check", "routes/woocommerce-check.tsx"),
         route("woocommerce/rate", "routes/woocommerce-rate.tsx"),
         route("woocommerce/site", "routes/woocommerce-site.tsx"),
         route("woocommerce/switch", "routes/woocommerce-switch.tsx"),

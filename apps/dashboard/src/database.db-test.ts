@@ -4,7 +4,7 @@
  * name (see `database.ts`).
  */
 
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { noDatabaseHere, readyDatabase, testDatabaseUrl } from "@agentify/gateway/testing/database";
@@ -19,6 +19,7 @@ const WANTED = (() => {
 const databaseUrl = await readyDatabase(WANTED);
 const here = dirname(fileURLToPath(import.meta.url));
 const dashboardMigrations = join(here, "..", "drizzle");
+const gatewayMigrations = join(here, "..", "..", "gateway", "drizzle");
 
 if (databaseUrl === null) {
   console.log(noDatabaseHere(WANTED));
@@ -67,6 +68,14 @@ if (databaseUrl === null) {
     await pool.query("drop schema if exists drizzle cascade");
     await pool.query("drop schema public cascade");
     await pool.query("create schema public");
+    for (const file of (await readdir(gatewayMigrations))
+      .filter((name) => name.endsWith(".sql"))
+      .sort()) {
+      const source = await readFile(join(gatewayMigrations, file), "utf8");
+      for (const statement of source.split("--> statement-breakpoint")) {
+        if (statement.trim() !== "") await pool.query(statement);
+      }
+    }
   });
 
   afterAll(async () => {

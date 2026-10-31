@@ -24,6 +24,9 @@ import {
 import { stepUpViewOf } from "../../src/admin/step-up.js";
 import { NO_REASON } from "../../src/admin/words.js";
 import type { NamedAccount } from "../../src/dashboard-entry.js";
+import { presentShopJob } from "../../src/shop-job-presentation.js";
+import type { ShopJobState, ShopJobView } from "../../src/shop-job-view.js";
+import { momentView } from "../../src/views.js";
 import type { Trouble } from "../answer.js";
 import { line } from "./accounts.js";
 import {
@@ -391,8 +394,9 @@ const pageState = (
   told: Pick<AdminGalleryState, "id" | "when" | "cause">,
   read: MerchantRead,
   pressed?: Pressed,
+  shopJob?: ShopJobView,
 ): AdminGalleryState => {
-  const view = merchantViewOf(read);
+  const view = { ...merchantViewOf(read), shopJob };
   const page = `/admin/merchants/${read.record.id}`;
   if (pressed === undefined) {
     return {
@@ -415,6 +419,52 @@ const pageState = (
     pressed: { [route]: view },
   };
 };
+
+const SHOP_CHECK_MERCHANT: MerchantRecord = {
+  id: "mch_shop_check_example",
+  serviceName: "Anonymized WooCommerce shop",
+  sellerSite: "https://shop.example",
+  createdAt: Date.UTC(2026, 9, 12),
+  integration: "woocommerce",
+  segment: "setting_up",
+  missing: ["no_payout_wallet", "no_operator_approval"],
+  lastContactAt: null,
+  lastSaleAt: null,
+  selling: "open",
+  liveApprovedAt: null,
+  wallet: null,
+  keys: { rows: [], total: 0, working: 0 },
+  cards: { rows: [], total: 0, onSale: 0 },
+  thirtyDays: { ...empty(), days: selling(() => "0.00") },
+  worthALook: { rows: [], total: 0 },
+};
+
+const OPERATOR_SHOP_JOBS: readonly [string, string, Partial<ShopJobState>][] = [
+  [
+    "progress",
+    "An operator reads the same active product check as the merchant.",
+    { status: "running", read: 2, total: 6, ready: 1 },
+  ],
+  [
+    "rate-required",
+    "A stored check needs the merchant's exchange rate; the operator cannot save it here.",
+    {
+      status: "stopped",
+      stopCode: "rate_required",
+      currency: "IDR",
+      why: "Save an exchange rate to check your products.",
+    },
+  ],
+  [
+    "reconnect",
+    "A stored check says the shop refused access and its merchant must reconnect it.",
+    {
+      status: "stopped",
+      stopCode: "reconnect",
+      why: "Your shop refused access. Reconnect it, then check again.",
+    },
+  ],
+];
 
 const WAITING: MerchantRecord = {
   ...ADMITTED,
@@ -712,6 +762,48 @@ export const MERCHANTS_STATES: readonly AdminGalleryState[] = [
       },
     ),
     { key: CI_KEY_ID },
+  ),
+  ...OPERATOR_SHOP_JOBS.map(([id, when, job]) =>
+    pageState(
+      {
+        id: `dashboard-admin-merchant-shop-job-${id}`,
+        when,
+        cause: "An anonymized merchant's stored shop job is read without merchant recovery forms.",
+      },
+      pageRead(SHOP_CHECK_MERCHANT, {
+        accounts: [{ id: "acc_shop_check_example", email: "owner@shop.example" }],
+        shop: {
+          url: "https://shop.example",
+          connected: momentView(new Date(NOW - 3_600_000).toISOString()),
+          permissions: "read_write",
+        },
+        history: historyOf([], 0),
+      }),
+      undefined,
+      presentShopJob(
+        {
+          id: `job_operator_${id}`,
+          shopHost: "shop.example",
+          revision: 1,
+          kind: "check",
+          status: "queued",
+          read: 0,
+          total: null,
+          ready: 0,
+          published: 0,
+          excluded: 0,
+          publicationUnknown: null,
+          currency: "USD",
+          when: momentView(new Date(NOW - 60_000).toISOString()),
+          why: null,
+          stopCode: null,
+          current: true,
+          groups: [],
+          ...job,
+        },
+        "operator",
+      ),
+    ),
   ),
   pageState(
     {

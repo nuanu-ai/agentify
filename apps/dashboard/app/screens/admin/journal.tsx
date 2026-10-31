@@ -12,9 +12,9 @@ import type { ReactNode } from "react";
 import { Form, Link } from "react-router";
 import type { JournalFrom, JournalLineView, JournalView } from "../../../src/admin/accounts.js";
 import { COULD_NOT_BE_READ } from "../../../src/admin/words.js";
-import { ListEmpty } from "../../components/list.js";
 import { Moment } from "../../components/moment.js";
 import { shortened } from "../../display/copy.js";
+import { ListEmpty } from "../../display/list.js";
 import { Pager } from "../listing.js";
 import styles from "./accounts.module.css";
 

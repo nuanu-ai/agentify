@@ -1,3 +1,6 @@
+import { harness } from "@agentify/gateway/testing";
+import { gatewayFor } from "./gateway.js";
+import { shopPublisherFor, workShopJob } from "./shop-job-runner.js";
 /**
  * The shop is a small server on loopback, and what is asserted is what we sent
  * it: a Store API read with no credential at all, and a `wc/v3` order carrying
@@ -32,6 +35,7 @@ import type { ShipToLocality } from "@nuanu-ai/agentify-contracts";
 import type { WooRequest } from "./woo-request.js";
 import {
   catalogueOf,
+  connectedCatalogue,
   createTheOrderInTheShop,
   createTheParcelInTheShop,
   inspectProductInTheShop,
@@ -819,6 +823,303 @@ describe("the protected product check", () => {
     value,
   });
 
+  it.each([
+    [100, "100", 100, null],
+    [100, "200", 100, null],
+    [100, "0", 0, null],
+    [150, "150", 0, null],
+    [150, null, 100, null],
+    [null, "2001", 100, 2001],
+  ] as const)(
+    "keeps the observed prefix and stops on a contradicted or excessive protected total %s → %s",
+    async (firstTotal, nextTotal, laterRows, retainedTotal) => {
+      stand = await shopAnswering((asked) => {
+        if (asked.url.includes("/settings/"))
+          return { status: 200, body: settingAt(asked.url, parcelSettingFor(asked.url)) };
+        const firstPage = new URL(asked.url, "http://shop").searchParams.get("page") === "1";
+        const count = firstPage ? 100 : laterRows;
+        const total = firstPage ? (firstTotal === null ? null : String(firstTotal)) : nextTotal;
+        return {
+          status: 200,
+          headers: total === null ? undefined : { "x-wp-total": total },
+          body: Array.from({ length: count }, (_, index) =>
+            parcelDocument({
+              id: index + (firstPage ? 1 : 101),
+              name: "Canvas tote bag",
+              description: "A physical item.",
+            }),
+          ),
+        };
+      });
+      const events = [];
+      for await (const event of connectedCatalogue(connectionTo(stand.url), fetch))
+        events.push(event);
+      expect(events.filter((event) => event.kind === "total").at(-1)).toEqual({
+        kind: "total",
+        total: retainedTotal,
+      });
+      expect(events.filter((event) => event.kind === "product")).toHaveLength(100);
+      expect(events.at(-1)).toMatchObject({ kind: "stopped", reconnect: false });
+      expect(events.some((event) => event.kind === "complete")).toBe(false);
+    },
+  );
+
+  it("reads a protected catalogue when the public list is closed and learns currency without an eligible product", async () => {
+    stand = await shopAnswering((asked) => {
+      if (asked.url.includes("/store/")) return { status: 403, body: {} };
+      if (asked.url.includes("/settings/"))
+        return {
+          status: 200,
+          body: settingAt(
+            asked.url,
+            asked.url.includes("woocommerce_currency")
+              ? "IDR"
+              : asked.url.includes("woocommerce_price_num_decimals")
+                ? "0"
+                : parcelSettingFor(asked.url),
+          ),
+        };
+      return {
+        status: 200,
+        body: [
+          parcelDocument({
+            name: "Guide",
+            description: "A guide",
+            type: "variable",
+            price: "18000",
+          }),
+        ],
+      };
+    });
+    const events = [];
+    for await (const event of connectedCatalogue(connectionTo(stand.url), fetch))
+      events.push(event);
+    expect(events[0]).toEqual({ kind: "currency", currency: { code: "IDR", decimals: 0 } });
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        kind: "product",
+        product: expect.objectContaining({
+          prices: { price: "18000", currency_code: "IDR", currency_minor_unit: 0 },
+        }),
+      }),
+    );
+    expect(events.at(-1)).toEqual({ kind: "complete", total: 1 });
+    expect(stand.asked.every((one) => one.authorization?.startsWith("Basic "))).toBe(true);
+  });
+
+  it.each([
+    [401, true, 200],
+    [403, true, 200],
+    [401, false, 200],
+    [401, true, 503],
+  ] as const)(
+    "a protected setting refusing access with %i requires reconnect (currency readable: %s, product HTTP %i)",
+    async (status, currencyReadable, productStatus) => {
+      stand = await shopAnswering((asked) => {
+        if (asked.url.endsWith("woocommerce_calc_taxes")) return { status, body: {} };
+        if (asked.url.includes("/products/"))
+          return { status: productStatus, body: parcelDocument() };
+        if (!currencyReadable && asked.url.endsWith("woocommerce_currency"))
+          return { status: 200, body: settingAt(asked.url, "unreadable") };
+        if (asked.url.includes("/settings/"))
+          return { status: 200, body: settingAt(asked.url, parcelSettingFor(asked.url)) };
+        return {
+          status: 200,
+          body: asked.url.includes("/products?") ? [parcelDocument()] : parcelDocument(),
+        };
+      });
+      const events = [];
+      for await (const event of connectedCatalogue(connectionTo(stand.url), fetch))
+        events.push(event);
+      expect(events.at(-1)).toMatchObject({ kind: "stopped", reconnect: true });
+      expect(events.some((event) => event.kind === "complete")).toBe(false);
+      expect(
+        await inspectProductInTheShop(
+          connectionTo(stand.url),
+          merchantItemIdFor(stand.url, "28"),
+          fetch,
+        ),
+      ).toMatchObject({ ok: false, reconnect: true });
+    },
+  );
+
+  it("a closed public list can be checked and published from granted REST data through a durable job", async () => {
+    stand = await shopAnswering((asked) => {
+      if (asked.url.includes("/store/")) return { status: 403, body: {} };
+      if (asked.url.includes("/settings/"))
+        return { status: 200, body: settingAt(asked.url, parcelSettingFor(asked.url)) };
+      return {
+        status: 200,
+        body: [
+          parcelDocument({
+            name: "Canvas tote bag",
+            description: "A physical item shipped to the buyer.",
+          }),
+        ],
+        headers: { "X-WP-Total": "1" },
+      };
+    });
+    expect((await fetch(stand.url + "/wp-json/wc/store/v1/products")).status).toBe(403);
+    const h = await harness();
+    try {
+      const shops = memoryWooShops();
+      const person = {
+        id: "shop-owner",
+        email: "shop@example.com",
+        confirmed: true,
+        merchant: { id: h.merchant.id },
+      };
+      const keys = connectionTo(stand.url);
+      await shops.connect({
+        ...keys,
+        accountId: person.id,
+        revision: "granted-1",
+        permissions: "read_write",
+        connectedAt: new Date(),
+        currency: null,
+      });
+      await gatewayFor(h.gateway, { merchantId: h.merchant.id, email: person.email }).sellThrough(
+        "woocommerce",
+      );
+      for (const kind of ["check", "publish"] as const) {
+        await shops.jobs.request({
+          merchantId: h.merchant.id,
+          accountId: person.id,
+          connectionRevision: "granted-1",
+          shopUrl: stand.url,
+          ...(kind === "publish"
+            ? { kind, currency: { code: "USD", decimals: 2 }, rate: null }
+            : { kind }),
+        });
+        const job = await shops.jobs.claim();
+        if (!job) throw new Error("No accepted task");
+        await workShopJob(job, {
+          shops,
+          identity: { byId: async () => person },
+          clientFor: (who) => gatewayFor(h.gateway, who),
+          publisherFor: (who) => shopPublisherFor(h.gateway, who, shops),
+          catalogue: (keys) => connectedCatalogue(keys, fetch),
+          guestCart: async () => null,
+          surfaceMode: "sandbox",
+        });
+        expect(
+          (await shops.jobs.latest(h.merchant.id)).find((one) => one.kind === kind),
+        ).toMatchObject({
+          status: "completed",
+          total: 1,
+          read: 1,
+          currency: { code: "USD", decimals: 2 },
+        });
+      }
+      expect(await h.store.cards(h.merchant.id)).toMatchObject([
+        { card: { title: "Canvas tote bag", price: { amount: "20.00", currency: "USD" } } },
+      ]);
+      expect(
+        stand.asked.some(
+          (one) => one.url.includes("/wc/v3/products?") && one.authorization?.startsWith("Basic "),
+        ),
+      ).toBe(true);
+    } finally {
+      await h.stop();
+    }
+  });
+
+  it("revoked granted credentials are reconnectable unknown, never an empty catalogue", async () => {
+    stand = await shopAnswering(() => ({
+      status: 401,
+      body: { code: "woocommerce_rest_cannot_view" },
+    }));
+    const events = [];
+    for await (const event of connectedCatalogue(connectionTo(stand.url), fetch))
+      events.push(event);
+    expect(events).toMatchObject([{ kind: "stopped", reconnect: true }]);
+  });
+
+  it.each([
+    ["woocommerce_calc_taxes", "unknown"],
+    ["woocommerce_currency", "not-a-currency"],
+    ["woocommerce_price_num_decimals", "not-decimals"],
+  ])("a malformed %s setting never establishes a withdrawal", async (setting, value) => {
+    stand = await shopAnswering((asked) =>
+      asked.url.includes("/settings/")
+        ? {
+            status: 200,
+            body: settingAt(
+              asked.url,
+              asked.url.includes(setting) ? value : parcelSettingFor(asked.url),
+            ),
+          }
+        : { status: 200, body: parcelDocument() },
+    );
+    const result = await inspectProductInTheShop(
+      connectionTo(stand.url),
+      merchantItemIdFor(stand.url, "28"),
+      fetch,
+    );
+    expect(result).toMatchObject({ ok: false, again: false, saidNo: false });
+    expect(result).not.toHaveProperty("obstacle.withdraw", true);
+  });
+
+  it.each([
+    ["parcel", "woocommerce_ship_to_countries", "disabled"],
+    ["parcel", "woocommerce_ship_to_destination", "billing_only"],
+    ["parcel", "woocommerce_price_num_decimals", "3"],
+    ["download", "woocommerce_downloads_require_login", "yes"],
+    ["download", "woocommerce_file_download_method", "redirect"],
+    ["download", "woocommerce_downloads_grant_access_after_payment", "no"],
+    ["download", "woocommerce_downloads_redirect_fallback_allowed", "yes"],
+  ])(
+    "whole-shop setting %s/%s refuses this sale without withdrawing the product",
+    async (kind, setting, value) => {
+      stand = await shopAnswering((asked) => {
+        if (asked.url.includes("/settings/"))
+          return {
+            status: 200,
+            body: settingAt(
+              asked.url,
+              asked.url.includes(setting)
+                ? value
+                : (kind === "parcel" ? parcelSettingFor : settingFor)(asked.url),
+            ),
+          };
+        if (asked.url.includes("/protected/")) return { status: 403, body: {} };
+        return { status: 200, body: (kind === "parcel" ? parcelDocument : productDocument)() };
+      });
+      expect(
+        await inspectProductInTheShop(
+          connectionTo(stand.url),
+          merchantItemIdFor(stand.url, kind === "parcel" ? "28" : "11"),
+          fetch,
+        ),
+      ).toMatchObject({ ok: false, saidNo: true, obstacle: { withdraw: false, group: "fix" } });
+    },
+  );
+  it.each([
+    ["variable", "variants"],
+    ["grouped", "product_type"],
+    ["external", "product_type"],
+  ] as const)(
+    "classifies an unsupported %s product by its own product type",
+    async (type, reason) => {
+      stand = await shopAnswering((asked) => {
+        if (asked.url.includes("/settings/"))
+          return { status: 200, body: settingAt(asked.url, parcelSettingFor(asked.url)) };
+        return { status: 200, body: parcelDocument({ type }) };
+      });
+      expect(
+        await inspectProductInTheShop(
+          connectionTo(stand.url),
+          merchantItemIdFor(stand.url, "28"),
+          fetch,
+        ),
+      ).toMatchObject({
+        ok: false,
+        again: false,
+        saidNo: true,
+        obstacle: { group: "unsupported", reason, withdraw: true },
+      });
+    },
+  );
   it("accepts a physical simple product as a parcel, judged by the shop's shipping settings", async () => {
     // A shop whose download settings would refuse every file, or will not show
     // them, still sells a parcel, and no file is asked for.
@@ -832,7 +1133,17 @@ describe("the protected product check", () => {
       if (asked.url.includes("/settings/")) {
         return { status: 200, body: settingAt(asked.url, parcelSettingFor(asked.url)) };
       }
-      return { status: 200, body: parcelDocument() };
+      return {
+        status: 200,
+        body: asked.url.includes("/products?")
+          ? [
+              parcelDocument({
+                name: "Canvas tote bag",
+                description: "A physical item shipped to the buyer.",
+              }),
+            ]
+          : parcelDocument(),
+      };
     });
 
     const read = await inspectProduct(connectionTo(stand.url), merchantItemIdFor(stand.url, "28"));
@@ -846,6 +1157,16 @@ describe("the protected product check", () => {
         fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
       },
     });
+    const census = [];
+    for await (const event of connectedCatalogue(connectionTo(stand.url), fetch))
+      census.push(event);
+    expect(census.at(-1)).toEqual({ kind: "complete", total: 1 });
+    expect(census).toContainEqual(
+      expect.objectContaining({
+        kind: "product",
+        inspected: expect.objectContaining({ ok: true }),
+      }),
+    );
     expect(stand.asked.every((asked) => asked.url.startsWith("/wp-json/wc/v3/"))).toBe(true);
   });
 
@@ -1178,7 +1499,7 @@ describe("the protected product check", () => {
       [file, productDocument],
     ] as const;
     for (const failure of failures) {
-      // Every answer from the raw file is a verdict except a refusal.
+      // A raw file refusal establishes protection; other responses must be explained.
       const asked = checks.filter(
         ([where]) => where !== file || ![401, 403].includes(failure.status),
       );
@@ -1215,7 +1536,9 @@ describe("the protected product check", () => {
           const busy = [408, 429, 503].includes(failure.status);
           expect(read.again, said).toBe(busy || (where !== file && failure.kind !== undefined));
           if (!read.again)
-            expect(read.saidNo, said).toBe(where === file && failure.kind === undefined);
+            expect(read.saidNo, said).toBe(
+              where === file && failure.status === 200 && failure.kind === undefined,
+            );
         }
         await stand.close();
         stand = null;
@@ -1387,34 +1710,88 @@ describe("the protected product check", () => {
     );
   });
 
-  it("calls a downloadable file public only where it was served without an order permission", async () => {
-    // A missing file or a redirect to a login is not a file anyone can fetch;
-    // either still refuses the sale, which cannot rely on it being protected.
-    for (const [status, isPublic] of [
-      [200, true],
-      [404, false],
-      [302, false],
-    ] as const) {
-      stand = await shopAnswering((asked) => {
-        if (asked.url === "/protected/guide.txt") {
-          const headers: Record<string, string> = status === 302 ? { location: "/login" } : {};
-          return { status, body: {}, headers };
-        }
-        if (asked.url.includes("/settings/")) {
-          return { status: 200, body: settingAt(asked.url, settingFor(asked.url)) };
-        }
-        return { status: 200, body: productDocument() };
+  it("keeps a published download through ambiguous raw answers and withdraws only confirmed public bytes", async () => {
+    let rawStatus = 403;
+    stand = await shopAnswering((asked) => {
+      if (asked.url === "/protected/guide.txt") {
+        const headers: Record<string, string> = rawStatus === 302 ? { location: "/login" } : {};
+        return { status: rawStatus, body: {}, headers };
+      }
+      if (asked.url.includes("/settings/"))
+        return { status: 200, body: settingAt(asked.url, settingFor(asked.url)) };
+      const product = productDocument({
+        name: "Agentify guide.txt",
+        description: "A downloadable guide.",
       });
-
-      const read = await inspectProduct(
-        connectionTo(stand.url),
-        merchantItemIdFor(stand.url, "11"),
+      return asked.url.includes("/products?")
+        ? { status: 200, body: [product], headers: { "X-WP-Total": "1" } }
+        : { status: 200, body: product };
+    });
+    const h = await harness();
+    try {
+      const shops = memoryWooShops();
+      const person = {
+        id: "shop-owner",
+        email: "shop@example.com",
+        confirmed: true,
+        merchant: { id: h.merchant.id },
+      };
+      await shops.connect({
+        ...connectionTo(stand.url),
+        accountId: person.id,
+        revision: "granted-1",
+        permissions: "read_write",
+        connectedAt: new Date(),
+        currency: { code: "USD", decimals: 2 },
+      });
+      await gatewayFor(h.gateway, { merchantId: h.merchant.id, email: person.email }).sellThrough(
+        "woocommerce",
       );
+      for (const status of [403, 404, 302, 202, 204, 205, 200, 403, 206]) {
+        rawStatus = status;
+        await shops.jobs.request({
+          kind: "publish",
+          merchantId: h.merchant.id,
+          accountId: person.id,
+          connectionRevision: "granted-1",
+          shopUrl: stand.url,
+          currency: { code: "USD", decimals: 2 },
+          rate: null,
+        });
+        const job = await shops.jobs.claim();
+        if (!job) throw new Error("No accepted task");
+        await workShopJob(job, {
+          shops,
+          identity: { byId: async () => person },
+          clientFor: (who) => gatewayFor(h.gateway, who),
+          publisherFor: (who) => shopPublisherFor(h.gateway, who, shops),
+          catalogue: (keys) => connectedCatalogue(keys, fetch),
+          guestCart: async () => null,
+          surfaceMode: "sandbox",
+        });
+        const isPublic = status === 200 || status === 206;
+        const isUnknown = [404, 302, 202, 204, 205].includes(status);
+        expect(await h.store.cards(h.merchant.id), `HTTP ${status}`).toMatchObject([
+          {
+            paused: isPublic,
 
-      expect(read, `${status}`).toMatchObject({ ok: false, saidNo: true });
-      expect(!read.ok && /public/i.test(read.why), `${status}`).toBe(isPublic);
-      await stand.close();
-      stand = null;
+            card: { title: "Agentify guide.txt" },
+          },
+        ]);
+        expect((await shops.jobs.latest(h.merchant.id))[0], `HTTP ${status}`).toMatchObject({
+          status: "completed",
+          total: 1,
+          read: 1,
+        });
+        expect(await shops.jobs.rows(h.merchant.id, job.id), `HTTP ${status}`).toMatchObject([
+          {
+            group: isUnknown ? "unanswered" : isPublic ? "fix" : "ready",
+            ...(isPublic ? { reason: "download_protection" } : {}),
+          },
+        ]);
+      }
+    } finally {
+      await h.stop();
     }
   });
 
@@ -1790,9 +2167,10 @@ describe("the protected product check", () => {
     expect(missing).toMatchObject({
       ok: false,
       again: false,
-      saidNo: true,
+      saidNo: false,
       why: expect.stringContaining("HTTP 404"),
     });
+    expect(missing).not.toHaveProperty("obstacle");
   });
 
   it("says which of a download's refusals are the shop's no", async () => {

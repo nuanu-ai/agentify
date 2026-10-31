@@ -10,8 +10,8 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { createRoutesStub } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
 import { askedIn, listingOf } from "../../src/listing.js";
+import { DayHeading, List, Row, RowMore } from "../display/list.js";
 import { ListTools } from "../screens/listing.js";
-import { DayHeading, List, Row, RowMore } from "./list.js";
 
 afterEach(cleanup);
 

@@ -1,9 +1,11 @@
 import { Button, Field } from "@agentify/ui";
 import { type ReactNode, useEffect, useState } from "react";
+import { comeBack, offSaleOnKeys } from "../../src/woo-product-words.js";
 import type { WooShopView } from "../../src/woo-views.js";
 import { NO_SHOP } from "../../src/woo-words.js";
+import { PanelHead } from "../display/panel-head.js";
 import { ShopAgain, ShopForm } from "./shop-context.js";
-import { comeBack, GUIDE, offSaleOnKeys, PanelHead, Problem } from "./woo-panels.js";
+import { GUIDE, Problem } from "./woo-panels.js";
 import styles from "./woocommerce.module.css";
 
 /** A state that needs the merchant, said once at the top of the page in the notice's colours. */

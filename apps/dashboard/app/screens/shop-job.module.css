@@ -1,0 +1,36 @@
+.job {
+  display: grid;
+  gap: var(--space-block);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+:global(.app-content) > .job:first-child {
+  padding-top: var(--space-section);
+}
+.job progress {
+  width: 100%;
+  accent-color: var(--accent);
+}
+.checked {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-block);
+}
+.checked p {
+  margin: 0;
+}
+.group {
+  display: grid;
+  gap: var(--space-control);
+  border-top: 1px solid var(--line);
+  padding-top: var(--space-card);
+}
+.group ul {
+  display: grid;
+  gap: var(--space-tight);
+  padding-left: var(--space-card);
+}
+.group h3 span {
+  color: var(--muted);
+}

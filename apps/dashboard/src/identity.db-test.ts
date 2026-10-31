@@ -31,6 +31,7 @@ const wanted = (() => {
 const databaseUrl = await readyDatabase(wanted);
 const here = dirname(fileURLToPath(import.meta.url));
 const migrationsIn = join(here, "..", "drizzle");
+const gatewayMigrations = join(here, "..", "..", "gateway", "drizzle");
 
 const MERCHANT = "mer_the_merchant";
 /**
@@ -39,8 +40,8 @@ const MERCHANT = "mer_the_merchant";
 const A_KEY_ON_THE_ROW = "the-merchants-own-key-long-enough";
 const NOW = new Date("2026-09-17T12:00:00.000Z");
 
-async function statementsOf(file: string): Promise<string[]> {
-  const source = await readFile(join(migrationsIn, file), "utf8");
+async function statementsOf(file: string, directory = migrationsIn): Promise<string[]> {
+  const source = await readFile(join(directory, file), "utf8");
   return source
     .split("--> statement-breakpoint")
     .map((chunk) => chunk.trim())
@@ -80,6 +81,12 @@ if (databaseUrl === null) {
   async function emptyEverything(): Promise<void> {
     await pool.query("drop schema public cascade");
     await pool.query("create schema public");
+    for (const file of (await readdir(gatewayMigrations))
+      .filter((name) => name.endsWith(".sql"))
+      .sort()) {
+      for (const statement of await statementsOf(file, gatewayMigrations))
+        await pool.query(statement);
+    }
   }
 
   /**

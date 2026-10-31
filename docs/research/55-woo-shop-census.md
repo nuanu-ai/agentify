@@ -1332,10 +1332,15 @@ not. That is an estimate, not a measurement. Nor was it measured whether a
 real shop answers a protected list of a hundred products within the fifteen
 seconds every request is given: a page that does not is told, for each of its
 hundred products, as the shop not answering, and an import run again asks
-again. The import runs inside the merchant's request. Neither Caddy in front
-of the dashboard nor the dashboard's own server limits how long a response may
-take; the test host's ingress is configured outside this repository and was
-not read. Firefox gives up on a response after five minutes by default; other
-browsers were not checked. The import stays inside the request, and moves out
-of it into a job of its own only once a real shop proves slow enough to come
-near that limit (the product owner, 2026-10-22).
+again.
+
+Product checking and publication run as persisted dashboard jobs (the product
+owner, 2026-10-30). A browser request starts work and returns; closing that
+browser does not stop the work. A merchant has at most one active job, and a
+process restart leaves interrupted work stopped with the observations already
+stored. The merchant and operator read the same progress and result. These are
+the mechanics of [the onboarding implementation](92-merchant-onboarding.md),
+not a new measurement of the shops in this census. The timing and request
+counts above describe the measured implementation; the direct protected
+catalogue reader and the job runner have not been timed against those outside
+shops.

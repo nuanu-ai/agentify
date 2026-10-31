@@ -75,6 +75,19 @@ export function firstVisitScripts(
   manifest: ViteManifest,
   routeId: string,
 ): ReadonlySet<string> {
+  for (let id: string | undefined = routeId; id !== undefined; id = build.routes[id]?.parentId) {
+    const script = (build.routes[id]?.module as { handle?: { script?: boolean | string } })?.handle
+      ?.script;
+    if (script === undefined) continue;
+    if (script === false) return new Set();
+    if (typeof script === "string") {
+      const file = fileOf(script);
+      if (!file.endsWith(".js") || !Object.values(manifest).some((chunk) => chunk.file === file))
+        throw new Error(`${id}: native script is absent from the build: ${script}`);
+      return reached(manifest, [file], false);
+    }
+    break;
+  }
   const lazy = build.routeDiscovery.mode === "lazy" && build.ssr;
   const urls = [
     ...(lazy ? [] : [build.assets.url]),

@@ -12,7 +12,7 @@ import {
 import type { KeysView, NewKeyView } from "../../src/keys.js";
 import type { Platform } from "../../src/next-step.js";
 import type { FrameView } from "../../src/views.js";
-import type { WooImportView, WooShopView } from "../../src/woo-views.js";
+import type { WooShopView } from "../../src/woo-views.js";
 import { acted, formOf, readOnly, useChrome } from "../answer.js";
 import { Frame } from "../components/frame.js";
 import { readFailedIn } from "../components/not-loaded.js";
@@ -59,28 +59,29 @@ export async function loader(asked: LoaderFunctionArgs) {
  */
 export async function action(asked: ActionFunctionArgs) {
   const { url, context, request } = asked;
-  return acted<
-    KeysView | NewKeyView | WooShopView | WooImportView | { problem: string; platform?: Platform }
-  >(async () => {
-    const form = await formOf(request);
-    const person = context.get(signedIn);
-    const pages = context.get(services);
-    const woo = url.searchParams.get("woo");
-    if (woo !== null)
-      return await pages.onboarding.shopPress(
-        person,
-        woo,
-        form,
-        request.headers.get("cookie") ?? undefined,
-      );
-    if (form.has("platform") || form.get("intent") === "acknowledge-test")
-      return await pages.onboarding.press(person, form);
-    if (form.get("intent") === "create-key") {
-      context.set(keyPressed, true);
-      return await pages.keys.issue(person, form);
-    }
-    return await pages.selling.press(person, url.searchParams, form);
-  }, asked);
+  return acted<KeysView | NewKeyView | WooShopView | { problem: string; platform?: Platform }>(
+    async () => {
+      const form = await formOf(request);
+      const person = context.get(signedIn);
+      const pages = context.get(services);
+      const woo = url.searchParams.get("woo");
+      if (woo !== null)
+        return await pages.onboarding.shopPress(
+          person,
+          woo,
+          form,
+          request.headers.get("cookie") ?? undefined,
+        );
+      if (form.has("platform") || form.get("intent") === "acknowledge-test")
+        return await pages.onboarding.press(person, form);
+      if (form.get("intent") === "create-key") {
+        context.set(keyPressed, true);
+        return await pages.keys.issue(person, form);
+      }
+      return await pages.selling.press(person, url.searchParams, form);
+    },
+    asked,
+  );
 }
 
 export const shouldRevalidate: ShouldRevalidateFunction = ({
@@ -98,20 +99,16 @@ export default function Products() {
   const frame = useRouteLoaderData<FrameView>("routes/merchant-only");
   const onboarding = frame?.onboarding;
   const empty = (view === null || view.empty !== null) && onboarding !== undefined;
-  const shop =
-    pressed && "screen" in pressed && (pressed.screen === "shop" || pressed.screen === "import")
-      ? pressed
-      : view?.shop;
+  const shop = pressed && "screen" in pressed && pressed.screen === "shop" ? pressed : view?.shop;
   const choosingShop =
     query.get("ways") === "choose" && shop?.screen === "shop" && shop.connection === null;
   if (
     issued === undefined &&
     !choosingShop &&
     shop !== undefined &&
+    (view === null || view.empty !== null) &&
     (onboarding?.step.page === "shop" ||
-      (pressed &&
-        "screen" in pressed &&
-        (pressed.screen === "shop" || pressed.screen === "import")))
+      (pressed && "screen" in pressed && pressed.screen === "shop"))
   )
     return (
       <Suspense
@@ -138,7 +135,7 @@ export default function Products() {
           </Frame>
         }
       >
-        <ProductsCatalog view={view} base={chrome.base} />
+        <ProductsCatalog view={view} base={chrome.base} shop={shop} />
       </Suspense>
     );
   return (
@@ -146,14 +143,12 @@ export default function Products() {
       {empty || issued !== undefined ? (
         <Suspense fallback={<p role="status">Loading…</p>}>
           <ProductsOnboarding
-            {...(onboarding === undefined ? {} : { view: onboarding })}
+            view={onboarding}
             choose={choosingShop}
-            {...(pressed && "platform" in pressed && pressed.platform !== undefined
-              ? { selected: pressed.platform }
-              : {})}
-            {...(problem === undefined ? {} : { problem })}
-            {...(keyView === undefined ? {} : { keyView })}
-            {...(issued === undefined ? {} : { issued })}
+            selected={pressed && "platform" in pressed ? pressed.platform : undefined}
+            problem={problem}
+            keyView={keyView}
+            issued={issued}
           />
         </Suspense>
       ) : null}

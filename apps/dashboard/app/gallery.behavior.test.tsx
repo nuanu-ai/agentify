@@ -43,7 +43,14 @@ describe("onboarding situations in the frame", () => {
       const state = gallery.states.find((one) => one.id === `dashboard-onboarding-${row}`);
       if (state === undefined) throw new Error(`the gallery has no onboarding situation ${row}`);
       const drawn = new DOMParser().parseFromString(
-        await drawnInBrowser(state, { shows: "Products" }, { act, createRoot }),
+        await drawnInBrowser(
+          state,
+          {
+            ...state.scene,
+            shows: row === 1 ? "How do you want to add your products?" : "Products",
+          },
+          { act, createRoot },
+        ),
         "text/html",
       );
       expect(
@@ -54,6 +61,31 @@ describe("onboarding situations in the frame", () => {
       expect(drawn.querySelector('a[href="/docs/#how-to-start"]') !== null).toBe(
         row === 1 && facts.mode === "live",
       );
+    },
+  );
+});
+
+describe("publication results reached from an empty Products list", () => {
+  it.each([
+    [
+      "publication-unread-first",
+      "We couldn't read shop.example.com, so nothing is on sale yet.",
+      true,
+    ],
+    ["publication-unread", "We couldn't read shop.example.com, so nothing is on sale yet.", false],
+  ] as const)(
+    "keeps the first-publication claim tied to known Products for %s",
+    async (id, copy, shouldSayNone) => {
+      const state = gallery.states.find((one) => one.id === `dashboard-shop-job-${id}`);
+      if (state?.scene === undefined) throw new Error(`the gallery has no browser scene for ${id}`);
+      const drawn = new DOMParser().parseFromString(
+        await drawnInBrowser(state, state.scene, { act, createRoot }),
+        "text/html",
+      );
+      const text = drawn.body.textContent ?? "";
+
+      expect(text).toContain(shouldSayNone ? "Check again" : "Sync with your shop");
+      expect(text.includes(copy)).toBe(shouldSayNone);
     },
   );
 });

@@ -173,11 +173,9 @@ unread account is a failed account read, rather than a guessed empty shop.
 The outer check starts no subsequent stage after its deadline, and late results cannot issue a grant. The existing
 signed-in frame retains its own bounded read and rendering lifecycle.
 
-IRT is the unsupported-rate example. The product owner verified Coinbase's
-USD rates on 30 October 2026: IRR and XAF are present, IRT is absent. This is
-an observed example, not a fixed list of currencies Coinbase supports. No
-commerce-v1 path vocabulary or events are introduced here; they belong to the
-authorised eighth slice.
+Slice 3 uses IRT in its unsupported-rate example. This does not establish a
+current Coinbase rate list. No commerce-v1 path vocabulary or events are
+introduced here; they belong to the authorised eighth slice.
 
 The three equally weighted platform tiles remain an explicit product-owner
 choice above the general one-filled-control rule. The inherited key window
@@ -288,3 +286,25 @@ in its own test file. The combined file reports a nested Router after asynchrono
 the unchanged client assertion passes alone. The two readers have separate test
 environments.
 No production workaround or weaker assertion is added for that interaction.
+
+## Product withdrawal ownership
+
+The dashboard records WooCommerce withdrawal ownership in
+`dashboard_woo_card_pauses`, together with the observed reason. A deleted,
+unpublished or unpurchasable product says "Off sale: your shop stopped selling
+it". A product that changes to an unsupported type, stock policy or its own
+download conditions says "Off sale: it changed in your shop, and Agentify can't sell it
+now". A later check can update the reason while preserving the time the
+connector paused the card. The gateway stores an ordinary card pause and
+retains no connector-specific fields. A connector withdrawal or return to sale
+locks the card and writes the pause and ownership in one database transaction. A dashboard-owned trigger on updates to `cards.paused` clears
+connector ownership for ordinary seller actions, including a repeated pause
+through the public API. Republishing updates the card document without touching
+its pause or the ownership marker. The memory adapter serializes dashboard
+callers; API ownership is verified against PostgreSQL, where the trigger runs.
+
+A finished catalogue traversal may contain individual unanswered products. Each
+keeps its own unknown result while confirmed product withdrawals proceed. A
+partial traversal cannot withdraw cards. Temporary stock shortages, whole-shop
+settings and text or card validation problems preserve the last
+published card, and each purchase still checks the shop's current availability.
