@@ -120,7 +120,6 @@ export function decisionMessage(parts: {
     html: transactionalEmailHtml(
       {
         preview: lead,
-        eyebrow: "Live sales",
         title,
         lead,
         paragraphs,

@@ -71,7 +71,6 @@ export function liveSalesMessage(parts: {
     html: transactionalEmailHtml(
       {
         preview: lead,
-        eyebrow: "Live sales",
         title: subject,
         lead,
         paragraphs,

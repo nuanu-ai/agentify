@@ -400,23 +400,25 @@ function Admission({ view, path }: Readonly<{ view: MerchantView; path: string }
         </>
       ) : (
         <>
-          <span>
-            {admission.withdrawn === null ? (
-              "Not admitted."
-            ) : admission.withdrawn === "unread" ? (
-              <>
-                Not admitted. Whether a withdrawal stands, and the note the merchant reads,{" "}
-                <CouldNotBeRead />
-              </>
-            ) : (
-              <>
-                Withdrawn <Moment at={admission.withdrawn.at} /> by {admission.withdrawn.by}
-                {admission.withdrawn.note === null
-                  ? "."
-                  : `. The merchant reads: “${admission.withdrawn.note}”`}
-              </>
-            )}
-          </span>
+          <Facts>
+            <Fact label="Admission">
+              {admission.withdrawn === null ? (
+                "Not admitted."
+              ) : admission.withdrawn === "unread" ? (
+                <>
+                  Not admitted. Whether a withdrawal stands, and the note the merchant reads,{" "}
+                  <CouldNotBeRead />
+                </>
+              ) : (
+                <>
+                  Withdrawn <Moment at={admission.withdrawn.at} /> by {admission.withdrawn.by}
+                  {admission.withdrawn.note === null
+                    ? "."
+                    : `. The merchant reads: “${admission.withdrawn.note}”`}
+                </>
+              )}
+            </Fact>
+          </Facts>
           <PressAnswer
             answer={admission.withdraw}
             done="Admission withdrawn."
@@ -433,55 +435,57 @@ function Admission({ view, path }: Readonly<{ view: MerchantView; path: string }
             unchanged="That request is no longer pending. Nothing changed."
             page={path}
           />
-          <ActionForm
-            action={`${path}/admit`}
-            page={path}
-            button="Admit to live sales"
-            consequence={
-              landsAt === null ? (
-                `${opening(called)} can sell for real money once the account and products are ready. You can withdraw approval later.`
-              ) : (
-                <>
-                  {opening(called)} can sell for real money once the account and products are ready.
-                  Its payments go to a new wallet from <Moment at={landsAt} />. You can withdraw
-                  approval later.
-                </>
-              )
-            }
-            answer={admission.admit}
-            tone="positive"
-            stepUp={view.stepUp}
-            beside={
-              landsAt === null ? null : (
-                <p className="op-beside">
-                  <span className="badge badge-notice">Wallet change waiting</span>
-                  <span>
-                    The merchant changed their payout wallet; the new one takes over{" "}
-                    <Moment at={landsAt} />.
-                  </span>
-                </p>
-              )
-            }
-          />
-          {admission.request ? (
-            <InPlace summary="Decline request…" open={opensOn(admission.decline ?? null)}>
-              <ActionForm
-                action={`${path}/decline`}
-                page={path}
-                button="Decline request"
-                consequence={`${opening(called)} stays without live sales and reads your note.`}
-                reason
-                reasonWords={{
-                  label: "Note to the merchant",
-                  hint: "The merchant reads this note on their dashboard and by email, and can ask again. Say what they should change. Do not name a buyer or paste their details.",
-                  missing: "Write a note for the merchant. Nothing was changed.",
-                }}
-                fields={{ request_id: admission.request.id }}
-                answer={admission.decline ?? null}
-                stepUp={view.stepUp}
-              />
-            </InPlace>
-          ) : null}
+          <div className="op-admission-actions">
+            <ActionForm
+              action={`${path}/admit`}
+              page={path}
+              button="Admit to live sales"
+              consequence={
+                landsAt === null ? (
+                  `${opening(called)} can sell for real money once the account and products are ready. You can withdraw approval later.`
+                ) : (
+                  <>
+                    {opening(called)} can sell for real money once the account and products are
+                    ready. Its payments go to a new wallet from <Moment at={landsAt} />. You can
+                    withdraw approval later.
+                  </>
+                )
+              }
+              answer={admission.admit}
+              tone="positive"
+              stepUp={view.stepUp}
+              beside={
+                landsAt === null ? null : (
+                  <p className="op-beside">
+                    <span className="badge badge-notice">Wallet change waiting</span>
+                    <span>
+                      The merchant changed their payout wallet; the new one takes over{" "}
+                      <Moment at={landsAt} />.
+                    </span>
+                  </p>
+                )
+              }
+            />
+            {admission.request ? (
+              <InPlace summary="Decline request…" open={opensOn(admission.decline ?? null)}>
+                <ActionForm
+                  action={`${path}/decline`}
+                  page={path}
+                  button="Decline request"
+                  consequence={`${opening(called)} stays without live sales and reads your note.`}
+                  reason
+                  reasonWords={{
+                    label: "Note to the merchant",
+                    hint: "The merchant reads this note on their dashboard and by email, and can ask again. Say what they should change. Do not name a buyer or paste their details.",
+                    missing: "Write a note for the merchant. Nothing was changed.",
+                  }}
+                  fields={{ request_id: admission.request.id }}
+                  answer={admission.decline ?? null}
+                  stepUp={view.stepUp}
+                />
+              </InPlace>
+            ) : null}
+          </div>
         </>
       )}
     </Check>
@@ -523,8 +527,12 @@ export function MerchantScreen({ view }: Readonly<{ view: MerchantView }>) {
         >
           <div data-shop-job-result>
             {view.shopJob ? (
-              <div id="shop-products">
-                <ShopJobPanel initial={view.shopJob} endpoint={`${base}${path}/shop-job`} />
+              <div id="shop-products" className="op-shop-products">
+                <ShopJobPanel
+                  initial={view.shopJob}
+                  endpoint={`${base}${path}/shop-job`}
+                  notification="The job continues on the server. Its result stays on this merchant’s page."
+                />
               </div>
             ) : (
               <p>No product check yet.</p>
@@ -535,71 +543,66 @@ export function MerchantScreen({ view }: Readonly<{ view: MerchantView }>) {
           </p>
         </div>
       ) : null}
+      <section className="op-panel" aria-labelledby="ready-title">
+        <div className="op-panel-head">
+          <h2 id="ready-title">Ready to sell</h2>
+        </div>
+        <div className="op-panel-body">
+          <ul className="op-checks">
+            <Check
+              title="Seller name"
+              held={ready.sellerName !== null}
+              badge={ready.sellerName === null ? "Missing" : "Set"}
+            >
+              <span>
+                {ready.sellerName === null
+                  ? "Not set. No product is on sale until the merchant chooses one."
+                  : ready.sellerName}
+              </span>
+            </Check>
+            <Check
+              title="Payout wallet"
+              held={ready.wallet?.split != null}
+              badge={
+                ready.wallet === null ? "Missing" : ready.wallet.split === null ? "No split" : "Set"
+              }
+            >
+              {ready.wallet === null ? (
+                <span>Not set. No product is on sale until the merchant sets one.</span>
+              ) : (
+                <>
+                  <Address address={ready.wallet.address} />
+                  <span>
+                    {ready.wallet.split === null ? (
+                      "No payout split is recorded for this wallet, so it is read as no wallet and nothing of theirs is sold."
+                    ) : (
+                      <>
+                        Pays out from the split <Whole value={ready.wallet.split} />
+                        {ready.wallet.explorer === null ? null : (
+                          <>
+                            , <a href={ready.wallet.explorer}>on the explorer</a>
+                          </>
+                        )}
+                        .
+                      </>
+                    )}
+                    {ready.wallet.landsAt === null ? null : (
+                      <>
+                        {" "}
+                        A new wallet takes over <Moment at={ready.wallet.landsAt} />.
+                      </>
+                    )}
+                  </span>
+                </>
+              )}
+            </Check>
+            <Admission view={view} path={path} />
+          </ul>
+          <PressAnswer answer={ready.strayAnswer} done="Done." page={path} />
+        </div>
+      </section>
       <div className="op-two">
         <div>
-          <section className="op-panel" aria-labelledby="ready-title">
-            <div className="op-panel-head">
-              <h2 id="ready-title">Ready to sell</h2>
-            </div>
-            <div className="op-panel-body">
-              <ul className="op-checks">
-                <Check
-                  title="Seller name"
-                  held={ready.sellerName !== null}
-                  badge={ready.sellerName === null ? "Missing" : "Set"}
-                >
-                  <span>
-                    {ready.sellerName === null
-                      ? "Not set. No product is on sale until the merchant chooses one."
-                      : ready.sellerName}
-                  </span>
-                </Check>
-                <Check
-                  title="Payout wallet"
-                  held={ready.wallet?.split != null}
-                  badge={
-                    ready.wallet === null
-                      ? "Missing"
-                      : ready.wallet.split === null
-                        ? "No split"
-                        : "Set"
-                  }
-                >
-                  {ready.wallet === null ? (
-                    <span>Not set. No product is on sale until the merchant sets one.</span>
-                  ) : (
-                    <>
-                      <Address address={ready.wallet.address} />
-                      <span>
-                        {ready.wallet.split === null ? (
-                          "No payout split is recorded for this wallet, so it is read as no wallet and nothing of theirs is sold."
-                        ) : (
-                          <>
-                            Pays out from the split <Whole value={ready.wallet.split} />
-                            {ready.wallet.explorer === null ? null : (
-                              <>
-                                , <a href={ready.wallet.explorer}>on the explorer</a>
-                              </>
-                            )}
-                            .
-                          </>
-                        )}
-                        {ready.wallet.landsAt === null ? null : (
-                          <>
-                            {" "}
-                            A new wallet takes over <Moment at={ready.wallet.landsAt} />.
-                          </>
-                        )}
-                      </span>
-                    </>
-                  )}
-                </Check>
-                <Admission view={view} path={path} />
-              </ul>
-              <PressAnswer answer={ready.strayAnswer} done="Done." page={path} />
-            </div>
-          </section>
-
           <section className="op-panel" aria-labelledby="integration-title">
             <div className="op-panel-head">
               <h2 id="integration-title">Integration</h2>
