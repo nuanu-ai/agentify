@@ -220,10 +220,47 @@ export async function advanceLivePublication(pool: Pool, shops: WooShops): Promi
     .select({ merchantId: accounts.merchantId })
     .from(accounts)
     .where(eq(accounts.id, intent.accountId));
+  const inForce = (approvedAt: Date | null | undefined) =>
+    approvedAt != null && new Date(approvedAt).getTime() === intent.event.approvalAt;
+  if (
+    inForce(merchant?.live_approved_at) &&
+    merchant?.integration !== "woocommerce" &&
+    intent.event.kind === "admitted"
+  )
+    return db.transaction(async (tx) => {
+      const {
+        rows: [now],
+      } = await tx.execute<{
+        live_approved_at: Date | null;
+        integration: LiveSalesChange["integration"];
+        service_name: string | null;
+        seller_site: string | null;
+        payout_wallet: string | null;
+      }>(
+        sql`select live_approved_at,integration,service_name,seller_site,payout_wallet from merchants where id=${intent.merchantId} for no key update`,
+      );
+      const [current] = await tx
+        .select()
+        .from(livePublications)
+        .where(eq(livePublications.id, intent.id))
+        .for("update");
+      if (current?.state !== "pending" || current.jobId !== null) return;
+      if (now && inForce(now.live_approved_at) && now.integration !== "woocommerce")
+        await recordLiveSalesChange(tx, {
+          ...current.event,
+          integration: now.integration,
+          sellerName: now.service_name,
+          sellerSite: now.seller_site,
+          hasWallet: now.payout_wallet !== null,
+        });
+      await tx
+        .update(livePublications)
+        .set({ state: "completed" })
+        .where(eq(livePublications.id, current.id));
+    });
   if (
     !merchant ||
-    merchant.live_approved_at === null ||
-    new Date(merchant.live_approved_at).getTime() !== intent.event.approvalAt ||
+    !inForce(merchant.live_approved_at) ||
     merchant.integration !== "woocommerce" ||
     owner?.merchantId !== intent.merchantId
   ) {
