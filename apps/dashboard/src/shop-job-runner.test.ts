@@ -704,13 +704,15 @@ describe("a durable shop job", () => {
     expect(closed).toBe(false);
     release();
     await closing;
-    expect(await shopJobView(s.shops, s.h.merchant.id, new URLSearchParams())).toMatchObject({
+    const stopped = await shopJobView(s.shops, s.h.merchant.id, new URLSearchParams());
+    expect(stopped).toMatchObject({
       status: "stopped",
       stopCode: "interrupted",
       read: 1,
       total: 2,
       ready: 1,
     });
+    expect(stopped?.why).toContain(stopped?.words.publish);
     const restarted = startShopJobs(s.parts);
     await restarted.ready;
     await restarted.stop();

@@ -220,7 +220,10 @@ export async function workShopJob(
     if (!(await current()))
       return finish(
         stopping()
-          ? stopped("interrupted", "The server stopped before the work finished. Check again.")
+          ? stopped(
+              "interrupted",
+              `The server stopped before the work finished. ${job.kind === "publish" ? "Sync with your shop." : "Check again."}`,
+            )
           : stopped("changed", "The connection or rate changed. Check your products again."),
       );
     if (event.kind === "stopped")
