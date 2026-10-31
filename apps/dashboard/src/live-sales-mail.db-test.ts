@@ -309,6 +309,52 @@ if (databaseUrl === null) {
       expect(await turn()).toBe(false);
     });
 
+    it("sends the rest of the queue past an email it cannot prepare, and gives that one up in time", async () => {
+      const operator = await person(true);
+      const declined = await merchant();
+      const asked = await request(declined.ask);
+      await store.declineLiveSales(declined.merchantId, asked.id, press(declined.merchantId));
+      await pool.query(
+        "update dashboard_live_sales_mail set next_attempt_at=$1, event=jsonb_set(event,'{request,decline}','null') where kind='declined'",
+        [new Date(at - 1)],
+      );
+      const waiting = await merchant();
+      await request(waiting.ask);
+      clock += 1000;
+      for (let turns = 0; turns < 4; turns++) await turn();
+      expect(messages.map((message) => message.to)).toEqual([operator.email]);
+      expect(messages[0]?.body).toContain(waiting.email);
+      for (let days = 0; days < 30; days++) {
+        clock += 86400_000;
+        await turn();
+      }
+      expect((await rows()).find((row) => row.kind === "declined")).toMatchObject({
+        state: "suppressed",
+        message: null,
+      });
+      expect(messages.some((message) => message.to === declined.email)).toBe(false);
+    });
+
+    it("stops retrying an email the provider keeps refusing", async () => {
+      await person(true);
+      const seller = await merchant();
+      await request(seller.ask);
+      handover = "refused";
+      for (let days = 0; days < 30; days++) {
+        await turn();
+        clock += 86400_000;
+      }
+      const settled = await rows();
+      expect(settled.map((row) => [row.kind, row.state, row.last_outcome])).toEqual([
+        ["reminder", "suppressed", "refused"],
+        ["requested", "suppressed", "refused"],
+      ]);
+      const tries = messages.length;
+      clock += 30 * 86400_000;
+      await turn();
+      expect(messages).toHaveLength(tries);
+    });
+
     it("allows only one concurrent dispatcher to hand over a recipient's message", async () => {
       await person(true);
       const seller = await merchant();
