@@ -92,6 +92,7 @@ if (databaseUrl === null) {
     accountId = `acc_${randomUUID()}`,
     withWallet = true,
     name = true,
+    site = undefined as boolean | undefined,
     connected = true,
     integration = "woocommerce" as "woocommerce" | "api",
   } = {}) => {
@@ -101,10 +102,8 @@ if (databaseUrl === null) {
       "insert into dashboard_accounts(id,email,merchant_id,created_at,updated_at) values($1,$2,$3,now(),now())",
       [accountId, `${accountId}@example.com`, merchantId],
     );
-    if (name) {
-      await store.setServiceName(merchantId, "Freeland", at);
-      await store.setSellerSite(merchantId, "https://freeland.app", at);
-    }
+    if (name) await store.setServiceName(merchantId, "Freeland", at);
+    if (site ?? name) await store.setSellerSite(merchantId, "https://freeland.app", at);
     await store.switchIntegration(merchantId, integration);
     if (withWallet) await saveWallet(merchantId);
     const connection = {
@@ -672,6 +671,35 @@ if (databaseUrl === null) {
       await saveWallet(one.merchantId);
       expect(await rows("dashboard_live_publications")).toEqual([]);
     });
+    it.each([
+      { integration: "api", withWallet: false, key: false, next: "wallet" },
+      { integration: "api", withWallet: true, key: false, next: "connect" },
+      { integration: "api", withWallet: true, key: true, next: "code" },
+      { integration: "woocommerce", withWallet: true, key: false, next: "settings" },
+    ] as const)(
+      "sends a named $integration merchant without a site to the step the dashboard shows (wallet $withWallet, key $key)",
+      async ({ integration, withWallet, key, next }) => {
+        const one = await seller({ integration, site: false, connected: false, withWallet });
+        if (key)
+          await store.addKey(
+            {
+              id: `key_${randomUUID()}`,
+              merchantId: one.merchantId,
+              label: "Server",
+              digest: randomUUID(),
+            },
+            at,
+          );
+        await approve(one.merchantId);
+        expect((await rows("dashboard_live_sales_mail")).map((row) => row.event.next)).toEqual([
+          next,
+        ]);
+        await dispatch();
+        expect(sent[0]?.body.includes("/dashboard/settings")).toBe(next === "settings");
+        if (next === "code")
+          expect(sent[0]?.body).toContain("/docs/quickstart#_4-publish-one-card");
+      },
+    );
     it("requests a fresh check after a connection changes instead of publishing the stale basis", async () => {
       const one = await seller();
       const checking = await check(one);
