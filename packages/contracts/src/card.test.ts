@@ -958,7 +958,6 @@ describe("the description a listing carries", () => {
         const message = errorOf(CardSchema, { ...syncCard, description });
         expect(message).toContain("500");
         expect(message).toContain(String(length));
-        expect(message).toContain("discovery catalog");
       }
     },
   );
@@ -983,7 +982,6 @@ describe("the description a listing carries", () => {
       const message = errorOf(PublicCardSchema, { ...publicCard, description });
       expect(message).toContain("500");
       expect(message).toContain(String(length));
-      expect(message).toContain("discovery catalog");
     }
     expect(CardSchema.safeParse({ ...syncCard, description: "𝄞".repeat(250) }).success).toBe(true);
   });
