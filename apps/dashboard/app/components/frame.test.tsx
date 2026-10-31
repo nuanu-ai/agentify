@@ -301,7 +301,7 @@ describe("the banner about the account", () => {
         within(drawn)
           .getAllByRole("link")
           .map((link) => link.getAttribute("href")),
-      ).toEqual(["/settings"]);
+      ).toEqual(multiple ? ["/settings", "/products"] : ["/settings"]);
       if (multiple) {
         expect(
           within(drawn)

@@ -1638,6 +1638,29 @@ it("requires the test acknowledgement, keeps focus inside it and focuses the fir
               .count(),
           ).toBe(1);
         }
+        if (state === "checked_idr") {
+          const catalogueContext = await browser.newContext({
+            storageState: await firstVisit.storageState(),
+          });
+          try {
+            const catalogue = await catalogueContext.newPage();
+            const catalogueScripts = scriptsRequestedBy(catalogue);
+            await catalogue.goto(`${testOrigin}${BASE}/products`);
+            await withinScriptBudget(
+              "Products: connected shop with a saved check and published products",
+              catalogue,
+              catalogueScripts,
+            );
+            expect(
+              await catalogue
+                .locator('[aria-label="Products"]')
+                .getByText("Canvas tote bag", { exact: true })
+                .count(),
+            ).toBe(1);
+          } finally {
+            await catalogueContext.close();
+          }
+        }
       } finally {
         await firstVisit.close();
       }

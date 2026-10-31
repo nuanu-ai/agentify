@@ -105,7 +105,7 @@ export const noKeysYet = (state: ShopState): NoKeysYet | null => {
 /** The answer to Import on live before the operator has approved the merchant. */
 export const NOT_APPROVED_YET =
   "Nothing was imported: Agentify hasn't approved your business for live sales yet." +
-  " Sync with your shop once it has. To ask, write to admin@agentify.ad.";
+  " Open Products to continue.";
 
 /** How many of the orders a refusal names are drawn before the rest are counted. */
 const ORDERS_DRAWN = 5;
@@ -236,7 +236,7 @@ const SETTING_NAMES: Readonly<Record<Unset, string>> = Object.freeze({
  * currency publishes nothing until its rate is set. The button is held and
  * says which, so a press is not spent on reading a shop for nothing.
  */
-export interface ImportHeld {
+interface ImportHeld {
   readonly kind: "site" | "settings" | "rate" | "unlisted";
   readonly says: string;
 }

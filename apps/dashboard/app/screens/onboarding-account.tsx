@@ -159,6 +159,7 @@ export function OnboardingAccount({
                   <Button pending={pending}>
                     {form.publish && publish ? publish.label : form.submit}
                   </Button>
+                  {beside}
                   {form.wallet &&
                   account.wallet?.coinbase != null &&
                   "chain" in account.wallet.coinbase ? (
@@ -174,7 +175,6 @@ export function OnboardingAccount({
                   ) : account.wallet?.coinbase != null && "absent" in account.wallet.coinbase ? (
                     <p>{account.wallet.coinbase.absent}</p>
                   ) : null}
-                  {beside}
                 </fieldset>
               </>
             )}

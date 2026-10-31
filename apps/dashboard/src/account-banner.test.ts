@@ -149,7 +149,7 @@ describe("the account banner", () => {
     expect(stopped?.says).toContain("2026-10-23 14:09:00 UTC");
     expect(stopped?.says).toContain(`“${note}”`);
     expect(stopped?.fix).toBeNull();
-    expect(notYet?.fix).toBeNull();
+    expect(notYet?.fix?.to).toBe("/products");
   });
 
   it("points at the page that puts a setting right without sending live sales to another channel", () => {
@@ -157,15 +157,15 @@ describe("the account banner", () => {
 
     expect(accountOf(viewer).map((note) => [note.reason, note.fix?.to ?? null])).toStrictEqual([
       ["no_seller_name", "/settings"],
-      ["not_approved", null],
+      ["not_approved", "/products"],
     ]);
   });
 
-  it("gives a merchant not yet approved for live sales the address to ask for approval at", () => {
+  it("takes a merchant not yet approved for live sales to the page where they can ask", () => {
     const notYet = accountOf({ ...READY, liveApproval: false }).find(
       (note) => note.reason === "not_approved",
     );
 
-    expect(notYet?.says).toContain("admin@agentify.ad");
+    expect(notYet?.fix?.to).toBe("/products");
   });
 });

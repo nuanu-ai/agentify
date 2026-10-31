@@ -1,7 +1,9 @@
 import { Button } from "@agentify/ui";
 import { lazy, Suspense, useContext } from "react";
+import { useRouteLoaderData } from "react-router";
 import type { ShopJobView } from "../../src/shop-job-view.js";
-import type { ConnectionView, ImportHeld, WooShopView } from "../../src/woo-views.js";
+import type { FrameView } from "../../src/views.js";
+import type { ConnectionView, WooShopView } from "../../src/woo-views.js";
 import { Moment } from "../components/moment.js";
 import { Word } from "../components/word.js";
 
@@ -90,27 +92,13 @@ const SitePanel = lazy(() =>
   import("./woo-read-only.js").then(({ SitePanel }) => ({ default: SitePanel })),
 );
 
-/** Why Import is held, in a line under it, with the page that puts it right. */
-function HeldLine({ held, base }: Readonly<{ held: ImportHeld; base: string }>) {
-  return (
-    <p className="quiet">
-      {held.says}
-      {held.kind === "settings" ? (
-        <>
-          {" "}
-          <a href={`${base}/settings`}>Settings</a> first.
-        </>
-      ) : null}
-    </p>
-  );
-}
-
 export function Connected({
   connection,
   view,
   base,
 }: Readonly<{ connection: ConnectionView; view: WooShopView; base: string }>) {
   const onboarding = useContext(ProductsShop);
+  const accountNotes = useRouteLoaderData<FrameView>("routes/merchant-only")?.account ?? [];
   const account = useContext(ShopAccount);
   const { rate } = connection;
   const site = connection.site;
@@ -194,16 +182,25 @@ export function Connected({
                     {(pending) => (
                       <>
                         <input type="hidden" name="checked_job" value={job.id} />
-                        <Button pending={pending} disabled={connection.held !== null}>
+                        <Button
+                          pending={pending}
+                          disabled={
+                            connection.held !== null ||
+                            accountNotes.some((note) => note.reason === "not_approved")
+                          }
+                        >
                           {job.words.publish}
                         </Button>
                       </>
                     )}
                   </ShopForm>
                   {checkAgain}
-                  {connection.held === null ? null : (
-                    <HeldLine held={connection.held} base={base} />
-                  )}
+                  {connection.held?.kind === "settings" &&
+                  !accountNotes.some((note) => note.fix?.to === "/settings") ? (
+                    <p className="quiet">
+                      <a href={`${base}/settings`}>{connection.held.says} Settings</a>
+                    </p>
+                  ) : null}
                 </div>
               ) : null
             }

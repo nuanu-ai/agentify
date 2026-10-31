@@ -160,8 +160,8 @@ export const ACCOUNT_WORDS: Readonly<
   },
   not_approved: {
     title: "Not approved for live sales yet",
-    says: "Agents can buy your products once Agentify approves your account. To ask, write to admin@agentify.ad.",
-    fix: null,
+    says: "Agents can buy your products once Agentify approves your account.",
+    fix: { to: "/products", words: "Open Products" },
   },
   no_seller_name: {
     title: "Your products are off sale",

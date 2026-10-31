@@ -9,7 +9,8 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { renderToString } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
-import { CodeCopy, Ident } from "../display/copy.js";
+import { CodeCopy } from "../display/code-copy.js";
+import { Ident } from "../display/copy.js";
 
 const ORDER = "ord_17ff00a1b2c3d4e5f60718293a4b7de3";
 const ADDRESS = "https://agentify.ad/x402/itm_4593678908a2511a05cdf514d2e86abd/purchase";

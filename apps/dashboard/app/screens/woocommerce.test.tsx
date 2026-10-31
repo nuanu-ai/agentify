@@ -15,6 +15,7 @@ import { presentShopJob } from "../../src/shop-job-presentation.js";
 import { coinbaseAsRecorded } from "../../src/testing/coinbase.js";
 import { formTo, readable } from "../../src/testing/html.js";
 import type { Viewer } from "../../src/viewer.js";
+import type { FrameView } from "../../src/views.js";
 import {
   type Held,
   heldBy,
@@ -22,6 +23,7 @@ import {
   type ShopRead,
   wooShopView,
 } from "../../src/woo-views.js";
+import { ACCOUNT_WORDS } from "../../src/words.js";
 import { WooShopScreen } from "./woocommerce.js";
 
 const SEEN_BY: Viewer = {
@@ -35,21 +37,31 @@ const SEEN_BY: Viewer = {
 const SHOP = "https://shop.example.com";
 
 /** Inside the gate, as the screens are, so a form that posts knows its address. */
-const served = async (screen: () => ReactElement): Promise<string> => {
+const served = async (screen: () => ReactElement, frame?: FrameView): Promise<string> => {
   const Stub = createRoutesStub([
-    { id: "routes/gate", path: "/", children: [{ path: "page", Component: screen }] },
+    {
+      id: "routes/gate",
+      path: "/",
+      children: [{ id: "routes/merchant-only", children: [{ path: "page", Component: screen }] }],
+    },
   ]);
   const { prelude } = await prerender(
     <Stub
       initialEntries={["/page"]}
-      hydrationData={{ loaderData: { "routes/gate": { who: SEEN_BY.who } } }}
+      hydrationData={{
+        loaderData: { "routes/gate": { who: SEEN_BY.who }, "routes/merchant-only": frame },
+      }}
     />,
   );
   return new Response(prelude).text();
 };
 
-const shopPage = async (read: Partial<ShopRead>, answer: ShopAnswer = {}): Promise<string> =>
-  await served(() => (
+const shopPage = async (
+  read: Partial<ShopRead>,
+  answer: ShopAnswer = {},
+  frame?: FrameView,
+): Promise<string> => {
+  const screen = () => (
     <WooShopScreen
       view={{
         ...wooShopView(
@@ -88,7 +100,9 @@ const shopPage = async (read: Partial<ShopRead>, answer: ShopAnswer = {}): Promi
       }}
       base=""
     />
-  ));
+  );
+  return served(screen, frame);
+};
 
 const CONNECTED: ShopRead["state"] = {
   kind: "connected",
@@ -170,15 +184,18 @@ describe("where the shop screen says why a press was refused", () => {
     },
   );
 
-  it("keeps a publication refusal visible with the job, apart from the way out", async () => {
-    const html = await shopPage(
-      { state: CONNECTED, through: "woocommerce" },
-      { importing: "Your shop answered 403: Forbidden" },
-    );
+  it.each([{ unset: [] }, { unset: ["no_payout_wallet"] }] as const)(
+    "keeps a publication refusal visible with the job when current missing settings are %j",
+    async ({ unset }) => {
+      const html = await shopPage(
+        { state: CONNECTED, through: "woocommerce", unset },
+        { importing: "Your shop answered 403: Forbidden" },
+      );
 
-    expect(problemsIn(html)).toStrictEqual(["Your shop answered 403: Forbidden"]);
-    expect(problemsIn(blockOf(html, "/woocommerce/disconnect"))).toStrictEqual([]);
-  });
+      expect(problemsIn(html)).toStrictEqual(["Your shop answered 403: Forbidden"]);
+      expect(problemsIn(blockOf(html, "/woocommerce/disconnect"))).toStrictEqual([]);
+    },
+  );
 
   it("says a refused way back beside the way back, whether or not a shop is connected", async () => {
     const leaving = "An order still waits on the shop: ord_1.";
@@ -329,16 +346,50 @@ describe("what the shop screen holds before it is pressed", () => {
   const importButton = (html: string): string =>
     /<button[^>]*>Publish 1 product<\/button>/.exec(formOf(html, "/woocommerce/import"))?.[0] ?? "";
 
-  it("holds Import, naming the setting and where to set it, while every product would be refused", async () => {
-    const html = await shopPage({
-      state: CONNECTED,
-      through: "woocommerce",
-      unset: ["no_payout_wallet"],
-    });
-    expect(importButton(html)).toMatch(/\bdisabled\b/);
-    expect(readable(html)).toContain("payout wallet");
-    expect(html).toContain('href="/settings"');
-  });
+  it.each([
+    ["known missing approval", "not_approved", true],
+    ["approved account", null, false],
+    ["unrelated account warning", "unread", false],
+  ] as const)(
+    "disables publication only for known missing approval: %s",
+    async (_state, reason, disabled) => {
+      const html = await shopPage(
+        { state: CONNECTED, through: "woocommerce" },
+        {},
+        { account: reason === null ? [] : [{ reason, ...ACCOUNT_WORDS[reason] }] },
+      );
+      const page = new DOMParser().parseFromString(html, "text/html");
+      const publish = page.querySelector<HTMLButtonElement>(
+        'form[action="/woocommerce/import"] button',
+      );
+      expect(publish).not.toBeNull();
+      expect(publish?.disabled).toBe(disabled);
+      const check = [...page.querySelectorAll<HTMLButtonElement>("button")].find(
+        (button) => button.form?.getAttribute("action") === "/woocommerce/check",
+      );
+      expect(check).toBeDefined();
+      expect(check?.disabled).toBe(false);
+    },
+  );
+
+  it.each([
+    ["unread", true],
+    ["no_payout_wallet", false],
+  ] as const)(
+    "supplies local Settings guidance only when the account banner cannot: %s",
+    async (reason, localGuidance) => {
+      const html = await shopPage(
+        { state: CONNECTED, through: "woocommerce", unset: ["no_payout_wallet"] },
+        {},
+        { account: [{ reason, ...ACCOUNT_WORDS[reason] }] },
+      );
+      expect(importButton(html)).toMatch(/\bdisabled\b/);
+      const page = new DOMParser().parseFromString(html, "text/html");
+      const settings = page.querySelector('a[href="/settings"]');
+      expect(settings !== null).toBe(localGuidance);
+      if (localGuidance) expect(settings?.closest("p")?.textContent).toMatch(/payout wallet/i);
+    },
+  );
 
   it("holds Import until a shop priced in another currency has its rate", async () => {
     for (const reference of [

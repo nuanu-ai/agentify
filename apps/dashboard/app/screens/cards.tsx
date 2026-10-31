@@ -4,7 +4,7 @@ import { Moment } from "../components/moment.js";
 import { PostForm } from "../components/post-form.js";
 import { Rest } from "../components/rest.js";
 import { Word } from "../components/word.js";
-import { CodeCopy } from "../display/copy.js";
+import { CodeCopy } from "../display/code-copy.js";
 import { Cell, List, Row } from "../display/list.js";
 import styles from "./cards.module.css";
 import { CutNote, KeptPlace, ListTools, NothingHere } from "./listing.js";

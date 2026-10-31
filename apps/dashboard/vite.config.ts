@@ -31,14 +31,17 @@ export default defineConfig({
       external: ["brotli-wasm"],
       output: {
         manualChunks(id) {
-          // A shop's check and profile share their small UI modules once reached;
-          // the wallet SDK keeps its own deferred import.
-          if (
-            /\/app\/(screens\/(?:shop-job(?:-outcome|-result|-progress|-summary|-observer)?))\.[jt]sx?$/.test(
-              id,
-            )
-          )
+          // The catalogue shares progress observation, not the detailed product groups.
+          if (/\/app\/screens\/shop-job(?:-result)?\.[jt]sx?$/.test(id)) return "shop-job-detail";
+          if (/\/app\/screens\/shop-job-(?:outcome|progress|observer)\.[jt]sx?$/.test(id))
             return "shop-job";
+          // Code entry and lists share copying, without importing each other's controls.
+          if (id.endsWith("/app/display/clipboard.tsx")) return "clipboard";
+          if (id.endsWith("/app/screens/listing.tsx")) return "listing";
+          if (/\/app\/screens\/(?:products-catalog|shop-job-summary)\.[jt]sx?$/.test(id))
+            return "products-catalog";
+          // The shared observation chunk owns its CSS names.
+          if (id.endsWith("/app/screens/shop-job.module.css")) return "shop-job";
           if (
             /\/app\/(screens\/onboarding-account|wallet\/(?:address-button|address|echo))\.[jt]sx?$/.test(
               id,
