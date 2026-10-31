@@ -251,7 +251,7 @@ if (databaseUrl === null) {
       expect(notices).toHaveLength(2);
       expect(notices.map((row) => row.recipient_account_id).sort()).toEqual([first, one.accountId]);
       for (const notice of notices)
-        expect(notice.event).toMatchObject({ kind: "admitted", publication: null });
+        expect(notice.event).toMatchObject({ kind: "admitted", next: "choose", publication: null });
       await advanceLivePublication(pool, shops);
       expect(await shops.jobs.latest(one.merchantId)).toEqual([]);
       await dispatch();
