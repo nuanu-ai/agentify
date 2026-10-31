@@ -400,25 +400,25 @@ function Admission({ view, path }: Readonly<{ view: MerchantView; path: string }
         </>
       ) : (
         <>
-          <Facts>
-            <Fact label="Admission">
-              {admission.withdrawn === null ? (
-                "Not admitted."
-              ) : admission.withdrawn === "unread" ? (
-                <>
-                  Not admitted. Whether a withdrawal stands, and the note the merchant reads,{" "}
-                  <CouldNotBeRead />
-                </>
-              ) : (
-                <>
-                  Withdrawn <Moment at={admission.withdrawn.at} /> by {admission.withdrawn.by}
-                  {admission.withdrawn.note === null
-                    ? "."
-                    : `. The merchant reads: “${admission.withdrawn.note}”`}
-                </>
-              )}
-            </Fact>
-          </Facts>
+          {admission.withdrawn === null ? null : (
+            <Facts>
+              <Fact label="Admission">
+                {admission.withdrawn === "unread" ? (
+                  <>
+                    Not admitted. Whether a withdrawal stands, and the note the merchant reads,{" "}
+                    <CouldNotBeRead />
+                  </>
+                ) : (
+                  <>
+                    Withdrawn <Moment at={admission.withdrawn.at} /> by {admission.withdrawn.by}
+                    {admission.withdrawn.note === null
+                      ? "."
+                      : `. The merchant reads: “${admission.withdrawn.note}”`}
+                  </>
+                )}
+              </Fact>
+            </Facts>
+          )}
           <PressAnswer
             answer={admission.withdraw}
             done="Admission withdrawn."
