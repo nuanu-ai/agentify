@@ -603,6 +603,24 @@ describe("a durable shop job", () => {
       excluded: 1,
     });
   });
+  it("a card the seller resumes during a sync is shown on sale without the paused note", async () => {
+    const s = await setup([]);
+    await s.gateway.pollWorker(0);
+    const id = await s.seed(11);
+    await s.h.store.setCardPaused(s.h.merchant.id, id, true);
+    await s.run("publish", {
+      catalogue: async function* () {
+        yield currency;
+        yield item(11);
+        await s.h.store.setCardPaused(s.h.merchant.id, id, false);
+        yield complete;
+      },
+    });
+    const view = await shopJobView(s.shops, s.h.merchant.id, new URLSearchParams());
+    expect(view).toMatchObject({ published: 1 });
+    const onSale = view?.groups.find((group) => group.group === "ready");
+    expect(onSale?.reasons.map((reason) => reason.why)).not.toContain("Paused by you in Agentify");
+  });
   it("a seller claiming an already connector-paused card keeps it paused through sync", async () => {
     const s = await setup([currency, item(11), complete]);
     const id = await s.seed(11);
