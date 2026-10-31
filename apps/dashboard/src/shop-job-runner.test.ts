@@ -1,6 +1,8 @@
 import { type Harness, harness } from "@agentify/gateway/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { gatewayFor } from "./gateway.js";
+import { liveSalesMessage } from "./live-sales-message.js";
+import { publicationMailEvent } from "./live-sales-publication.js";
 import {
   type ShopWorkParts,
   shopPublisherFor,
@@ -853,5 +855,152 @@ describe("a durable shop job", () => {
       count: 2,
       rows: [{ why: firstWhy }, { why: "Download access requires a customer login." }],
     });
+  });
+});
+
+describe("a stop before the shop was read", () => {
+  const admitted = {
+    kind: "admitted" as const,
+    approvalAt: Date.parse("2026-10-30T14:00:00Z"),
+    id: "decision_one",
+    at: Date.parse("2026-10-30T14:00:00Z"),
+    sellerName: "Freeland",
+    sellerSite: "https://freeland.app",
+    integration: "woocommerce" as const,
+    hasWallet: true,
+    reason: null,
+  };
+  /** Every reader of one stopped job: the screen, the approval email and analytics. */
+  const told = async (s: Awaited<ReturnType<typeof setup>>) => {
+    const job = (await s.shops.jobs.latest(s.h.merchant.id))[0];
+    if (!job) throw new Error("The job disappeared");
+    const view = await shopJobView(s.shops, s.h.merchant.id, new URLSearchParams());
+    const mail = liveSalesMessage({
+      to: s.person.email,
+      event: publicationMailEvent(
+        { ...admitted, merchantId: s.h.merchant.id },
+        job,
+        await s.shops.jobs.rows(s.h.merchant.id, job.id),
+      ),
+      requesterEmail: null,
+      baseUrl: "https://agentify.ad/dashboard",
+      idempotencyKey: "one",
+    });
+    const results = s.shops.recordedAnalytics
+      .map(({ event }) => event)
+      .filter((event) => event.name === "agc_setup_result");
+    return {
+      job,
+      screen: [view?.words.outcome, view?.words.emptyOutcome].join(" "),
+      subject: mail.subject,
+      body: mail.body,
+      reason: results.at(-1)?.fields,
+    };
+  };
+  const ourSide = (said: Awaited<ReturnType<typeof told>>) => {
+    expect(said.job.read).toBe(0);
+    expect(said.screen).toContain("Agentify stopped on its side before reading your shop.");
+    expect(said.screen).toContain("Nothing was published.");
+    expect(said.screen).not.toContain("couldn't read");
+    expect(said.subject).toBe("You're approved. Publishing stopped on our side");
+    expect(said.body).toContain(
+      "Agentify stopped on its side before reading woo.nuanu.ai. Nothing was published.",
+    );
+    expect(said.body).not.toContain("couldn't read");
+    expect(said.reason).toMatchObject({ outcome: "unknown", reason_code: "unknown" });
+  };
+
+  it("an unreadable seller account is told as Agentify's stop, not the shop's", async () => {
+    const s = await setup([currency, item(11), complete]);
+    await s.run("publish", {
+      clientFor: (who) => ({
+        ...gatewayFor(s.h.gateway, who),
+        seller: async () => ({ ok: false, status: 0, why: "The gateway did not answer." }),
+      }),
+      catalogue: async function* () {
+        yield await Promise.reject(new Error("The shop was asked after all"));
+      },
+    });
+    ourSide(await told(s));
+  });
+
+  it("a restart before the first product is told as Agentify's stop", async () => {
+    const s = await setup([currency, item(11), complete]);
+    await s.shops.noteCurrency(s.person.id, { code: "USD", decimals: 2 }, "grant-1");
+    await s.shops.jobs.request({
+      merchantId: s.h.merchant.id,
+      accountId: s.person.id,
+      connectionRevision: "grant-1",
+      shopUrl: SHOP,
+      kind: "publish",
+      currency: { code: "USD", decimals: 2 },
+      rate: null,
+    });
+    const job = await s.shops.jobs.claim();
+    if (!job) throw new Error("The publication was not queued");
+    await workShopJob(job, s.parts, () => true);
+    const said = await told(s);
+    expect(said.job.stopCode).toBe("interrupted");
+    ourSide(said);
+  });
+
+  it("an exception of Agentify's own before the first product is told as Agentify's stop", async () => {
+    const s = await setup([currency, item(11), complete]);
+    await s.shops.noteCurrency(s.person.id, { code: "USD", decimals: 2 }, "grant-1");
+    await s.shops.jobs.request({
+      merchantId: s.h.merchant.id,
+      accountId: s.person.id,
+      connectionRevision: "grant-1",
+      shopUrl: SHOP,
+      kind: "publish",
+      currency: { code: "USD", decimals: 2 },
+      rate: null,
+    });
+    const worker = startShopJobs({
+      ...s.parts,
+      publisherFor: (who) => ({
+        ...shopPublisherFor(s.h.gateway, who, s.shops),
+        cards: async () => {
+          throw new Error("The published products could not be read.");
+        },
+      }),
+    });
+    try {
+      await vi.waitFor(async () =>
+        expect((await s.shops.jobs.latest(s.h.merchant.id))[0]?.status).toBe("stopped"),
+      );
+    } finally {
+      await worker.stop();
+    }
+    const said = await told(s);
+    expect(said.job.stopCode).toBe("unknown");
+    ourSide(said);
+  });
+
+  it("a check stopped by a restart before its first product says the same about the check", async () => {
+    const s = await setup([currency, item(11), complete]);
+    await s.shops.jobs.request({
+      merchantId: s.h.merchant.id,
+      accountId: s.person.id,
+      connectionRevision: "grant-1",
+      shopUrl: SHOP,
+      kind: "check",
+    });
+    const job = await s.shops.jobs.claim();
+    if (!job) throw new Error("The check was not queued");
+    await workShopJob(job, s.parts, () => true);
+    const view = await shopJobView(s.shops, s.h.merchant.id, new URLSearchParams());
+    expect(view?.words.outcome).toBe("Agentify stopped on its side before reading your shop.");
+  });
+
+  it("a shop that could not be read is still told as the shop's", async () => {
+    const s = await setup([
+      { kind: "stopped", why: "We couldn't read the rest of your shop.", reconnect: false },
+    ]);
+    await s.run("publish");
+    const said = await told(s);
+    expect(said.screen).toContain("We couldn't read woo.nuanu.ai.");
+    expect(said.subject).toBe("You're approved. We couldn't read your shop");
+    expect(said.reason).toMatchObject({ reason_code: "catalogue_unavailable" });
   });
 });
