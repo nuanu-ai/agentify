@@ -794,6 +794,22 @@ if (databaseUrl === null) {
         });
       },
     );
+    it("still sends the approval email when a shop merchant moves to code while publication waits", async () => {
+      const one = await seller();
+      const checking = await check(one);
+      await approve(one.merchantId);
+      await advanceLivePublication(pool, shops);
+      expect(await rows("dashboard_live_sales_mail")).toEqual([]);
+      await finishCheck(checking.id);
+      await store.switchIntegration(one.merchantId, "api");
+      await advanceLivePublication(pool, shops);
+      expect((await shops.jobs.latest(one.merchantId)).some((job) => job.kind === "publish")).toBe(
+        false,
+      );
+      expect(
+        (await rows("dashboard_live_sales_mail")).map((row) => [row.event.kind, row.event.next]),
+      ).toEqual([["admitted", "connect"]]);
+    });
     it("erases a pending automatic publication with its owning account", async () => {
       const one = await seller();
       await approve(one.merchantId);
