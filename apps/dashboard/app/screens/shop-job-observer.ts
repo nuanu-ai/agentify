@@ -2,7 +2,11 @@ import { useEffect, useState } from "react";
 import { useLocation, useRevalidator } from "react-router";
 import type { ShopJobView } from "../../src/shop-job-view.js";
 
-/** Progress reads stay local; a newly terminal job refreshes its parent once. */
+/**
+ * Progress reads stay local while a job is queued or running; a newly terminal
+ * job refreshes its parent once and is not read again. A new job reaches the
+ * page through the parent's own data, which passes a new `initial`.
+ */
 export function useShopJob(initial: ShopJobView | null, endpoint: string) {
   const [view, setView] = useState(initial);
   const [unread, setUnread] = useState(false);
@@ -40,7 +44,7 @@ export function useShopJob(initial: ShopJobView | null, endpoint: string) {
       } catch {
         if (!cancelled) setUnread(true);
       }
-      if (!cancelled) timer = setTimeout(read, again ? 1000 : 5000);
+      if (!cancelled && again) timer = setTimeout(read, 1000);
     };
     void read();
     return () => {
