@@ -5,6 +5,7 @@
  */
 
 import type { AnalyticsEvent } from "@agentify/gateway/analytics";
+import type { OnboardingChoices, Platform } from "./next-step.js";
 
 interface AccountMerchant {
   readonly id: string;
@@ -267,6 +268,13 @@ export interface DashboardIdentity {
   observe(event: AnalyticsEvent): Promise<void>;
   /** Whether this one account opted out of product analytics. */
   analyticsOptedOut(personId: string): Promise<boolean>;
+  onboardingChoices(personId: string): Promise<OnboardingChoices>;
+  choosePlatform(
+    personId: string,
+    platform: Platform,
+    integration?: "api" | "woocommerce" | "none",
+  ): Promise<void>;
+  acknowledgeTest(personId: string): Promise<void>;
   /**
    * Sets that choice on this one account; another account naming the same
    * merchant keeps its own.

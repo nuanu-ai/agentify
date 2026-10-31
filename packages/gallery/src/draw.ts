@@ -165,7 +165,11 @@ const prerendered = async (
   drawn: ReturnType<GalleryState["draw"]>,
 ): Promise<string> => {
   const failures: unknown[] = [];
-  const { prelude } = await prerender(drawn, { onError: (failure) => void failures.push(failure) });
+  const { prelude } = await prerender(drawn, {
+    // Completed boundaries must stay inline: the gallery frame cannot run reveal scripts.
+    progressiveChunkSize: Number.MAX_SAFE_INTEGER,
+    onError: (failure) => void failures.push(failure),
+  });
   const html = await new Response(prelude).text();
   if (failures.length > 0) throw failures[0];
   return html;
@@ -173,7 +177,7 @@ const prerendered = async (
 
 type Prerender = (
   drawn: ReturnType<GalleryState["draw"]>,
-  options: { onError: (failure: unknown) => void },
+  options: { progressiveChunkSize: number; onError: (failure: unknown) => void },
 ) => Promise<{ prelude: ReadableStream<Uint8Array> }>;
 
 /**

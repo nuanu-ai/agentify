@@ -167,7 +167,7 @@ export async function readStandingWithdrawal(
   return last?.action === "withdraw" ? journalRowOf(last) : null;
 }
 
-function journalRowOf(row: Columns): JournalRow {
+export function journalRowOf(row: Columns): JournalRow {
   const actor: JournalActor =
     row.actorKind === "account"
       ? { kind: "account", id: row.actorId ?? "" }

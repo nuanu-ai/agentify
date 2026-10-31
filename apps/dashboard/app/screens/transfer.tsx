@@ -1,5 +1,5 @@
 import type { TransferView } from "../../src/views.js";
-import { Ident, shortened } from "./copy.js";
+import { Ident, shortened } from "../display/copy.js";
 
 /** An arrow out of a box, for a page on another site. */
 const Out = () => (

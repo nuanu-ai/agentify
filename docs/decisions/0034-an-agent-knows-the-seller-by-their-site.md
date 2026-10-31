@@ -2,7 +2,8 @@
 
 Date: 2026-09-28
 Status: accepted (the product owner, 2026-09-28); the site requirement for
-asynchronous purchases is approved on 2026-10-27.
+asynchronous purchases is approved on 2026-10-27; filling an empty site from a
+confirmed WooCommerce connection is approved on 2026-10-30.
 
 ## Context
 
@@ -18,7 +19,10 @@ what the merchant's site already carries.
 ## Decision
 
 A merchant gives, beside their seller name in the dashboard's settings and
-through the call that sets the name, the address of their shop's own site: an
+through the call that sets the name, the address of their shop's own site. A
+confirmed WooCommerce connection with read and write access also fills an empty
+site from the connected shop's origin and never replaces an existing one
+([research note 92](../research/92-merchant-onboarding.md)). The site is an
 `https` origin, the scheme and a domain name — not an IP address or a single
 word — with no path, query, fragment, port or credentials, refused at the door
 in any other form. The agent reads both on every card of that merchant in our

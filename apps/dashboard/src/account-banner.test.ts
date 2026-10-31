@@ -6,8 +6,8 @@
 
 import { describe, expect, it } from "vitest";
 import { accountOf } from "./account-banner.js";
+import { headingOf } from "./account-heading.js";
 import type { Viewer } from "./viewer.js";
-import { headingOf } from "./words.js";
 
 const WALLET = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
 
@@ -149,23 +149,23 @@ describe("the account banner", () => {
     expect(stopped?.says).toContain("2026-10-23 14:09:00 UTC");
     expect(stopped?.says).toContain(`“${note}”`);
     expect(stopped?.fix).toBeNull();
-    expect(notYet?.fix).not.toBeNull();
+    expect(notYet?.fix?.to).toBe("/products");
   });
 
-  it("points at the page that puts a setting right, and from the approval to the test channel's dashboard", () => {
+  it("points at the page that puts a setting right without sending live sales to another channel", () => {
     const viewer: Viewer = { ...READY, sellerName: null, liveApproval: false };
 
     expect(accountOf(viewer).map((note) => [note.reason, note.fix?.to ?? null])).toStrictEqual([
       ["no_seller_name", "/settings"],
-      ["not_approved", "https://test.agentify.ad/dashboard/sign-in"],
+      ["not_approved", "/products"],
     ]);
   });
 
-  it("gives a merchant not yet approved for live sales the address to ask for approval at", () => {
+  it("takes a merchant not yet approved for live sales to the page where they can ask", () => {
     const notYet = accountOf({ ...READY, liveApproval: false }).find(
       (note) => note.reason === "not_approved",
     );
 
-    expect(notYet?.says).toContain("admin@agentify.ad");
+    expect(notYet?.fix?.to).toBe("/products");
   });
 });

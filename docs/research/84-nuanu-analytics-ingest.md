@@ -33,3 +33,9 @@ posting the very same event a second time leaves one event, not two. If the
 first fails, nothing the server sends is counted. If the second fails, every
 event repeated after a lost answer is counted twice. A different age limit than
 seven days changes only how long the sender lets an event wait.
+
+Each channel sends to a site of its own. The live channel and the test channel
+each have a Nuanu site with its own credentials and reference keys, and the
+test channel tags its events as internal. A sandbox sends only to a receiver
+of its own, never to Nuanu; a laptop configured as the test channel sends to
+the TEST site, as the test channel itself does.

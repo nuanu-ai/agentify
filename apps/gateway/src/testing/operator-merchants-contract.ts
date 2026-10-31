@@ -55,6 +55,7 @@ interface Setup {
   readonly wallet?: string;
   readonly admitted?: boolean;
   readonly cards?: number;
+  readonly requestedAt?: number;
 }
 
 /** A merchant made through the store's own writes, as the dashboard and the gateway make them. */
@@ -71,6 +72,16 @@ async function merchant(store: Store, id: string, createdAt: number, setup: Setu
     );
     expect(typeof written).toBe("object");
   }
+  if (setup.requestedAt !== undefined)
+    await store.requestLiveSales(
+      {
+        merchantId: id,
+        accountId: `acc_${id}`,
+        sellerName: setup.name ?? id,
+        evidence: { integration: "api", connectedAt: createdAt },
+      },
+      setup.requestedAt,
+    );
   if (setup.admitted === true) await store.grantLiveApproval(id, createdAt);
   const published: string[] = [];
   for (let n = 1; n <= (setup.cards ?? 0); n += 1) {
@@ -169,8 +180,17 @@ export function describeOperatorMerchants(
       const everyStanding = async () => {
         const under = await open();
         const { store } = under;
-        await merchant(store, "mch_waits", 1_000, { name: "Waits", wallet: W1, cards: 1 });
-        await merchant(store, "mch_waits_bare", 2_000, { name: "Waits bare", wallet: W2 });
+        await merchant(store, "mch_waits", 1_000, {
+          name: "Waits",
+          wallet: W1,
+          cards: 1,
+          requestedAt: 1000,
+        });
+        await merchant(store, "mch_waits_bare", 2_000, {
+          name: "Waits bare",
+          wallet: W2,
+          requestedAt: 2000,
+        });
         await merchant(store, "mch_sells", 3_000, SELLS);
         await merchant(store, "mch_paused", 4_000, SELLS);
         await store.setSelling("mch_paused", "paused");
@@ -213,6 +233,47 @@ export function describeOperatorMerchants(
         expect(missing.mch_sells).toStrictEqual([]);
       });
 
+      it("pages pending requests oldest first without requiring a wallet, excluding unasked and resolved merchants", async () => {
+        const { store, merchants } = await open();
+        await merchant(store, "mch_old_account", 100, { name: "Old account", requestedAt: 3000 });
+        await merchant(store, "mch_new_account", 200, { name: "New account", requestedAt: 1000 });
+        await merchant(store, "mch_tied", 150, { name: "Tie", requestedAt: 1000 });
+        await merchant(store, "mch_unasked", 50, { name: "No request", wallet: W1 });
+        const first = await merchants.list({ ...LIVE, segment: "waiting", limit: 1 });
+        expect(first.total).toBe(3);
+        expect(first.rows[0]?.id).toBe("mch_tied");
+        if (!first.next) throw new Error("next request page missing");
+        const second = await merchants.list({
+          ...LIVE,
+          segment: "waiting",
+          limit: 1,
+          from: { after: first.next },
+        });
+        expect(second.rows[0]?.id).toBe("mch_new_account");
+        if (!second.previous || !second.next) throw new Error("request page cursors missing");
+        await storeAcceptedOrder(
+          store,
+          sale("ord_settled_while_waiting", "mch_new_account", AT - DAY, "1.00"),
+        );
+        const back = await merchants.list({
+          ...LIVE,
+          segment: "waiting",
+          limit: 1,
+          from: { before: second.previous },
+        });
+        expect(back.rows[0]?.id).toBe("mch_tied");
+        const third = await merchants.list({
+          ...LIVE,
+          segment: "waiting",
+          limit: 1,
+          from: { after: second.next },
+        });
+        expect(third.rows[0]?.id).toBe("mch_old_account");
+        await store.grantLiveApproval("mch_tied", 4000);
+        await store.withdrawLiveApproval("mch_tied");
+        expect((await merchants.list({ ...LIVE, segment: "waiting", limit: 20 })).total).toBe(2);
+      });
+
       it("asks no admission on the test channel, where nobody waits for one", async () => {
         const { merchants } = await everyStanding();
 
@@ -245,7 +306,7 @@ export function describeOperatorMerchants(
         await merchant(store, "mch_new_sale", 2_000, SELLS);
         await merchant(store, "mch_never_old", 3_000, SELLS);
         await merchant(store, "mch_never_new", 4_000, SELLS);
-        await merchant(store, "mch_waits", 500, { name: "Waits", wallet: W1 });
+        await merchant(store, "mch_waits", 500, { name: "Waits", wallet: W1, requestedAt: 500 });
         await storeAcceptedOrder(store, sale("ord_old", "mch_old_sale", AT - 40 * DAY, "1.00"));
         await storeAcceptedOrder(store, sale("ord_new", "mch_new_sale", AT - DAY, "1.00"));
 
@@ -269,7 +330,13 @@ export function describeOperatorMerchants(
         await storeAcceptedOrder(store, sale("ord_old", "mch_old_sale", AT - 40 * DAY, "1.00"));
         await storeAcceptedOrder(store, sale("ord_new", "mch_new_sale", AT - DAY, "1.00"));
         const ids = (list: MerchantList) => list.rows.map((row) => row.id);
-        const nowhere = { waiting: false, lastSaleAt: null, createdAt: 0, id: "" };
+        const nowhere = {
+          requestedAt: null,
+          waiting: false,
+          lastSaleAt: null,
+          createdAt: 0,
+          id: "",
+        };
 
         const first = await merchants.list({ ...LIVE, limit: 2 });
         expect(ids(first)).toStrictEqual(["mch_new_sale", "mch_old_sale"]);
@@ -284,6 +351,7 @@ export function describeOperatorMerchants(
         expect(second).toMatchObject({ total: 3, newer: 2, next: null });
         expect(second.previous).toStrictEqual({
           waiting: false,
+          requestedAt: null,
           lastSaleAt: null,
           createdAt: 3_000,
           id: "mch_never",
@@ -305,7 +373,13 @@ export function describeOperatorMerchants(
         await merchant(store, "mch_never_new", 4_000, SELLS);
         await storeAcceptedOrder(store, sale("ord_old", "mch_old_sale", AT - 40 * DAY, "1.00"));
         const ids = (list: MerchantList) => list.rows.map((row) => row.id);
-        const gone = { waiting: false, lastSaleAt: null, createdAt: 3_000, id: "mch_gone" };
+        const gone = {
+          requestedAt: null,
+          waiting: false,
+          lastSaleAt: null,
+          createdAt: 3_000,
+          id: "mch_gone",
+        };
 
         const older = await merchants.list({ ...LIVE, limit: 50, from: { after: gone } });
         const newer = await merchants.list({ ...LIVE, limit: 50, from: { before: gone } });
@@ -413,6 +487,7 @@ export function describeOperatorMerchants(
         const a = list.rows.find((row) => row.id === "mch_a");
 
         expect(a).toStrictEqual({
+          liveRequest: null,
           id: "mch_a",
           serviceName: "A seller",
           sellerSite: null,

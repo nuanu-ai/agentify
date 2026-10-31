@@ -21,6 +21,7 @@ const wanted = new URL(testDatabaseUrl());
 wanted.pathname = "/agentify_test_google_availability";
 const databaseUrl = await readyDatabase(wanted.toString());
 const migrations = fileURLToPath(new URL("../drizzle/", import.meta.url));
+const gatewayMigrations = fileURLToPath(new URL("../../gateway/drizzle/", import.meta.url));
 
 async function localGoogle() {
   const exchange = googleExchange();
@@ -108,12 +109,16 @@ if (databaseUrl === null) {
   beforeEach(async () => {
     await pool.query("drop schema public cascade");
     await pool.query("create schema public");
-    for (const file of (await readdir(migrations)).filter((name) => name.endsWith(".sql")).sort()) {
-      for (const statement of (await readFile(`${migrations}/${file}`, "utf8"))
-        .split("--> statement-breakpoint")
-        .map((part) => part.trim())
-        .filter(Boolean)) {
-        await pool.query(statement);
+    for (const directory of [gatewayMigrations, migrations]) {
+      for (const file of (await readdir(directory))
+        .filter((name) => name.endsWith(".sql"))
+        .sort()) {
+        for (const statement of (await readFile(`${directory}/${file}`, "utf8"))
+          .split("--> statement-breakpoint")
+          .map((part) => part.trim())
+          .filter(Boolean)) {
+          await pool.query(statement);
+        }
       }
     }
     provider = await localGoogle();

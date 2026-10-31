@@ -1,3 +1,4 @@
+import type { WooWithdrawalReason } from "./woo-card-pauses.js";
 /**
  * A merchant who connected a shop wrote no code, so the dashboard stands in as
  * their handler: it draws their stream and answers with the calls any
@@ -31,6 +32,7 @@ import {
 } from "@nuanu-ai/agentify-contracts";
 import type { Acting, GatewayClient } from "./gateway.js";
 import type { Identity } from "./identity.js";
+import type { ShopPublisher } from "./shop-job-runner.js";
 import { productIdFromMerchantItem } from "./woo-catalog.js";
 import { dollarsAt, minorOf, sumOf, withinOneUnit } from "./woo-money.js";
 import { type QuotedSale, quoteReferenceOf, saleFromQuoteReference } from "./woo-quoted-sale.js";
@@ -54,6 +56,7 @@ import {
   type SoldItem,
   shipmentInTheShop,
   WooShopRuntime,
+  withdrawalReason,
 } from "./woo-shop.js";
 import type { WooConnection, WooOrderFacts, WooPermission, WooShops } from "./woo-shops.js";
 
@@ -87,8 +90,6 @@ export interface Filling {
     productId: string,
     place: ShipToLocality,
   ) => Promise<RatesRead>;
-  /** A deployment passes nothing. */
-  readonly quoteWithinMs?: number;
   /** A deployment passes nothing. */
   readonly placeParcel?: (keys: ShopKeys, sold: ParcelSold) => Promise<ParcelMade>;
 }
@@ -780,6 +781,7 @@ export const deliveryFromWooPermission = (permission: WooPermission): Record<str
 };
 
 export interface WorkingParts extends Filling {
+  readonly publisherFor: (acting: Acting) => Pick<ShopPublisher, "cards" | "pause">;
   readonly identity: Pick<Identity, "byId">;
   readonly clientFor: (acting: Acting) => GatewayClient;
   readonly waitSeconds?: number;
@@ -821,7 +823,8 @@ export const turnOnce = async (
     return 0;
   }
 
-  const gateway = parts.clientFor({ merchantId: person.merchant.id, email: person.email });
+  const acting = { merchantId: person.merchant.id, email: person.email };
+  const gateway = parts.clientFor(acting);
   const drawn = await gateway.pollWorker(parts.waitSeconds ?? WAIT_SECONDS);
   if (!drawn.ok) {
     console.error(`[dashboard] the WooCommerce worker could not draw its stream: ${drawn.why}`);
@@ -833,18 +836,51 @@ export const turnOnce = async (
       if (envelope.kind === "quote_request") {
         const answer =
           connection.permissions !== "read_write"
-            ? { available: false as const, as_of: parts.now().toISOString() }
+            ? {
+                answer: { available: false as const, as_of: parts.now().toISOString() },
+                withdraw: null,
+              }
             : await quoteFromTheShop(connection, envelope.payload, parts.now(), parts);
         if (answer === null) {
           // Saying nothing is how the gateway hears that the shop did not answer;
           // the agent is told the price check went unanswered.
           return;
         }
-        const said = await gateway.answerQuote(envelope.payload.price_id, answer);
+        const said = await gateway.answerQuote(envelope.payload.price_id, answer.answer);
         if (!said.ok) {
           console.error(
             `[dashboard] the price answer for ${envelope.payload.price_id} was not accepted: ${said.why}`,
           );
+        }
+        if (answer.withdraw) {
+          // The buyer already has the shop's refusal; storage uncertainty cannot
+          // turn that known answer into silence or claim that the card was paused.
+          try {
+            const publisher = parts.publisherFor(acting);
+            const card = (await publisher.cards()).find(
+              (one) => one.merchantItemId === envelope.payload.merchant_item_id,
+            );
+            if (card) {
+              const [currentPerson, currentConnection, integration] = await Promise.all([
+                parts.identity.byId(connection.accountId),
+                parts.shops.connectionOf(connection.accountId),
+                gateway.integration(),
+              ]);
+              if (
+                currentPerson?.merchant?.id === acting.merchantId &&
+                currentConnection?.revision === connection.revision &&
+                currentConnection.permissions === "read_write" &&
+                new URL(currentConnection.shopUrl).origin === new URL(connection.shopUrl).origin &&
+                integration.ok &&
+                integration.document.through === "woocommerce"
+              )
+                await publisher.pause(card.id, answer.withdraw);
+            }
+          } catch (error) {
+            console.error(
+              `[dashboard] the shop-check pause for ${envelope.payload.merchant_item_id} could not be confirmed: ${failureNamed(error)}`,
+            );
+          }
         }
         return;
       }
@@ -876,13 +912,12 @@ const QUOTE_WITHIN_MS = QUOTE_RESPONSE_MS - 1_000;
 
 /** Null where it did not finish in time. */
 const inTime = async <T>(work: Promise<T>, ms: number): Promise<T | null> => {
+  work.catch(() => undefined);
+  if (ms <= 0) return null;
   let cut: ReturnType<typeof setTimeout> | undefined;
   const late = new Promise<null>((resolve) => {
     cut = setTimeout(() => resolve(null), ms);
   });
-  // A late answer answers nobody and must not surface as a failure of the turn
-  // that stopped waiting.
-  work.catch(() => undefined);
   try {
     return await Promise.race([work, late]);
   } finally {
@@ -902,6 +937,12 @@ const cheapestOf = (rates: readonly ShippingRate[]): string | null => {
   return cheapest?.cost ?? null;
 };
 
+/** Only the connector consumes withdrawal; the gateway receives the existing answer alone. */
+interface ShopQuote {
+  readonly answer: QuoteResponse;
+  readonly withdraw: WooWithdrawalReason | null;
+}
+
 /**
  * The product is bound to the price so the order paying it can be held to it. A
  * parcel's price is the goods plus the shop's cheapest rate to the asked-for
@@ -917,16 +958,22 @@ export const quoteFromTheShop = async (
   question: QuoteRequest,
   at: Date,
   parts: Filling,
-): Promise<QuoteResponse | null> => {
-  const unavailable: QuoteResponse = { available: false, as_of: at.toISOString() };
+): Promise<ShopQuote | null> => {
+  const unavailable: ShopQuote = {
+    answer: { available: false, as_of: at.toISOString() },
+    withdraw: null,
+  };
   /** The reason goes to the merchant's log, with no word of the place. */
-  const unpriced = (why: string): QuoteResponse => {
+  const unpriced = (why: string): ShopQuote => {
     console.error(
       `[dashboard] ${question.merchant_item_id} has no price for ${question.price_id}: ${why}`,
     );
     return unavailable;
   };
-  const signal = AbortSignal.timeout(parts.quoteWithinMs ?? QUOTE_WITHIN_MS);
+  const budget = QUOTE_WITHIN_MS;
+  const until = Date.now() + budget;
+  const remaining = () => Math.max(0, until - Date.now());
+  const signal = AbortSignal.timeout(budget);
   const shopRuntime = parts.shopRuntime ?? new WooShopRuntime(connection);
   const productId = productIdFromMerchantItem(connection.shopUrl, question.merchant_item_id);
   const place = question.ship_to;
@@ -944,17 +991,16 @@ export const quoteFromTheShop = async (
     parts.inspectProduct === undefined
       ? shopRuntime.inspectForQuote(question.merchant_item_id)
       : parts.inspectProduct(connection, question.merchant_item_id);
-  const read = await inTime(
-    Promise.all([
-      inspection,
-      place === undefined ? Promise.resolve(null) : askRates(place),
-      inspection.then((answer) => {
-        const base = baseOf(answer);
-        return base === null || place === undefined ? null : askRates(base);
-      }),
-    ]),
-    parts.quoteWithinMs ?? QUOTE_WITHIN_MS,
-  );
+  const ratesReading = place === undefined ? Promise.resolve(null) : askRates(place);
+  const baseReading = inspection.then((answer) => {
+    const base = baseOf(answer);
+    return base === null || place === undefined ? null : askRates(base);
+  });
+  // A direct product refusal does not wait for a buyer-specific cart.
+  // Neither read changes a published card, including after the single deadline wins.
+  ratesReading.catch(() => undefined);
+  baseReading.catch(() => undefined);
+  const inspected = await inTime(inspection, remaining());
   // "Not available" is the seller's no, so it is said only where the shop's
   // own readable answer ruled the sale out. A shop that did not answer, or
   // whose answer could not be read or trusted, said nothing: null lets the
@@ -968,11 +1014,15 @@ export const quoteFromTheShop = async (
     );
     return null;
   };
-  if (read === null) return silent("the shop did not answer in time");
-  const [inspected, rates, atBase] = read;
+  if (inspected === null) return silent("the shop did not answer in time");
   if (!inspected.ok) {
-    return inspected.again || !inspected.saidNo ? silent(inspected.why) : unavailable;
+    return inspected.again || !inspected.saidNo
+      ? silent(inspected.why)
+      : { ...unavailable, withdraw: withdrawalReason(inspected.obstacle) };
   }
+  const read = await inTime(Promise.all([ratesReading, baseReading]), remaining());
+  if (read === null) return silent("the shop did not answer in time");
+  const [rates, atBase] = read;
   const product = inspected.product;
   // A question with a place is a parcel's card, and the goods alone are not a
   // price it can be sold at.
@@ -1008,14 +1058,17 @@ export const quoteFromTheShop = async (
   }
   // The merchant's rate, read from the dashboard's own database: no request
   // leaves for it while the buyer waits, and none is guessed where none is set.
-  const rate =
+  const rateRead =
     price.currency === "USD"
-      ? null
-      : await parts.shops.currentRate(
-          connection.accountId,
-          new URL(connection.shopUrl).origin,
-          price.currency,
+      ? { rate: null }
+      : await inTime(
+          parts.shops
+            .currentRate(connection.accountId, new URL(connection.shopUrl).origin, price.currency)
+            .then((rate) => ({ rate })),
+          remaining(),
         );
+  if (rateRead === null) return silent("the exchange rate could not be read in time");
+  const { rate } = rateRead;
   if (price.currency !== "USD" && rate === null) {
     return unpriced(`the shop sells in ${price.currency}, and no rate is set for it`);
   }
@@ -1023,15 +1076,18 @@ export const quoteFromTheShop = async (
   if (dollars === null) return unpriced("the shop's amount is not one the rate converts");
   const paid = { amount: dollars, currency: "USD" };
   return {
-    available: true,
-    price: paid,
-    as_of: at.toISOString(),
-    quote_reference: quoteReferenceOf({
-      fingerprint: product.fingerprint,
-      inTheShop: price,
-      paid,
-      rate,
-    }),
+    withdraw: null,
+    answer: {
+      available: true,
+      price: paid,
+      as_of: at.toISOString(),
+      quote_reference: quoteReferenceOf({
+        fingerprint: product.fingerprint,
+        inTheShop: price,
+        paid,
+        rate,
+      }),
+    },
   };
 };
 

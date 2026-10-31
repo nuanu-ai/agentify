@@ -1,7 +1,6 @@
 /**
- * Every page is answered whole: nothing on these pages waits behind a
- * suspense boundary, and a whole answer is the one whose status is final and
- * whose words a browser without script reads.
+ * Every page is answered whole, including lazy components. Waiting for all
+ * of them keeps the status final and their markup visible without script.
  */
 
 import { PassThrough } from "node:stream";
@@ -29,6 +28,9 @@ export default function handleRequest(
     const { pipe, abort } = renderToPipeableStream(
       <ServerRouter context={context} url={request.url} />,
       {
+        // Whole pages need no script to reveal completed Suspense content.
+        // React otherwise outlines large boundaries into hidden HTML.
+        progressiveChunkSize: Number.MAX_SAFE_INTEGER,
         onAllReady() {
           const body = new PassThrough({
             final(callback) {

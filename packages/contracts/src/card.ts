@@ -210,10 +210,10 @@ const LISTED_DESCRIPTION_MAX = 500;
  * by a program. It is the one field of prose that goes out to a discovery
  * catalog, so the catalog's limit is enforced here, at publication.
  *
- * The refusal states the actual length and whose ceiling it is. The length is
- * counted in UTF-16 units, the unit the ceiling is measured in, so an emoji
- * counts as two and the number the merchant is told is always the number they
- * were refused for.
+ * The refusal states the actual length and the ceiling to shorten it to. The
+ * length is counted in UTF-16 units, the unit the ceiling is measured in, so an
+ * emoji counts as two and the number the merchant is told is always the number
+ * they were refused for.
  */
 const DescriptionSchema = z
   .string({
@@ -226,9 +226,8 @@ const DescriptionSchema = z
     // zod reaches a length check only once the value is a string, so `input`
     // is always one here.
     error: (issue) =>
-      `this description is ${String(issue.input).length} characters and a listing carries at` +
-      ` most ${LISTED_DESCRIPTION_MAX} — the ceiling is the one the discovery catalog documents,` +
-      " not ours and not the payment protocol's",
+      `this description is ${String(issue.input).length} characters; shorten it to at most` +
+      ` ${LISTED_DESCRIPTION_MAX}`,
   });
 
 /**

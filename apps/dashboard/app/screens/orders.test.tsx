@@ -16,7 +16,7 @@ import { inViewersZone } from "../../src/moments.js";
 import { formsIn, readable } from "../../src/testing/html.js";
 import { CLOSURE_NOTES, closedForGood, drawnClosedForGood, ordersView } from "../../src/views.js";
 import type { ShopTotal } from "../../src/woo-shops.js";
-import { shortened } from "../components/copy.js";
+import { shortened } from "../display/copy.js";
 import { OrdersScreen } from "./orders.js";
 
 const served = (screen: () => ReactElement): string => {

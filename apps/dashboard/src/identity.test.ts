@@ -890,3 +890,40 @@ describe("the registration a link asked for with an ad's click leaves for the tr
     expect(adReportsIn(rows)).toStrictEqual([planted]);
   });
 });
+
+describe("account onboarding choices", () => {
+  it("keeps a platform answer and acknowledgement across sessions and separate from another account", async () => {
+    const { identity, messages, rows } = memoryIdentity();
+    const login = async (email: string) => {
+      rewindLinkSends(rows);
+      await identity.requestLink(email, "default", ONE_CLIENT);
+      const message = messages.at(-1);
+      if (message === undefined) throw new Error("no sign-in link");
+      const opened = await identity.openLink(tokenIn(message));
+      if (opened.status !== "opened") throw new Error("sign-in did not open");
+      return opened.person;
+    };
+    const person = await login("onboarding@example.com");
+    expect(await identity.onboardingChoices(person.id)).toEqual({
+      platform: null,
+      testAcknowledged: false,
+    });
+    await identity.choosePlatform(person.id, "api");
+    await identity.acknowledgeTest(person.id);
+    await identity.acknowledgeTest(person.id);
+    const returned = await login("onboarding@example.com");
+    expect(await identity.onboardingChoices(returned.id)).toEqual({
+      platform: "api",
+      testAcknowledged: true,
+    });
+    const other = await login("another@example.com");
+    expect(await identity.onboardingChoices(other.id)).toEqual({
+      platform: null,
+      testAcknowledged: false,
+    });
+    await expect(identity.choosePlatform(person.id, "unlisted" as never)).rejects.toThrow(
+      /platform/i,
+    );
+    expect((await identity.onboardingChoices(person.id)).platform).toBe("api");
+  });
+});

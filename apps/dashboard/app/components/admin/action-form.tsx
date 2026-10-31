@@ -12,8 +12,8 @@
  * `src/admin/action.ts`).
  */
 
-import { Field } from "@agentify/ui";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useId, useRef } from "react";
+import { useNavigation } from "react-router";
 import type { ActionAnswer } from "../../../src/admin/action.js";
 import { CONFIRM_FIELD, CONFIRMED, REASON_FIELD } from "../../../src/admin/fields.js";
 import type { StepUpView } from "../../../src/admin/step-up.js";
@@ -104,15 +104,11 @@ export function ActionForm({
               <input key={name} type="hidden" name={name} value={value} />
             ))}
             {reason ? (
-              <Field
+              <ReasonField
                 label={reasonWords.label}
-                name={REASON_FIELD}
-                rows={3}
-                required
                 hint={reasonWords.hint}
-                autoComplete="off"
-                {...(typed === null ? {} : { defaultValue: typed })}
-                {...(refusedReason === undefined ? {} : { error: refusedReason })}
+                typed={typed}
+                error={refusedReason}
               />
             ) : null}
             <label className="check">
@@ -136,6 +132,55 @@ export function ActionForm({
           </>
         )}
       </PostForm>
+    </div>
+  );
+}
+
+/** The merchant's note keeps its writing guidance beside a refused field. */
+function ReasonField({
+  label,
+  hint,
+  typed,
+  error,
+}: Readonly<{
+  label: string;
+  hint: string;
+  typed: string | null;
+  error: string | undefined;
+}>) {
+  const id = useId();
+  const box = useRef<HTMLTextAreaElement>(null);
+  const settled = useNavigation().state === "idle";
+  useEffect(() => {
+    if (settled && error !== undefined) box.current?.focus();
+  }, [settled, error]);
+  return (
+    <div className="field">
+      <label className="field-label" htmlFor={id}>
+        {label}
+      </label>
+      <textarea
+        className="field-input"
+        id={id}
+        ref={box}
+        name={REASON_FIELD}
+        rows={3}
+        required
+        autoComplete="off"
+        defaultValue={typed ?? ""}
+        aria-invalid={error === undefined ? undefined : true}
+        aria-describedby={`${id}-hint${error === undefined ? "" : ` ${id}-error`}`}
+        // biome-ignore lint/a11y/noAutofocus: a refused submission returns focus to its invalid field
+        autoFocus={error !== undefined}
+      />
+      <p className="field-hint" id={`${id}-hint`}>
+        {hint}
+      </p>
+      {error === undefined ? null : (
+        <p className="field-error" id={`${id}-error`}>
+          {error}
+        </p>
+      )}
     </div>
   );
 }

@@ -1,0 +1,3 @@
+ALTER TABLE "dashboard_accounts" ADD COLUMN "onboarding_platform" text;--> statement-breakpoint
+ALTER TABLE "dashboard_accounts" ADD COLUMN "test_acknowledged" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "dashboard_accounts" ADD CONSTRAINT "dashboard_accounts_onboarding_platform" CHECK ("dashboard_accounts"."onboarding_platform" is null or "dashboard_accounts"."onboarding_platform" in ('woocommerce', 'api', 'other'));

@@ -267,6 +267,19 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
     };
 
     describe("a card", () => {
+      it("answers whether an integration has products without counting another merchant or hiding a paused product", async () => {
+        const store = await twoMerchants();
+        await store.publishCard(B, card("other", "B's room"), 1_000);
+        expect(await store.hasProducts(A, "api")).toBe(false);
+        const own = await store.publishCard(A, card("own", "A's room"), 2_000);
+        expect(await store.hasProducts(A, "api")).toBe(true);
+        expect(await store.hasProducts(A, "woocommerce")).toBe(false);
+        await store.setCardPaused(A, own.id, true);
+        expect(await store.hasProducts(A, "api")).toBe(true);
+        await store.publishCard(A, card("shop", "A mug"), 3_000, "woocommerce");
+        expect(await store.hasProducts(A, "woocommerce")).toBe(true);
+      });
+
       it("is changed by being published again, and keeps its catalog identifier", async () => {
         // The portal tells a merchant to change a card by publishing it again; a
         // second card would leave agents holding the address of the stale one.
@@ -686,6 +699,73 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         });
       });
 
+      it("resolves a declined request on manual admission and retains its journal after a later withdrawal", async () => {
+        const store = await twoMerchants();
+        const ask = {
+          merchantId: A,
+          accountId: "acc_owner",
+          sellerName: "Freeland",
+          evidence: { integration: "api" as const, connectedAt: 1_000 },
+        };
+        const requested = await store.requestLiveSales(ask, 2_000);
+        if (requested.kind !== "requested") throw new Error("request missing");
+        const decline = {
+          at: 3_000,
+          action: "decline" as const,
+          actor: { kind: "account" as const, id: OPERATOR },
+          subject: { kind: "merchant" as const, id: A },
+          reason: "Use the full seller name.\nKeep this historical note.",
+        };
+        await store.declineLiveSales(A, requested.request.id, decline);
+        await store.grantLiveApproval(A, 4_000);
+        expect(await store.liveSalesRequest(A)).toMatchObject({
+          id: requested.request.id,
+          requestedAt: 2_000,
+          state: "admitted",
+          decline: null,
+        });
+        await store.withdrawLiveApproval(A, {
+          ...decline,
+          at: 5_000,
+          action: "withdraw",
+          reason: "Correct the current seller site.",
+        });
+        expect((await store.liveSalesRequest(A))?.state).toBe("admitted");
+        expect((await store.standingWithdrawal(A))?.reason).toBe(
+          "Correct the current seller site.",
+        );
+        expect((await store.journal({ actions: ["decline"], limit: 10 })).rows).toMatchObject([
+          { ...decline, outcome: { kind: "done" } },
+        ]);
+        const next = await store.requestLiveSales(ask, 6_000);
+        expect(next.kind).toBe("requested");
+        if (next.kind === "requested") expect(next.request.id).not.toBe(requested.request.id);
+      });
+
+      it("records no request, name or second approval for a merchant already admitted or moved to another integration", async () => {
+        const store = await twoMerchants();
+        const ask = {
+          merchantId: A,
+          accountId: "acc_owner",
+          sellerName: "Freeland",
+          evidence: { integration: "api" as const, connectedAt: 1_000 },
+        };
+        await store.grantLiveApproval(A, 2_000);
+        expect(await store.requestLiveSales(ask, 3_000)).toEqual({ kind: "approved" });
+        await store.switchIntegration(B, "woocommerce");
+        expect(await store.requestLiveSales({ ...ask, merchantId: B }, 3_000)).toEqual({
+          kind: "moved",
+        });
+        expect(await store.requestLiveSales({ ...ask, merchantId: "mch_nobody" }, 3_000)).toEqual({
+          kind: "missing",
+        });
+        for (const id of [A, B]) {
+          expect(await store.liveSalesRequest(id)).toBeNull();
+          expect((await store.merchantById(id))?.serviceName).toBeNull();
+        }
+        expect((await store.merchantById(A))?.liveApprovedAt).toBe(2_000);
+      });
+
       it("is listed under a name for a catalog only where somebody set one", async () => {
         const store = await twoMerchants();
 
@@ -722,6 +802,25 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         expect(
           await store.setSellerSite("mch_nobody", "https://freeland.example", 4_000),
         ).toBeNull();
+      });
+
+      it("fills an empty seller site without replacing a site chosen before the write", async () => {
+        const store = await twoMerchants();
+        expect(
+          (await store.setSellerSite(A, "https://shop.example", 3_000, undefined, true))
+            ?.sellerSite,
+        ).toBe("https://shop.example");
+        await store.setSellerSite(A, "https://seller.example", 4_000);
+        expect(
+          (await store.setSellerSite(A, "https://shop.example", 5_000, undefined, true))
+            ?.sellerSite,
+        ).toBe("https://seller.example");
+        expect((await store.merchantById(A))?.sellerSite).toBe("https://seller.example");
+        await Promise.all([
+          store.setSellerSite(B, "https://seller.example", 6_000),
+          store.setSellerSite(B, "https://shop.example", 7_000, undefined, true),
+        ]);
+        expect((await store.merchantById(B))?.sellerSite).toBe("https://seller.example");
       });
 
       it("is paid at a wallet only where somebody set one, and at their own, with its split recorded in the same write", async () => {

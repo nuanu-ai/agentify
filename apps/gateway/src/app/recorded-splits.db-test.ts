@@ -85,7 +85,7 @@ beforeAll(async () => {
 });
 beforeEach(async () => {
   await connected.pool.query(
-    "truncate table cards, orders, receipts, payment_claims, merchant_keys, merchant_contact, merchants, payout_splits, commerce_analytics_events, operator_journal",
+    "truncate table cards, orders, receipts, payment_claims, merchant_keys, merchant_contact, merchant_live_requests, merchants, payout_splits, commerce_analytics_events, operator_journal",
   );
   await connected.pool.query(`drop schema if exists ${queueSchema} cascade`);
 });

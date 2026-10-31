@@ -31,6 +31,7 @@ const wanted = (() => {
 const databaseUrl = await readyDatabase(wanted);
 const here = dirname(fileURLToPath(import.meta.url));
 const migrationsIn = join(here, "..", "drizzle");
+const gatewayMigrations = join(here, "..", "..", "gateway", "drizzle");
 
 const MERCHANT = "mer_the_merchant";
 /**
@@ -39,8 +40,8 @@ const MERCHANT = "mer_the_merchant";
 const A_KEY_ON_THE_ROW = "the-merchants-own-key-long-enough";
 const NOW = new Date("2026-09-17T12:00:00.000Z");
 
-async function statementsOf(file: string): Promise<string[]> {
-  const source = await readFile(join(migrationsIn, file), "utf8");
+async function statementsOf(file: string, directory = migrationsIn): Promise<string[]> {
+  const source = await readFile(join(directory, file), "utf8");
   return source
     .split("--> statement-breakpoint")
     .map((chunk) => chunk.trim())
@@ -54,7 +55,8 @@ if (databaseUrl === null) {
   });
 } else {
   const identityDatabaseUrl = databaseUrl;
-  const pool = new Pool({ connectionString: databaseUrl, max: 6 });
+  const poolSize = 6;
+  const pool = new Pool({ connectionString: databaseUrl, max: poolSize });
   const migrationFiles = [
     "0000_accounts.sql",
     "0001_merchant_on_account.sql",
@@ -78,8 +80,18 @@ if (databaseUrl === null) {
    * its database.
    */
   async function emptyEverything(): Promise<void> {
+    // Refusal analytics outlive their request. Borrow every client so their
+    // queued inserts finish before DDL; one query can pass them on another client.
+    const clients = await Promise.all(Array.from({ length: poolSize }, () => pool.connect()));
+    for (const client of clients) client.release();
     await pool.query("drop schema public cascade");
     await pool.query("create schema public");
+    for (const file of (await readdir(gatewayMigrations))
+      .filter((name) => name.endsWith(".sql"))
+      .sort()) {
+      for (const statement of await statementsOf(file, gatewayMigrations))
+        await pool.query(statement);
+    }
   }
 
   /**
@@ -340,6 +352,30 @@ if (databaseUrl === null) {
     beforeEach(async () => {
       await emptyEverything();
       await migrateEverything();
+    });
+
+    it("persists onboarding choices across identity instances and limits the stored platform vocabulary", async () => {
+      const messages: Message[] = [];
+      const first = identityOn(messages);
+      const person = await first.make("onboarding@example.com", MERCHANT);
+      if (person === null) throw new Error("the account was not created");
+      expect(await first.onboardingChoices(person.id)).toEqual({
+        platform: null,
+        testAcknowledged: false,
+      });
+      await first.choosePlatform(person.id, "woocommerce");
+      await first.acknowledgeTest(person.id);
+      const otherInstance = identityOn([]);
+      expect(await otherInstance.onboardingChoices(person.id)).toEqual({
+        platform: "woocommerce",
+        testAcknowledged: true,
+      });
+      await expect(
+        pool.query("update dashboard_accounts set onboarding_platform = 'unlisted' where id = $1", [
+          person.id,
+        ]),
+      ).rejects.toThrow(/dashboard_accounts_onboarding_platform/);
+      expect((await otherInstance.onboardingChoices(person.id)).platform).toBe("woocommerce");
     });
 
     describe("Google sign-in transactions", () => {

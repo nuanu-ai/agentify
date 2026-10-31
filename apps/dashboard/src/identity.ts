@@ -463,6 +463,8 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
           // operator's configuration write it.
           operator: { type: "boolean", required: false, defaultValue: false, input: false },
           // Closed to input: only the settings' own press writes it.
+          onboardingPlatform: { type: "string", required: false, input: false },
+          testAcknowledged: { type: "boolean", required: false, defaultValue: false, input: false },
           analyticsOptOut: {
             type: "boolean",
             required: false,
@@ -1663,6 +1665,83 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
     },
 
     observe,
+
+    async onboardingChoices(personId) {
+      const found = await (await contextOf()).internalAdapter.findUserById(personId);
+      if (found === null) throw new Error("the account no longer exists");
+      const stored = found as { onboardingPlatform?: unknown; testAcknowledged?: unknown };
+      const platform = stored.onboardingPlatform;
+      if (
+        platform !== undefined &&
+        platform !== null &&
+        platform !== "woocommerce" &&
+        platform !== "api" &&
+        platform !== "other"
+      )
+        throw new Error("invalid stored platform");
+      return { platform: platform ?? null, testAcknowledged: stored.testAcknowledged === true };
+    },
+
+    async choosePlatform(personId, platform, integration) {
+      if (platform !== "woocommerce" && platform !== "api" && platform !== "other")
+        throw new Error("invalid platform");
+      const choose = async (
+        bound: typeof auth,
+        record: (event: AnalyticsEvent) => Promise<void>,
+      ) => {
+        const adapter = (await bound.$context).adapter;
+        const before = await adapter.findOne<{
+          onboardingPlatform?: string;
+          merchantId?: string;
+          analyticsOptOut?: boolean;
+        }>({ model: "user", where: [{ field: "id", value: personId }] });
+        if (before === null) throw new Error("the account no longer exists");
+        if (before.onboardingPlatform === platform) return;
+        await adapter.update({
+          model: "user",
+          where: [{ field: "id", value: personId }],
+          update: { onboardingPlatform: platform },
+        });
+        if (integration !== undefined && before.merchantId && !before.analyticsOptOut)
+          await record({
+            name: "agc_setup_result",
+            actor: "human",
+            source: "dashboard",
+            refs: { person: personId, merchant: before.merchantId },
+            fields: {
+              step: "platform_answer",
+              platform: platform === "api" ? "code" : platform,
+              integration,
+              outcome: "completed",
+            },
+          });
+      };
+      if (parts.pool === undefined) {
+        await inMemoryTransaction(async (bound, rows) =>
+          choose(bound, async (event) => recordInMemory(rows, event)),
+        );
+        return;
+      }
+      await drizzle(parts.pool).transaction(async (tx) => {
+        await tx
+          .select({ id: accounts.id })
+          .from(accounts)
+          .where(eq(accounts.id, personId))
+          .for("update");
+        await choose(authFor(drizzleAdapter(tx, { provider: "pg", schema })), async (event) =>
+          recordAlong(tx, event, new Date()),
+        );
+      });
+    },
+
+    async acknowledgeTest(personId) {
+      const changed = await (await contextOf()).adapter.update({
+        model: "user",
+        where: [{ field: "id", value: personId }],
+        update: { testAcknowledged: true },
+      });
+      if (changed === null) throw new Error("the account no longer exists");
+    },
 
     async analyticsOptedOut(personId) {
       const found = await (await contextOf()).internalAdapter.findUserById(personId);

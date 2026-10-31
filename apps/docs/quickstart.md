@@ -4,7 +4,7 @@
 
 You are the one writing code here: the business has an API, and you want to
 keep the delivery in your own hands. This page walks from an empty project to
-a test sale you make yourself on the test channel, where the money is not
+a test sale you make yourself in the test environment, where the money is not
 real: you publish a card, your handler takes the order and delivers, the buyer
 receives the goods, and a receipt is written. You do not rewrite the shop to
 get there: a handler appears beside it, in a process of yours that takes paid
@@ -84,25 +84,20 @@ sequenceDiagram
     end
 ```
 
-## 1. Make the merchant account ready
+## 1. Sign in and create a key
 
 Open the [test dashboard](https://test.agentify.ad/dashboard/sign-in), enter
 your email address, open the link in the message and press the confirmation
-button. That first sign-in sets up your business and asks for the name buyers
-will see. You reach the same dashboard the same way when you come back. If you
-are already signed in from a scanner report, the dashboard offers one button
+button. That first sign-in sets up your business. You reach the same dashboard
+the same way when you come back. If you are already signed in from a scanner
+report, the dashboard offers one button
 instead, "Open my seller dashboard", which sets up your business the same way.
 
-In Settings, save the wallet where your share of the sales arrives: an address
-on Base, `0x` followed by forty letters and digits. On the test channel it only
-ever receives test USDC on Base Sepolia, so it needs no money of its own; if
-your business has no wallet yet, [Money](/money#if-you-have-no-wallet-yet) says
-how to get one. The wallet is set there and nowhere else: no key and no call
-can change it.
-
-Then open API keys, give a new key a name of at most 100 characters that
-tells it from the next one, press Create key, and copy it: the secret is shown
-once. Keep it with your other secrets and out of source control.
+On Products, choose **With code**. Create an API key there if you do not
+already have one: give it a name of at most 100 characters that tells it from
+the next one. Press **Create key** and copy it from the window. Keep it with your other secrets
+and out of source control. If you came here from that screen and already
+copied the key, use it; you do not need another one.
 
 Any key you issue can do everything your code can: publish cards, read orders
 and receipts, take a card or all selling off sale and put it back, and set your
@@ -111,8 +106,7 @@ revoke one; only the dashboard does those. So if a key leaks, revoke it on API
 keys and create a fresh one for your code: once revoked it can do nothing more,
 and it cannot have left another key of its own behind.
 
-This step worked if Settings shows your seller name and your wallet and you
-hold a key that starts with `csk_test_`.
+This step worked if you hold a key that starts with `csk_test_`.
 
 ## 2. Install the package and build a client
 
@@ -130,7 +124,7 @@ delivers is read exactly, so a change there stops your process loudly instead
 ([When Agentify is newer than your package](/orders#when-agentify-is-newer-than-your-package)).
 
 The client needs a key and the address of the channel, and nothing after the
-address: it adds the rest of the path itself. The test channel is
+address: it adds the rest of the path itself. The test environment is
 `https://test.agentify.ad`, and a key made on one channel does not open the
 other.
 
@@ -166,55 +160,7 @@ that builds it, and with no address at all at its first call. Whether the key
 and the address belong together is answered by the first call that reaches us,
 on the next step.
 
-## 3. Publish one card
-
-```ts
-const published = await agentify.catalog.publish({
-  merchant_item_id: 'access-monthly',
-  title: 'One month of access to the service',
-  description:
-    'What the buyer gets, what it is good for, and what is not included.',
-  price: '5.00 USD',
-  params: {
-    email: { type: 'string', required: true, title: 'Where to send it' },
-  },
-  result: { access_url: 'string' },
-})
-
-if (!published.ok) {
-  console.error(published.error.problems)
-}
-```
-
-`merchant_item_id` is your own key for the product: an order arrives carrying
-it, and publishing again under it updates the card rather than adding a second
-one, so publishing can live in a script you run as often as you like. `params`
-is what the agent has to give at purchase, and `result` is what it receives,
-which your handler will return exactly. The card names no mode, so it is
-synchronous. The [card reference](/cards) has every field, the short and long
-spellings used here, and which mode a product takes.
-
-This step worked if `published.ok` is true and `published.id` holds the card's
-catalogue identifier, which the test purchase on step 6 buys by. If `ok` is
-false, `error.problems` lists everything that stops the card being published
-in one answer, each finding with a code, words a person can act on and the
-path to the field where there is one. Four findings are about you rather than
-the card: `no_seller_name`, `no_payout_wallet`, `no_seller_site` on an
-asynchronous or a parcel's card, and `no_operator_approval` on the live
-channel ([who checks a card](/cards#who-checks-a-card-before-it-is-published)).
-Fixing what they name, not sending the card again, changes the answer.
-
-A published card is in the catalogue only while a process of yours is
-polling, which step 4 starts. Until its first poll, and whenever none has
-polled for {{silent-after}}, the catalogue leaves your cards out and every
-purchase of them is refused; they come back at the next poll ([What can go
-wrong](/failures)).
-
-A call that fails for another reason, such as a key we do not accept or an
-address that does not answer, throws an `AgentifyError` with a `code`, such as
-`not_authorised`, a `retryable` flag and the `route` it happened on.
-
-## 4. Take an order and deliver the goods
+## 3. Start the process that takes orders
 
 Your process takes orders from a queue on our side through a subscription it
 opens itself, over ordinary HTTPS to the address you gave the client, so it
@@ -237,7 +183,7 @@ because a merchant sells through one of the two at a time.
 
 ### A synchronous handler
 
-The card above is synchronous: the handler returns the delivery, or a refusal,
+The card you publish on step 4 is synchronous: the handler returns the delivery, or a refusal,
 built on the order itself, and we send that answer for you.
 
 ```ts
@@ -255,6 +201,8 @@ agentify.on('order', async (order) => {
 
   return order.delivered({ access_url: access.url })
 })
+
+agentify.on('problem', (problem) => console.error(problem))
 
 await agentify.start()
 ```
@@ -279,6 +227,8 @@ agentify.on('order', async (order) => {
 
   return order.accepted()
 })
+
+agentify.on('problem', (problem) => console.error(problem))
 
 await agentify.start()
 
@@ -359,6 +309,63 @@ This step worked if the process starts, its first log line names the test
 channel and says the money there is not real, and your problem handler stays
 quiet. The first order reaches it on step 6.
 
+Once the process has made its first poll, Products shows that your code
+connected. Return to Products and save your seller name and wallet before
+publishing: an address on Base, `0x` followed by forty letters and
+digits. In the test environment it only receives test USDC on Base Sepolia,
+so it needs no money of its own. If you have no wallet yet,
+[Money](/money#if-you-have-no-wallet-yet) says how to get one. Only the
+dashboard can change this address; no API key can change it.
+Continue when Products offers the publishing guide. You can change the seller name and wallet later in Settings.
+
+## 4. Publish one card
+
+```ts
+const published = await agentify.catalog.publish({
+  merchant_item_id: 'access-monthly',
+  title: 'One month of access to the service',
+  description:
+    'What the buyer gets, what it is good for, and what is not included.',
+  price: '5.00 USD',
+  params: {
+    email: { type: 'string', required: true, title: 'Where to send it' },
+  },
+  result: { access_url: 'string' },
+})
+
+if (!published.ok) {
+  console.error(published.error.problems)
+}
+```
+
+`merchant_item_id` is your own key for the product: an order arrives carrying
+it, and publishing again under it updates the card rather than adding a second
+one, so publishing can live in a script you run as often as you like. `params`
+is what the agent has to give at purchase, and `result` is what it receives,
+which your handler will return exactly. The card names no mode, so it is
+synchronous. The [card reference](/cards) has every field, the short and long
+spellings used here, and which mode a product takes.
+
+This step worked if `published.ok` is true and `published.id` holds the card's
+catalogue identifier, which the test purchase on step 6 buys by. If `ok` is
+false, `error.problems` lists everything that stops the card being published
+in one answer, each finding with a code, words a person can act on and the
+path to the field where there is one. Four findings are about you rather than
+the card: `no_seller_name`, `no_payout_wallet`, `no_seller_site` on an
+asynchronous or a parcel's card, and `no_operator_approval` on the live
+channel ([who checks a card](/cards#who-checks-a-card-before-it-is-published)).
+Fixing what they name, not sending the card again, changes the answer.
+
+A published card is in the catalogue only while a process of yours is
+polling, which step 3 starts. Until its first poll, and whenever none has
+polled for {{silent-after}}, the catalogue leaves your cards out and every
+purchase of them is refused; they come back at the next poll ([What can go
+wrong](/failures)).
+
+A call that fails for another reason, such as a key we do not accept or an
+address that does not answer, throws an `AgentifyError` with a `code`, such as
+`not_authorised`, a `retryable` flag and the `route` it happened on.
+
 ## 5. Check the card offline
 
 ```sh
@@ -381,9 +388,9 @@ holds against a repeat is proved by the purchase on the next step.
 
 ## 6. Make your first test purchase
 
-You make the first purchase yourself, buying your own card on the test channel
+You make the first purchase yourself, buying your own card in the test environment
 with an ordinary x402 client, the payment protocol agents pay with. Keep the
-process from step 4 running while you buy: without it the card is not in the
+process from step 3 running while you buy: without it the card is not in the
 catalogue, and a purchase is refused with `seller_not_taking_orders`.
 
 In the directory with the `.env` from step 2, install the x402 client and the
@@ -393,7 +400,7 @@ library that makes and uses the buyer's wallet key:
 npm install @x402/fetch@2.23.0 @x402/evm@2.23.0 viem@2.47.0
 ```
 
-Add the catalogue identifier step 3 returned to `.env` as a line of its own,
+Add the catalogue identifier step 4 returned to `.env` as a line of its own,
 `ITEM_ID=item_...`. Then save the program below as `buyer.mts` beside `.env`
 and run it with `node --env-file=.env buyer.mts`. It is TypeScript whose types
 Node 24 simply erases, so it runs as it is.
@@ -409,7 +416,7 @@ facilitator executes. Use this key for test purchases and nothing else.
 
 The next run buys the card. The program finds it in the catalogue, posts to
 its purchase address, signs the payment request that comes back and prints the
-order. The parameters in the program are the email the card from step 3 asks
+order. The parameters in the program are the email the card from step 4 asks
 for; change them to what your card asks, or to `{}` for a card that asks for
 none. The program sends no address, so it cannot buy a parcel. It signs only
 on Base Sepolia and for no more than the price on the card. The x402 client
@@ -429,17 +436,21 @@ on [Telling a repeat apart](/orders#telling-a-repeat-apart).
 It all came together if the order reached your handler, the buyer received the
 goods — `delivered` here, with the `access_url` your handler returned — and the
 purchase left a receipt on the Receipts screen of your dashboard. The order
-carries `test: true`, because the test channel settles on a test chain.
+carries `test: true`, because the test environment settles on a test chain.
 
 ## 7. Go live
 
 The live channel is a separate account at `https://agentify.ad`, signed in to
 the same way, with a wallet that receives real USDC on Base and a key that
-starts with `csk_live_`. Nothing is copied from the test channel: your code
+starts with `csk_live_`. Nothing is copied from the test environment: your code
 publishes its cards again with the live key and points the client at the live
 address. Live publication also waits for an Agentify operator to approve your
-merchant, which you ask for by writing to admin@agentify.ad; until then
-publishing lists `no_operator_approval`, and nothing of yours sells live. The
+merchant. After your code connects, enter your seller name and press
+**Ask for live sales** on Products. You can ask without a wallet, then add
+one while you wait. The request and any decision note remain on Products.
+A declined request sends an email with the note; correct what it asks and
+press **Ask again**. Until approval, publishing lists
+`no_operator_approval`, and nothing of yours sells live. The
 operator can withdraw that approval later; publishing and new live sales are
 then refused the same way, while the orders you already took are still yours to
 deliver. What changes between the two channels is in one table on [Connecting

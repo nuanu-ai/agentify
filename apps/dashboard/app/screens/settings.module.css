@@ -92,6 +92,7 @@
    waiting or a cancel too late in the notice's colours, a cancel that worked
    in the pass colours. */
 .notice {
+  scroll-margin-top: calc(var(--under-header) + 3 * var(--space-page));
   display: grid;
   gap: var(--space-tight);
   padding: var(--space-block) 20px;

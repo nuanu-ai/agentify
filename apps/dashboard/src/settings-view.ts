@@ -238,6 +238,27 @@ const sameAddress = (one: string, other: string): boolean =>
 const commissionOf = (rate: CommissionRate): string =>
   `Agentify keeps ${percentagesOf(rate).commission} of each sale, refunded sales included. Saving a wallet means you agree to this fee.`;
 
+export type WalletEntryView = Pick<WalletView, "purpose" | "commission" | "rule" | "coinbase">;
+
+/** The same wallet terms on the first-entry form and in Settings, without a chain read. */
+export const walletEntryView = (
+  mode: SurfaceMode,
+  rate: CommissionRate,
+  chain: number | null,
+): WalletEntryView => ({
+  purpose:
+    mode !== "sandbox" &&
+    readinessOf(
+      { sellerName: UNKNOWN, payoutWallet: UNKNOWN, liveApproval: UNKNOWN },
+      mode,
+    ).asked.includes(MERCHANT_FINDINGS.NO_PAYOUT_WALLET)
+      ? PAID_IN[mode]
+      : OPTIONAL,
+  commission: commissionOf(rate),
+  rule: WALLET_RULE,
+  coinbase: coinbaseOn(chain, "box"),
+});
+
 /**
  * The split recorded for this wallet, or null where the gateway named one for
  * another: two reads that straddled a change must not show a contract paying a
@@ -325,17 +346,6 @@ export const settingsView = (
     walletChain,
     liveApproval,
   } = settings;
-  // The rule is the gateway's own, so no screen holds an opinion about which
-  // setting publishing needs where; the approval goes in as unknown where it
-  // was not read.
-  const door = readinessOf(
-    {
-      sellerName,
-      payoutWallet: payoutWallet.payout_wallet,
-      liveApproval: liveApproval ?? UNKNOWN,
-    },
-    mode,
-  );
   const refused = (kind: "name" | "site" | "wallet") =>
     press !== undefined && "problem" in press && press.kind === kind ? press : null;
   const name = refused("name");
@@ -369,13 +379,7 @@ export const settingsView = (
       rule: SITE_RULE,
     },
     wallet: {
-      // Where publishing asks for an address and none is set, the banner over
-      // the page says what that holds back.
-      purpose:
-        mode !== "sandbox" && door.asked.includes(MERCHANT_FINDINGS.NO_PAYOUT_WALLET)
-          ? PAID_IN[mode]
-          : OPTIONAL,
-      commission: commissionOf(payoutSplits.rate),
+      ...walletEntryView(mode, payoutSplits.rate, walletChain),
       saved,
       split: saved === null ? null : splitBeside(saved, payoutSplits.inForce, addressPage),
       pending:
@@ -387,12 +391,10 @@ export const settingsView = (
               from: momentView(pending.takes_effect_at),
             },
       notice: press?.kind === "wallet-notice" ? noticeView(press.notice) : null,
-      rule: WALLET_RULE,
       waits: saved !== null && mode === "live" ? LIVE_CHANGE_WAITS : null,
       onItsWay: saved !== null && mode === "live" ? CHANGE_ON_ITS_WAY : null,
       typed: wallet?.typed ?? "",
       problem: wallet?.problem ?? null,
-      coinbase: coinbaseOn(walletChain, "box"),
     },
     payout: saved === null ? null : payoutView(mode, payoutSplits, walletChain),
     account: {

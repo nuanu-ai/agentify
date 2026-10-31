@@ -1,13 +1,12 @@
-import { Button, Field } from "@agentify/ui";
-import { useLayoutEffect, useState } from "react";
-import { flushSync } from "react-dom";
-import { Link, useNavigate } from "react-router";
-import type { KeysView, NewKeyView, NoCall } from "../../src/keys.js";
-import { Ident } from "../components/copy.js";
-import { Cell, List, Row } from "../components/list.js";
+import { Button } from "@agentify/ui";
+import { Link } from "react-router";
+import type { KeysView, NoCall } from "../../src/keys.js";
 import { Moment } from "../components/moment.js";
 import { PostForm } from "../components/post-form.js";
 import { Word } from "../components/word.js";
+import { Ident } from "../display/copy.js";
+import { Cell, List, Row } from "../display/list.js";
+import { CreateKeyForm } from "./create-key.js";
 import styles from "./keys.module.css";
 
 /** A row's last call where none is recorded, by which of the two blanks it is. */
@@ -126,91 +125,8 @@ export function KeysScreen({ view }: Readonly<{ view: KeysView }>) {
             <p>Name it after the code that will use it.</p>
           </div>
         </div>
-        <PostForm className="issue" action="/keys" replace={false}>
-          {(pending) => (
-            <>
-              <Field
-                label="Key name"
-                id="label"
-                name="label"
-                type="text"
-                autoComplete="off"
-                placeholder="Order worker, production"
-                maxLength={100}
-                defaultValue={view.typed}
-                autoFocus={view.startNew}
-                required
-                {...(view.problem === null ? {} : { error: view.problem })}
-              />
-              <Button pending={pending}>Create key</Button>
-            </>
-          )}
-        </PostForm>
+        <CreateKeyForm view={view} action="/keys" />
       </section>
-    </>
-  );
-}
-
-/**
- * Copying needs the page's script; where it did not run, or the browser
- * refuses, the key is selected by hand, as the line beside the button says.
- */
-export function NewKeyScreen({ view }: Readonly<{ view: NewKeyView }>) {
-  const [said, setSaid] = useState("");
-  const [left, setLeft] = useState(false);
-  const navigate = useNavigate();
-  // A browser may keep a page it leaves whole and show it again as it was, so
-  // the secret comes off the page as it is left, and a page brought back
-  // draws the list. The listeners go on in the commit that draws the secret:
-  // an ordinary effect runs a turn later, and a page left inside that turn
-  // would keep it.
-  useLayoutEffect(() => {
-    const leave = () => flushSync(() => setLeft(true));
-    const back = (event: PageTransitionEvent) => {
-      if (event.persisted) void navigate("/keys", { replace: true });
-    };
-    window.addEventListener("pagehide", leave);
-    window.addEventListener("pageshow", back);
-    return () => {
-      window.removeEventListener("pagehide", leave);
-      window.removeEventListener("pageshow", back);
-    };
-  }, [navigate]);
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(view.secret);
-      setSaid("Copied.");
-    } catch {
-      setSaid("Could not copy. Select the key above.");
-    }
-  };
-  return (
-    <>
-      <div className="lede">
-        <div>
-          <p>{`Copy the key for “${view.label}” now. We show it only once and keep no readable copy.`}</p>
-        </div>
-      </div>
-      <div className="scroller">
-        <p className="secret">{left ? "" : view.secret}</p>
-      </div>
-      <p className="copy-row">
-        <Button type="button" onClick={() => void copy()}>
-          Copy key
-        </Button>{" "}
-        <span role="status">{said}</span>
-      </p>
-      <p className="note">
-        If your browser offers to send the form again, cancel: that creates a second key.{" "}
-        <a href="/docs/quickstart#_2-install-the-package-and-build-a-client">
-          How your code uses the key
-        </a>
-      </p>
-      <p className="quiet">
-        {/* Followed inside the application, it takes the page's place in
-            history, and the secret goes with it. */}
-        <Link to="/keys">Back to your API keys</Link>
-      </p>
     </>
   );
 }

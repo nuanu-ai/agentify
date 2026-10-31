@@ -28,6 +28,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { JOURNAL_ACTIONS, JOURNAL_REASON_MAX } from "../../ports/journal.js";
+import type { LiveSalesEvidence } from "../../ports/live-sales.js";
 import type { ConsumedPriceOffer, StoredOrder } from "../../ports/store.js";
 
 /**
@@ -465,3 +466,38 @@ export const operatorJournal = pgTable(
       .where(sql`${table.subjectKind} = 'account'`),
   ],
 );
+
+/** The latest ask; the immutable operator journal keeps previous decisions. */
+export const liveRequests = pgTable(
+  "merchant_live_requests",
+  {
+    merchantId: text("merchant_id")
+      .primaryKey()
+      .references(() => merchants.id, { onDelete: "cascade" }),
+    id: text("id").notNull().unique(),
+    accountId: text("account_id"),
+    requestedAt: timestamp("requested_at", { withTimezone: true, mode: "date" }).notNull(),
+    evidence: jsonb("evidence").$type<LiveSalesEvidence>(),
+    state: text("state").$type<"pending" | "declined" | "admitted">().notNull(),
+    declineSequence: bigint("decline_sequence", { mode: "number" }),
+    reminderDueAt: timestamp("reminder_due_at", { withTimezone: true, mode: "date" }).notNull(),
+    reminderCreatedAt: timestamp("reminder_created_at", { withTimezone: true, mode: "date" }),
+  },
+  (table) => [
+    check(
+      "merchant_live_requests_state",
+      sql`${table.state} in ('pending', 'declined', 'admitted')`,
+    ),
+    check(
+      "merchant_live_requests_decline",
+      sql`(${table.state} = 'declined') = (${table.declineSequence} is not null)`,
+    ),
+    index("merchant_live_requests_waiting")
+      .on(table.requestedAt, table.merchantId)
+      .where(sql`${table.state} = 'pending'`),
+  ],
+);
+export const liveRequestBackfill = pgTable("merchant_live_request_backfill", {
+  id: text("id").primaryKey(),
+  completedAt: timestamp("completed_at", { withTimezone: true, mode: "date" }).notNull(),
+});

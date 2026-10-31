@@ -84,6 +84,10 @@
 
   --hairline: 1px;
 
+  /* Platform tiles keep a logo's proportions distinct from an interface icon. */
+  --platform-logo-size: 3rem;
+  --platform-icon-size: 2rem;
+
   --shadow-soft: 0 30px 70px -46px rgba(26, 25, 23, 0.42);
 
   /* Type sizes, named for what they set; body text is the base, 1rem.

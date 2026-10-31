@@ -14,13 +14,24 @@ import {
   SurfaceNote,
   WorkHeader,
 } from "@agentify/ui";
-import type { ReactNode } from "react";
-import { Link, useRouteLoaderData } from "react-router";
+import { lazy, type ReactNode, Suspense } from "react";
+import { Link, useActionData, useRouteLoaderData } from "react-router";
 import type { SectionDestination } from "../../src/dashboard-entry.js";
 import type { FrameView } from "../../src/views.js";
 import type { Chrome, DrawnFor, Gated } from "../answer.js";
-import { AccountBanner } from "./account-banner.js";
 import { useGoingTo } from "./going-to.js";
+// Server-rendered conditional content is styled before its client module loads.
+import "../dialogs/test-welcome.module.css";
+import "../notices/account-banner.module.css";
+import "../dialogs/locked-dialog.module.css";
+
+const AccountBanner = lazy(() =>
+  import("../notices/account-banner.js").then(({ AccountBanner }) => ({ default: AccountBanner })),
+);
+
+const TestWelcome = lazy(() =>
+  import("../dialogs/test-welcome.js").then(({ TestWelcome }) => ({ default: TestWelcome })),
+);
 
 /**
  * Each section is also a destination the sign-in returns to, so a section
@@ -49,6 +60,7 @@ export function Frame({
   tab,
   title,
   heading = title,
+  parent,
   action,
   drawn,
   children,
@@ -57,6 +69,7 @@ export function Frame({
   tab?: Tab;
   title: string;
   heading?: string;
+  parent?: ReactNode;
   action?: ReactNode;
   drawn?: DrawnFor & Readonly<{ chrome: Chrome }>;
   children: ReactNode;
@@ -72,6 +85,7 @@ export function Frame({
   if (gate === undefined) {
     throw new Error("the frame was drawn outside the gate, where no address is known");
   }
+  const pressed = useActionData<{ problem?: string }>();
   const going = useGoingTo();
   const marked =
     going === null
@@ -118,17 +132,29 @@ export function Frame({
           <main id="main">
             <div className="top">
               <div className="top-inner">
+                {parent}
                 <h1 className="top-title">{heading}</h1>
                 {action}
               </div>
             </div>
             <div className="app-content">
-              <AccountBanner notes={framed?.account ?? []} />
+              {framed &&
+              (framed.account.length > 0 ||
+                (marked === "products" && framed.onboarding?.account?.decision != null)) ? (
+                <Suspense fallback={null}>
+                  <AccountBanner notes={framed.account} />
+                </Suspense>
+              ) : null}
               {children}
             </div>
           </main>
         </div>
       </div>
+      {framed?.onboarding?.step.acknowledgeTest ? (
+        <Suspense fallback={null}>
+          <TestWelcome {...(pressed?.problem === undefined ? {} : { problem: pressed.problem })} />
+        </Suspense>
+      ) : null}
       <SiteFooter surface="dashboard" link={Link} />
     </div>
   );

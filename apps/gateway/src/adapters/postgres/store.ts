@@ -34,6 +34,7 @@ import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Pool, type PoolConfig } from "pg";
 import type { DrizzleTransactionLike } from "pg-boss";
 import { type AnalyticsEvent, recordAlong, recordObserved } from "../../analytics/index.js";
+import { liveSalesResult, sellerNameNamed } from "../../analytics/live-sales.js";
 import { failureNamed } from "../../failure-named.js";
 import type { Ids } from "../../ports/clock.js";
 import {
@@ -44,6 +45,15 @@ import {
   type JournalRow,
   settledPress,
 } from "../../ports/journal.js";
+import {
+  checkedDecline,
+  checkedLiveSalesAsk,
+  type LiveSalesAsk,
+  type LiveSalesAsked,
+  type LiveSalesDeclined,
+  liveSalesChange,
+  liveSalesReminderAt,
+} from "../../ports/live-sales.js";
 import type { Reminder } from "../../ports/queue.js";
 import {
   type AdmissionResult,
@@ -79,8 +89,14 @@ import { DatabaseFailure, failingWithoutValues } from "../database-failure.js";
 import { recordedOtherwise, splitsOfTheWrite } from "../registry.js";
 import { journalAlong, readJournal, readStandingWithdrawal } from "./journal.js";
 import {
+  noLiveSalesNotices,
+  type PostgresLiveSalesNotices,
+  readLiveRequest,
+} from "./live-sales.js";
+import {
   answeredFor,
   cards,
+  liveRequests,
   merchantContact,
   merchantKeys,
   merchants,
@@ -195,6 +211,7 @@ export class PostgresStore implements Store {
   readonly #network: string;
   readonly #ids: Ids;
   readonly #envelopes: Envelopes;
+  readonly #liveNotices: PostgresLiveSalesNotices;
 
   /**
    * The only way to make a store: database failures leave it stripped of the
@@ -207,15 +224,26 @@ export class PostgresStore implements Store {
     network: string,
     ids: Ids,
     envelopes: Envelopes = noEnvelopes,
+    liveNotices: PostgresLiveSalesNotices = noLiveSalesNotices,
   ): PostgresStore {
-    return failingWithoutValues(new PostgresStore(db, network, ids, envelopes), "the store");
+    return failingWithoutValues(
+      new PostgresStore(db, network, ids, envelopes, liveNotices),
+      "the store",
+    );
   }
 
-  private constructor(db: Database, network: string, ids: Ids, envelopes: Envelopes) {
+  private constructor(
+    db: Database,
+    network: string,
+    ids: Ids,
+    envelopes: Envelopes,
+    liveNotices: PostgresLiveSalesNotices,
+  ) {
     this.#db = db;
     this.#network = network;
     this.#ids = ids;
     this.#envelopes = envelopes;
+    this.#liveNotices = liveNotices;
   }
 
   get network(): string {
@@ -280,9 +308,14 @@ export class PostgresStore implements Store {
     journal?: JournalPress,
   ): Promise<{ merchant: StoredMerchant; changed: boolean } | null> {
     return await this.#db.transaction(async (tx) => {
-      // One statement, so two operators granting at once cannot both replace
-      // the instant. `updated_at` is deliberately not written: the grant has
-      // its own instant and changes no merchant setting.
+      // Repeated grants must also serialize with withdrawal and a subsequent request.
+      const [locked] = await tx
+        .select({ id: merchants.id })
+        .from(merchants)
+        .where(eq(merchants.id, id))
+        .for("no key update");
+      if (!locked) return null;
+      // The grant has its own instant and changes no merchant setting.
       const [granted] = await tx
         .update(merchants)
         .set({ liveApprovedAt: new Date(at) })
@@ -296,7 +329,17 @@ export class PostgresStore implements Store {
       }
       const answer = { merchant, changed: granted !== undefined };
       if (answer.changed) await recordWith(tx, analytics, answer, new Date(at));
+      if (answer.changed)
+        await tx
+          .update(liveRequests)
+          .set({ state: "admitted", declineSequence: null })
+          .where(eq(liveRequests.merchantId, id));
       await journalWith(tx, journal, answer.changed);
+      if (answer.changed)
+        await this.#liveNotices.within(
+          tx,
+          liveSalesChange("admitted", this.#ids("lsd"), merchant, at),
+        );
       return answer;
     });
   }
@@ -319,7 +362,116 @@ export class PostgresStore implements Store {
       }
       const changed = withdrawn !== undefined;
       await journalWith(tx, journal, changed);
+      if (changed)
+        await this.#liveNotices.within(
+          tx,
+          liveSalesChange(
+            "withdrawn",
+            this.#ids("lsd"),
+            merchant,
+            journal?.at ?? Date.now(),
+            journal?.reason ?? null,
+          ),
+        );
       return { merchant, changed };
+    });
+  }
+
+  async liveSalesRequest(merchantId: string) {
+    return readLiveRequest(this.#db, merchantId);
+  }
+
+  async requestLiveSales(input: LiveSalesAsk, at: number): Promise<LiveSalesAsked> {
+    return this.#db.transaction(async (tx) => {
+      const [merchant] = await tx
+        .select()
+        .from(merchants)
+        .where(eq(merchants.id, input.merchantId))
+        .for("no key update");
+      if (!merchant) return { kind: "missing" };
+      if (merchant.liveApprovedAt !== null) return { kind: "approved" };
+      const previous = await readLiveRequest(tx, input.merchantId);
+      if (previous?.state === "pending") return { kind: "pending", request: previous };
+      checkedLiveSalesAsk(input, at);
+      if (merchant.integration !== input.evidence.integration) return { kind: "moved" };
+      const values = {
+        merchantId: input.merchantId,
+        id: this.#ids("lsr"),
+        accountId: input.accountId,
+        requestedAt: new Date(at),
+        evidence: input.evidence,
+        state: "pending" as const,
+        declineSequence: null,
+        reminderDueAt: new Date(liveSalesReminderAt(at)),
+        reminderCreatedAt: null,
+      };
+      await tx
+        .update(merchants)
+        .set({ serviceName: input.sellerName, updatedAt: new Date(at) })
+        .where(eq(merchants.id, input.merchantId));
+      if (merchant.serviceName !== input.sellerName)
+        await recordAlong(tx, sellerNameNamed(input.merchantId), new Date(at));
+      await tx
+        .insert(liveRequests)
+        .values(values)
+        .onConflictDoUpdate({ target: liveRequests.merchantId, set: values });
+      const request = await readLiveRequest(tx, input.merchantId);
+      if (!request) throw new Error("the live-sales request was not written");
+      await this.#liveNotices.within(tx, {
+        kind: "requested",
+        request,
+        sellerName: input.sellerName,
+        hasWallet: merchant.payoutWallet !== null,
+      });
+      await recordAlong(
+        tx,
+        liveSalesResult(
+          "live_request",
+          input.merchantId,
+          input.evidence.integration,
+          input.accountId,
+        ),
+        new Date(at),
+      );
+      return { kind: "requested", request };
+    });
+  }
+
+  async declineLiveSales(
+    merchantId: string,
+    requestId: string,
+    press: JournalPress,
+  ): Promise<LiveSalesDeclined | null> {
+    checkedDecline(merchantId, press);
+    return this.#db.transaction(async (tx) => {
+      const [merchant] = await tx
+        .select()
+        .from(merchants)
+        .where(eq(merchants.id, merchantId))
+        .for("no key update");
+      if (!merchant) return null;
+      const held = await readLiveRequest(tx, merchantId);
+      const changed =
+        held?.id === requestId && held.state === "pending" && merchant.liveApprovedAt === null;
+      const decline = await journalAlong(tx, settledPress(press, changed));
+      if (!changed || !held) return { changed: false, request: held };
+      await tx
+        .update(liveRequests)
+        .set({ state: "declined", declineSequence: decline.sequence })
+        .where(eq(liveRequests.merchantId, merchantId));
+      const request = { ...held, state: "declined" as const, decline };
+      await this.#liveNotices.within(tx, {
+        kind: "declined",
+        request,
+        sellerName: merchant.serviceName ?? merchant.name,
+        hasWallet: merchant.payoutWallet !== null,
+      });
+      await recordAlong(
+        tx,
+        liveSalesResult("live_decline", merchantId, integrationOf(merchant.integration)),
+        new Date(press.at),
+      );
+      return { changed: true, request };
     });
   }
 
@@ -341,8 +493,9 @@ export class PostgresStore implements Store {
     sellerSite: string,
     at: number,
     analytics?: AnalyticsOf<StoredMerchant>,
+    onlyIfEmpty = false,
   ): Promise<StoredMerchant | null> {
-    return this.#setListing(id, { sellerSite }, at, analytics);
+    return this.#setListing(id, { sellerSite }, at, analytics, onlyIfEmpty);
   }
 
   /**
@@ -355,6 +508,7 @@ export class PostgresStore implements Store {
     listing: { readonly serviceName: string | null } | { readonly sellerSite: string },
     at: number,
     analytics: AnalyticsOf<StoredMerchant> | undefined,
+    onlyIfEmpty = false,
   ): Promise<StoredMerchant | null> {
     return await this.#db.transaction(async (tx) => {
       const [before] = await tx
@@ -364,6 +518,9 @@ export class PostgresStore implements Store {
         .for("no key update");
       if (before === undefined) {
         return null;
+      }
+      if (onlyIfEmpty && before.sellerSite !== null) {
+        return (await this.#merchantsWhere(tx, eq(merchants.id, id)))[0] ?? null;
       }
       await tx
         .update(merchants)
@@ -432,6 +589,11 @@ export class PostgresStore implements Store {
         throw new Error(`the wallet of ${id} was written and the merchant could not be read back`);
       }
       const written = { merchant, recorded };
+      if (expected.address === null && next.address !== null && merchant.liveApprovedAt !== null)
+        await this.#liveNotices.within(
+          tx,
+          liveSalesChange("first_wallet", this.#ids("lsd"), merchant, at),
+        );
       await recordWith(tx, analytics, written, new Date(at));
       return written;
     });
@@ -781,6 +943,15 @@ export class PostgresStore implements Store {
     return row === undefined ? null : storedCardOf(row);
   }
 
+  async hasProducts(merchantId: string, integration: Integration): Promise<boolean> {
+    const [found] = await this.#db
+      .select({ id: cards.id })
+      .from(cards)
+      .where(and(eq(cards.merchantId, merchantId), eq(cards.integration, integration)))
+      .limit(1);
+    return found !== undefined;
+  }
+
   async cards(merchantId: string): Promise<readonly StoredCard[]> {
     const rows = await this.#db
       .select()
@@ -842,11 +1013,7 @@ export class PostgresStore implements Store {
     return await this.#db.transaction(async (tx) => {
       // Held from the read to the write, so of two pauses at once only the
       // first finds the card on sale.
-      const [before] = await tx
-        .select({ paused: cards.paused })
-        .from(cards)
-        .where(theirs)
-        .for("no key update");
+      const [before] = await tx.select().from(cards).where(theirs).for("no key update");
       if (before === undefined) {
         return null;
       }

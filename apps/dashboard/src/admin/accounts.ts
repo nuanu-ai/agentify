@@ -177,7 +177,7 @@ type JournalKind = "all" | "admission" | "keys" | "sessions" | "flag" | "forgott
 
 const JOURNAL_KINDS: Readonly<Record<JournalKind, readonly JournalAction[] | undefined>> = {
   all: undefined,
-  admission: ["admit", "withdraw"],
+  admission: ["admit", "withdraw", "decline"],
   keys: ["disable_key"],
   sessions: ["end_sessions"],
   flag: ["grant_operator", "remove_operator", "first_operator"],

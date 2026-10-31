@@ -22,6 +22,7 @@ import {
 } from "@nuanu-ai/agentify-contracts";
 import { z } from "zod";
 import { type SplitTerms, sharesOf } from "./shares.js";
+import type { WooWithdrawalReason } from "./woo-card-pauses.js";
 import {
   memoryCartResources,
   WOO_CARTS_PER_LANE,
@@ -45,7 +46,7 @@ import {
   withinOneUnit,
 } from "./woo-money.js";
 import { type WooRequest, wooRequest } from "./woo-request.js";
-import type { AppliedRate } from "./woo-shops.js";
+import type { AppliedRate, ShopCurrency } from "./woo-shops.js";
 
 const SHOP_ANSWERS_WITHIN_MS = 15_000;
 
@@ -61,10 +62,8 @@ const AT_MOST = 10_000;
 
 /**
  * Shown to a merchant before they start, and named on the page that refuses a
- * larger catalogue rather than silently importing the first part of it, and set
- * from a census of real shops' catalogues. The import runs while the merchant
- * holds the page open, and reading a catalogue this size is some fifty requests
- * to the shop besides one for each download's file.
+ * larger catalogue rather than silently treating its first part as complete.
+ * A saved job retains partial observations if the bounded traversal stops.
  */
 export const PRODUCTS_AT_MOST = 2_000;
 
@@ -134,6 +133,32 @@ export type EligibleWooProduct = EligibleDownload | EligibleParcel;
  * shop said nothing that could be read or trusted, which is not to be told as
  * the seller's no.
  */
+interface ProductObstacle {
+  readonly group: "fix" | "not_selling" | "unsupported";
+  readonly reason:
+    | "deleted"
+    | "variants"
+    | "product_type"
+    | "stock_tracking"
+    | "withdrawn"
+    | "out_of_stock"
+    | "product_conditions"
+    | "price_scale"
+    | "download_file"
+    | "download_origin"
+    | "download_protection";
+  readonly withdraw: boolean;
+}
+
+export const withdrawalReason = (
+  obstacle: ProductObstacle | undefined,
+): WooWithdrawalReason | null =>
+  obstacle?.withdraw
+    ? obstacle.reason === "deleted" || obstacle.reason === "withdrawn"
+      ? "stopped_selling"
+      : "changed"
+    : null;
+
 export type NotSellable =
   | {
       readonly ok: false;
@@ -142,7 +167,14 @@ export type NotSellable =
       /** The shop answered, and its answer broke off before it could be read. */
       readonly cutOff?: true;
     }
-  | { readonly ok: false; readonly why: string; readonly again: false; readonly saidNo: boolean };
+  | {
+      readonly ok: false;
+      readonly why: string;
+      readonly again: false;
+      readonly saidNo: boolean;
+      readonly reconnect?: true;
+      readonly obstacle?: ProductObstacle;
+    };
 
 export type ProductInspection =
   | { readonly ok: true; readonly product: EligibleWooProduct }
@@ -242,6 +274,8 @@ const PRODUCT_FIELDS = Object.keys(ProductSchema.shape).join(",");
 
 /** Null where the shop never answered; `body` is null where its answer broke off. */
 type Answered = { readonly response: Response; readonly body: string | null } | null;
+const accessRefused = (answer: Answered | undefined): boolean =>
+  answer?.response.status === 401 || answer?.response.status === 403;
 
 const askedTheShop = async (
   keys: ShopKeys,
@@ -408,6 +442,15 @@ const judged = async (
     }
   };
   const unanswered = (indices: readonly number[]): NotSellable | null => {
+    const deniedAt = indices.find((index) => accessRefused(answers[index]));
+    if (deniedAt !== undefined)
+      return {
+        ok: false,
+        why: `The shop refused the protected ${checkAt(deniedAt)} check (${statusAt(deniedAt)}).`,
+        again: false,
+        saidNo: false,
+        reconnect: true,
+      };
     const lostAt = indices.find((index) => answers[index] === null);
     if (lostAt !== undefined) {
       return {
@@ -465,8 +508,11 @@ const judged = async (
       why: `The shop has no product ${productId} any more.`,
       again: false,
       saidNo: true,
+      obstacle: { group: "not_selling", reason: "deleted", withdraw: true },
     };
   }
+  const commonDenied = unanswered([1, 2, 7].filter((index) => accessRefused(answers[index])));
+  if (commonDenied !== null) return commonDenied;
   const productUnanswered = unanswered([0]);
   if (productUnanswered !== null) return productUnanswered;
   const parsed = ProductSchema.safeParse(documentOf(0));
@@ -566,6 +612,29 @@ const judged = async (
     }
     return { ok: true, value: (id) => found.get(id) ?? "" };
   };
+  const unreadSetting = (): NotSellable => ({
+    ok: false,
+    again: false,
+    saidNo: false,
+    why: "The shop returned a setting value we could not interpret. Check WooCommerce settings, then check again.",
+  });
+  const oneOf = (value: unknown, values: readonly string[]) =>
+    typeof value === "string" && values.includes(value);
+  if (
+    !oneOf(taxes, ["yes", "no"]) ||
+    typeof currency !== "string" ||
+    !/^[A-Z]{3}$/.test(currency) ||
+    !/^\d+$/.test(String(decimals))
+  )
+    return unreadSetting();
+  if (
+    kind === "download" &&
+    (!oneOf(method, ["force", "xsendfile", "redirect"]) ||
+      !oneOf(login, ["yes", "no"]) ||
+      !oneOf(afterPayment, ["yes", "no"]) ||
+      !oneOf(redirectFallback, ["yes", "no"]))
+  )
+    return unreadSetting();
   const unsupported: string[] = [];
   // Judged only where the shop calculates tax: with it off nothing they say
   // bears on the sale, so a shop that will not show them still sells.
@@ -574,6 +643,13 @@ const judged = async (
     const taxSettings = groupAt(10, TAX_SETTINGS);
     if (!taxSettings.ok) return taxSettings;
     const includesTax = taxSettings.value("woocommerce_prices_include_tax");
+    if (
+      !oneOf(includesTax, ["yes", "no"]) ||
+      !oneOf(taxSettings.value("woocommerce_tax_display_shop"), ["incl", "excl"]) ||
+      !oneOf(taxSettings.value("woocommerce_tax_round_at_subtotal"), ["yes", "no"]) ||
+      !oneOf(taxSettings.value("woocommerce_tax_based_on"), ["shipping", "billing", "base"])
+    )
+      return unreadSetting();
     if (includesTax === "yes" || includesTax === "no") {
       entered = includesTax === "yes" ? "included" : "excluded";
       // The import reads the catalogue's price, which WooCommerce shows with
@@ -681,7 +757,37 @@ const judged = async (
     );
   }
   if (unsupported.length > 0 || scale === null) {
+    const obstacle: ProductObstacle =
+      product.type !== "simple" || product.manage_stock || product.sold_individually
+        ? {
+            group: "unsupported",
+            reason:
+              product.type === "variable"
+                ? "variants"
+                : product.type !== "simple"
+                  ? "product_type"
+                  : "stock_tracking",
+            withdraw: true,
+          }
+        : product.status !== "publish"
+          ? { group: "not_selling", reason: "withdrawn", withdraw: true }
+          : product.stock_status !== "instock"
+            ? { group: "not_selling", reason: "out_of_stock", withdraw: false }
+            : !product.purchasable
+              ? { group: "not_selling", reason: "withdrawn", withdraw: true }
+              : {
+                  group: "fix",
+                  reason: "product_conditions",
+                  withdraw:
+                    kind === "download" &&
+                    (!product.virtual ||
+                      !product.downloadable ||
+                      product.downloads.length !== 1 ||
+                      product.download_limit !== -1 ||
+                      product.download_expiry !== -1),
+                };
     return {
+      obstacle,
       ok: false,
       why:
         `This product cannot be imported: ${unsupported.join("; ")}.` +
@@ -707,6 +813,7 @@ const judged = async (
   if (amount === null) {
     return {
       ok: false,
+      obstacle: { group: "fix", reason: "price_scale", withdraw: false },
       why:
         `The shop's price for this product is ${product.price}, which has more decimal places` +
         ` than the ${scale} the shop writes its prices with. It is not rounded to an amount the` +
@@ -787,6 +894,7 @@ const judged = async (
   ) {
     return {
       ok: false,
+      obstacle: { group: "fix", reason: "download_file", withdraw: true },
       why: "The product's one download does not name a readable address.",
       again: false,
       saidNo: true,
@@ -796,6 +904,7 @@ const judged = async (
   if (raw.origin !== new URL(keys.shopUrl).origin) {
     return {
       ok: false,
+      obstacle: { group: "fix", reason: "download_origin", withdraw: true },
       why: "The downloadable file is outside this shop's origin.",
       again: false,
       saidNo: true,
@@ -819,14 +928,21 @@ const judged = async (
         again: true,
       };
     }
+    if (exposed.status === 200 || exposed.status === 206) {
+      return {
+        ok: false,
+        obstacle: { group: "fix", reason: "download_protection", withdraw: true },
+        why: `The downloadable file is public: asked without an order permission, it answered HTTP ${exposed.status}.`,
+        again: false,
+        saidNo: true,
+      };
+    }
     if (exposed.status !== 401 && exposed.status !== 403) {
       return {
         ok: false,
-        why: exposed.ok
-          ? `The downloadable file is public: asked without an order permission, it answered HTTP ${exposed.status}.`
-          : `The downloadable file answered a request without an order permission with HTTP ${exposed.status} rather than a refusal, which this sale cannot rely on to keep it protected.`,
+        why: `The downloadable file answered a request without an order permission with HTTP ${exposed.status} rather than a refusal, which this sale cannot rely on to keep it protected.`,
         again: false,
-        saidNo: true,
+        saidNo: false,
       };
     }
   } catch {
@@ -2972,3 +3088,211 @@ const whatTheShopSaid = (said: string, status: number): string => {
   }
   return `the answer carried no message we could read (HTTP ${status}).`;
 };
+
+export type ConnectedCatalogueEvent =
+  | { readonly kind: "total"; readonly total: number | null }
+  | { readonly kind: "currency"; readonly currency: ShopCurrency }
+  | {
+      readonly kind: "product";
+      readonly product: StoreProduct;
+      readonly inspected: ProductInspection;
+    }
+  | { readonly kind: "complete"; readonly total: number }
+  | { readonly kind: "stopped"; readonly why: string; readonly reconnect: boolean };
+
+/** Granted access reads the catalogue directly, including products hidden from the public Store API. */
+export async function* connectedCatalogue(
+  keys: ShopKeys,
+  request: WooRequest = wooRequest,
+): AsyncGenerator<ConnectedCatalogueEvent> {
+  const settings = await mapAtMost(SETTING_PATHS, IN_THE_SHOP_AT_ONCE, (path) =>
+    askedTheShop(keys, path, request),
+  );
+  const setting = (index: number, expected: string): string | null => {
+    const answer = settings[index];
+    if (!answer?.response.ok || answer.body === null) return null;
+    try {
+      const parsed = SettingSchema.safeParse(JSON.parse(answer.body));
+      return parsed.success && parsed.data.id === expected ? String(parsed.data.value) : null;
+    } catch {
+      return null;
+    }
+  };
+  // These settings bear on every product; the judge checks kind-specific settings later.
+  if ([0, 1, 6].some((index) => accessRefused(settings[index]))) {
+    yield {
+      kind: "stopped",
+      why: "Your shop refused protected settings access. Reconnect it, then check again.",
+      reconnect: true,
+    };
+    return;
+  }
+  const code = setting(0, "woocommerce_currency");
+  const decimals = shopDecimalsOf(setting(6, "woocommerce_price_num_decimals") ?? "");
+  if (code === null || !/^[A-Z]{3}$/.test(code) || decimals === null) {
+    yield {
+      kind: "stopped",
+      why: "We couldn't read your shop's currency and price decimals. Check WooCommerce settings and check again.",
+      reconnect: false,
+    };
+    return;
+  }
+  yield { kind: "currency", currency: { code, decimals } };
+  const schema = ProductSchema.extend({
+    name: z.string(),
+    description: z.string(),
+    short_description: z.string().default(""),
+    sku: z.string().default(""),
+  });
+  // Published products only: the estimate before connecting counts these, and a product in
+  // any other state is not for sale; a card whose product left this list is asked after alone.
+  const listPage = (page: number, fields = "") =>
+    askedTheShop(
+      keys,
+      `/wp-json/wc/v3/products?status=publish&orderby=id&order=asc&per_page=${PER_PAGE}&page=${page}${fields}`,
+      request,
+    );
+  const seen = new Set<number>();
+  let total: number | null = null;
+  for (let page = 1; page <= Math.ceil(PRODUCTS_AT_MOST / PER_PAGE) + 1; page++) {
+    const answered = await listPage(page);
+    if (!answered?.response.ok || answered.body === null) {
+      yield {
+        kind: "stopped",
+        why: "We couldn't read the rest of your shop. We don't know about the rest yet.",
+        reconnect: answered?.response.status === 401 || answered?.response.status === 403,
+      };
+      return;
+    }
+    let document: unknown;
+    try {
+      document = JSON.parse(answered.body);
+    } catch {
+      document = null;
+    }
+    const parsed = z.array(schema).safeParse(document);
+    if (!parsed.success) {
+      yield {
+        kind: "stopped",
+        why: "Your shop returned a catalogue we couldn't read. We don't know about the rest yet.",
+        reconnect: false,
+      };
+      return;
+    }
+    const reported = answered.response.headers.get("x-wp-total");
+    const parsedCount = reported !== null && /^\d+$/.test(reported) ? Number(reported) : null;
+    const count = parsedCount !== null && Number.isSafeInteger(parsedCount) ? parsedCount : null;
+    const throughPage = seen.size + parsed.data.length;
+    if (
+      (count !== null && (count < throughPage || (total !== null && total !== count))) ||
+      (total !== null && throughPage > total)
+    ) {
+      yield { kind: "total", total: null };
+      yield {
+        kind: "stopped",
+        why: "Your catalogue changed while it was being read. Check again.",
+        reconnect: false,
+      };
+      return;
+    }
+    if (count !== null) {
+      total = count;
+      yield { kind: "total", total };
+      if (total > PRODUCTS_AT_MOST) {
+        yield {
+          kind: "stopped",
+          why: "Your shop has more than 2,000 published products.",
+          reconnect: false,
+        };
+        return;
+      }
+    }
+    for (const product of parsed.data) {
+      if (seen.has(product.id) || seen.size >= PRODUCTS_AT_MOST) {
+        yield {
+          kind: "stopped",
+          why: seen.has(product.id)
+            ? "Your shop repeated a catalogue page. We don't know about the rest yet."
+            : "Your shop has more than 2,000 published products. We stopped reading at 2,000.",
+          reconnect: false,
+        };
+        return;
+      }
+      seen.add(product.id);
+      const amount = shopAmountOf(product.price, decimals);
+      const minor = amount === null ? null : minorOf(amount);
+      const inspected = await judged(
+        keys,
+        String(product.id),
+        [{ response: answered.response, body: JSON.stringify(product) }, ...settings],
+        request,
+      );
+      yield {
+        kind: "product",
+        product: {
+          id: product.id,
+          name: product.name,
+          description: product.description,
+          short_description: product.short_description,
+          sku: product.sku,
+          type: product.type,
+          status: product.status,
+          is_purchasable: product.purchasable,
+          is_in_stock: product.stock_status === "instock",
+          virtual: product.virtual,
+          downloadable: product.downloadable,
+          manage_stock: product.manage_stock,
+          download_limit: product.download_limit,
+          download_expiry: product.download_expiry,
+          downloads: product.downloads,
+          qualification_problem: null,
+          prices: {
+            price: minor?.minor.toString() ?? product.price,
+            currency_code: code,
+            currency_minor_unit: decimals,
+          },
+        },
+        inspected,
+      };
+    }
+    if (parsed.data.length < PER_PAGE) {
+      if (total !== null && total !== seen.size) {
+        yield { kind: "total", total: null };
+        yield {
+          kind: "stopped",
+          why: "Your shop ended its catalogue before all products were read. We don't know about the rest yet.",
+          reconnect: false,
+        };
+        return;
+      }
+      // Pages are cut by offset, so a product deleted below the page being read shifts the rest
+      // and one is never read while the count stays the same; a second, ids-only pass catches it.
+      const listed = new Set<number>();
+      for (let again = 1; again <= page + 1; again++) {
+        const answeredIds = await listPage(again, "&_fields=id");
+        const documents = listedIn(answeredIds);
+        const ids = documents?.flatMap((one) => (typeof one.id === "number" ? [one.id] : []));
+        if (documents === null || ids === undefined || ids.length !== documents.length) {
+          yield { kind: "total", total: null };
+          yield {
+            kind: "stopped",
+            why: "We couldn't read the rest of your shop. We don't know about the rest yet.",
+            reconnect: accessRefused(answeredIds),
+          };
+          return;
+        }
+        for (const id of ids) listed.add(id);
+        if (ids.length < PER_PAGE) break;
+      }
+      if (listed.size !== seen.size || [...listed].some((id) => !seen.has(id))) {
+        yield { kind: "total", total: null };
+        yield {
+          kind: "stopped",
+          why: "Your catalogue changed while it was being read. Check again.",
+          reconnect: false,
+        };
+      } else yield { kind: "complete", total: seen.size };
+      return;
+    }
+  }
+}

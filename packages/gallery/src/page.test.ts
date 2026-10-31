@@ -11,6 +11,8 @@
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createElement as h, Suspense } from "react";
+import { prerender } from "react-dom/static";
 import { describe, expect, it } from "vitest";
 import { type DrawnState, type DrawnSurface, finderIn, withFilesInlined } from "./draw.js";
 import { pageOf, refusalsIn } from "./page.js";
@@ -112,6 +114,45 @@ describe("the page the host publishes", () => {
 });
 
 describe("states a comment could not point at", () => {
+  it.each(["table", "svg"] as const)(
+    "refuses React's %s transport when its hidden marker is elsewhere",
+    async (kind) => {
+      async function Content() {
+        await new Promise((resolve) => setTimeout(resolve, 1));
+        return kind === "table"
+          ? h("tr", null, h("td", null, "x".repeat(20_000)))
+          : h("text", null, "x".repeat(20_000));
+      }
+      const boundary = h(Suspense, { fallback: null }, h(Content));
+      const { prelude } = await prerender(
+        h(kind, null, kind === "table" ? h("tbody", null, boundary) : boundary),
+      );
+      const html = await new Response(prelude).text();
+      expect(refusalsIn([surface([state("dashboard-keys-none", { html })])])).toEqual([
+        expect.stringMatching(/dashboard-keys-none.*hidden.*script/i),
+      ]);
+    },
+  );
+  it("refuses content stranded in a hidden SSR transport block, while allowing ordinary hidden UI", () => {
+    for (const html of [
+      '<main>Loading</main><div hidden id="S:0"><h1>API keys</h1></div><script>$RC()</script>',
+      '<div id="preview-S:a" hidden=""><h1>API keys</h1></div>',
+    ]) {
+      expect(refusalsIn([surface([state("dashboard-keys-none", { html })])])).toEqual([
+        expect.stringMatching(/dashboard-keys-none.*hidden.*script/i),
+      ]);
+    }
+    expect(
+      refusalsIn([
+        surface([
+          state("dashboard-keys-none", {
+            html: "<h1>API keys</h1><div hidden>Closed dialog</div>",
+          }),
+        ]),
+      ]),
+    ).toEqual([]);
+  });
+
   it("refuses a state named twice", () => {
     expect(
       refusalsIn([surface([state("dashboard-keys-none"), state("dashboard-keys-none")])]),

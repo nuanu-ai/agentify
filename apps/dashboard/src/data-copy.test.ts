@@ -141,6 +141,28 @@ async function aChannel() {
     connectedAt: AT,
     currency: null,
   });
+  const { job } = await wooShops.jobs.request({
+    accountId: "acc_owner",
+    merchantId,
+    shopUrl: "https://shop.example",
+    connectionRevision: "revision-1",
+    kind: "check",
+  });
+  await wooShops.jobs.claim();
+  await wooShops.jobs.record(
+    job.id,
+    {
+      id: "11",
+      title: "Guide",
+      group: "ready",
+      reason: "ready",
+      why: "",
+      published: false,
+    },
+    2,
+  );
+  await wooShops.jobs.close();
+  await wooShops.jobs.interrupted();
   const published = await harnessed.gateway.publishCard(merchantId, A_CODE);
   if (!published.ok) throw new Error(`the card was refused: ${JSON.stringify(published)}`);
   const offered = await harnessed.gateway.beginPurchase(published.id, { email: BUYER });
@@ -272,6 +294,17 @@ describe("a copy of an address's data", () => {
       payout_wallet: channel.harnessed.merchant.wallet,
       woocommerce: { shop_url: "https://shop.example", permissions: "read_write" },
     });
+    expect(merchant.shop_jobs).toMatchObject([
+      {
+        kind: "check",
+        status: "stopped",
+        read: 1,
+        total: 2,
+        products: [{ id: "11", title: "Guide", group: "ready" }],
+      },
+    ]);
+    expect(merchant.shop_jobs[0]).not.toHaveProperty("accountId");
+    expect(merchant.shop_jobs[0]).not.toHaveProperty("connectionRevision");
     expect(merchant.keys).toEqual([
       expect.objectContaining({ id: channel.harnessed.merchant.keyId }),
     ]);

@@ -33,7 +33,7 @@ const migrationsIn = join(
 
 const EMPTY_EVERY_TABLE =
   "truncate table cards, orders, receipts, payment_claims, merchant_keys, merchant_contact, merchants," +
-  " payout_splits, commerce_analytics_events, operator_journal";
+  " payout_splits, commerce_analytics_events, operator_journal, merchant_live_requests";
 
 if (databaseUrl === null) {
   console.log(noDatabaseHere(wanted));
@@ -60,7 +60,9 @@ if (databaseUrl === null) {
   };
   describeOperatorMerchants("the operator's merchants on Postgres", async () => {
     await pool.query(EMPTY_EVERY_TABLE);
-    const store = PostgresStore.over(db, "eip155:84532", ids);
+    const store = PostgresStore.over(db, "eip155:84532", ids, undefined, {
+      within: async () => {},
+    });
     return { store, merchants: postgresOperatorReader(db, "eip155:84532").merchants };
   });
 
@@ -69,7 +71,9 @@ if (databaseUrl === null) {
       // A merchant a migration wrote with now() was made at a moment finer
       // than a millisecond, which no cursor in an address can carry.
       await pool.query(EMPTY_EVERY_TABLE);
-      const store = PostgresStore.over(db, "eip155:84532", ids);
+      const store = PostgresStore.over(db, "eip155:84532", ids, undefined, {
+        within: async () => {},
+      });
       const merchants = postgresOperatorReader(db, "eip155:84532").merchants;
       for (const [id, at] of [
         ["mch_old", 1_000],
@@ -82,7 +86,7 @@ if (databaseUrl === null) {
         "update merchants set created_at = created_at + interval '671 microseconds' where id = 'mch_fine'",
       );
       const at = { at: Date.UTC(2026, 9, 23), surface: "test", limit: 1 } as const;
-      const nowhere = { waiting: false, lastSaleAt: null, createdAt: 0, id: "" };
+      const nowhere = { requestedAt: null, waiting: false, lastSaleAt: null, createdAt: 0, id: "" };
 
       const first = await merchants.list(at);
       const fine = await merchants.list({ ...at, from: { after: first.next ?? nowhere } });

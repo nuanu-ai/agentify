@@ -26,7 +26,7 @@ export function walletAt(
 }
 
 /** Whether a merchant has a seller name and, where the channel asks, a wallet with a recorded split. */
-export function namedAndPaid(merchant: StoredMerchant, asked: FiguresAsked): boolean {
+function namedAndPaid(merchant: StoredMerchant, asked: FiguresAsked): boolean {
   return (
     merchant.serviceName !== null &&
     (!askedOn(asked.surface).wallet || walletAt(merchant, asked.at).split !== null)

@@ -247,6 +247,7 @@ export async function forgetIn(
     if ((others?.n ?? 0) > 0)
       return { kind: "shared-merchant", merchantId: id, others: others?.n ?? 0 };
 
+    await tx.execute(sql`delete from dashboard_woo_card_pauses where merchant_id = ${id}`);
     const cards = await rowsOf(tx, sql`delete from cards where merchant_id = ${id} returning id`);
     await tx.execute(sql`delete from merchants where id = ${id}`);
     merchant = { id, present, cards: cards.length };

@@ -18,16 +18,15 @@ import {
   type SurfaceMode,
 } from "@agentify/core";
 import type { Card, MerchantFinding, Money } from "@nuanu-ai/agentify-contracts";
+import type { LiveSalesRequest } from "../live-sales.js";
 import type { PageFrom } from "../paging.js";
 import type { Integration } from "../store.js";
 import type { Tally } from "./money.js";
 
 /**
  * Where a merchant stands, as the list's segments split them:
- * - `waiting`: on the live channel, a seller name and a payout wallet and no
- *   admission; the one decision only an operator takes. Whether their
- *   integration connected and whether cards are published are facts beside it,
- *   not conditions.
+ * - `waiting`: a pending live-sales request. Wallet, contact and published
+ *   cards are facts beside it, not conditions.
  * - `setting_up`: anything else the surface asks is missing, or nothing is
  *   missing and no card of the integration they sell through is published.
  * - `paused`: nothing is missing and nothing is on sale because the merchant
@@ -64,6 +63,7 @@ export const askedOn = (surface: SurfaceMode): readonly MerchantFinding[] =>
 export interface SegmentFacts {
   readonly surface: SurfaceMode;
   readonly missing: readonly MerchantFinding[];
+  readonly liveRequest: LiveSalesRequest | null;
   readonly selling: MerchantSelling;
   /** Cards of the integration the merchant sells through, published. */
   readonly ofIntegration: number;
@@ -73,10 +73,8 @@ export interface SegmentFacts {
 
 /** The segment a merchant stands in; the SQL twin is in the Postgres reader and the contract holds them alike. */
 export function segmentOf(facts: SegmentFacts): MerchantSegment {
-  if (facts.missing.length > 0) {
-    const onlyAdmission = facts.missing.every((finding) => finding === "no_operator_approval");
-    return facts.surface === "live" && onlyAdmission ? "waiting" : "setting_up";
-  }
+  if (facts.surface === "live" && facts.liveRequest?.state === "pending") return "waiting";
+  if (facts.missing.length > 0) return "setting_up";
   if (facts.ofIntegration === 0) return "setting_up";
   if (facts.selling === "paused" || facts.unpaused === 0) return "paused";
   return "selling";
@@ -99,6 +97,8 @@ interface ThirtyDays {
 
 /** One merchant as the list draws them. */
 export interface MerchantRow {
+  /** A currently pending request, independent of wallet or current contact. */
+  readonly liveRequest: LiveSalesRequest | null;
   readonly id: string;
   /** The name buyers read, or null where none is set. */
   readonly serviceName: string | null;
@@ -141,10 +141,11 @@ export interface MerchantListQuery {
 
 /**
  * A place in the list, by what it is sorted by: whether a merchant waits for
- * admission, the moment of their latest sale (null where they never sold),
- * when they were made, and their identifier, which breaks a tie.
+ * admission and its request date; otherwise their latest sale and creation
+ * date. The identifier breaks a tie.
  */
 export interface MerchantPlace {
+  readonly requestedAt: number | null;
   readonly waiting: boolean;
   readonly lastSaleAt: number | null;
   readonly createdAt: number;
@@ -153,7 +154,7 @@ export interface MerchantPlace {
 
 /**
  * One cut of the list: its rows, first what needs the operator (waiting for
- * admission), then by the latest sale, newest first, merchants who never sold
+ * admission), oldest request first; the rest by latest sale, newest first, merchants who never sold
  * after, newest merchant first, a tie broken by the identifier; how many the
  * search and segment find in all and how many of them come before the page;
  * the places of the page's first row where rows precede it and of its last
@@ -171,6 +172,7 @@ export interface MerchantList {
 /** Where a merchant's row stands in the list. */
 export const merchantPlaceOf = (row: MerchantRow): MerchantPlace => ({
   waiting: row.segment === "waiting",
+  requestedAt: row.liveRequest?.requestedAt ?? null,
   lastSaleAt: row.lastSaleAt,
   createdAt: row.createdAt,
   id: row.id,

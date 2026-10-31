@@ -1,0 +1,52 @@
+.dialog {
+  overflow-wrap: anywhere;
+  max-width: min(36rem, calc(100% - var(--space-section)));
+  max-height: calc(100dvh - var(--space-section));
+  overflow: auto;
+  padding: var(--space-section);
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  color: var(--fg);
+  box-shadow: var(--shadow-soft);
+}
+.dialog::backdrop {
+  background: rgb(26 25 23 / 48%);
+}
+.dialog h2 {
+  font-size: var(--text-section);
+}
+.dialog h2:focus {
+  outline: none;
+}
+.dialog form {
+  margin-top: var(--space-card);
+}
+@media (max-width: 480px) {
+  .dialog {
+    padding: var(--space-card);
+  }
+}
+
+/* The static gallery and a browser without script also keep the notice over its page. */
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  background: rgb(26 25 23 / 48%);
+}
+.scrim:has(.dialog:modal) {
+  background: transparent;
+  pointer-events: none;
+}
+.dialog {
+  pointer-events: auto;
+  margin: auto;
+}
+
+.dialog > * + * {
+  margin-top: var(--space-block);
+}

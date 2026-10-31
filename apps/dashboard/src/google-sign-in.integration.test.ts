@@ -151,7 +151,7 @@ describe("Google sign-in in the built dashboard", () => {
         });
         await page.getByRole("button", { name: "Sign in with Google", exact: true }).click();
         await page.getByRole("link", { name: "Continue to Agentify" }).click();
-        await page.waitForURL(`${origin}/dashboard/choose-name`);
+        await page.waitForURL(`${origin}/dashboard/products`);
         const cookie = (await context.cookies())
           .map(({ name, value }) => `${name}=${value}`)
           .join("; ");
@@ -221,7 +221,7 @@ describe("a Google sign-in from an ad in the built dashboard", () => {
         await page.getByRole("link", { name: "Continue to Agentify" }).waitFor();
         const cookiesAtGoogle = JSON.stringify(await context.cookies());
         await page.getByRole("link", { name: "Continue to Agentify" }).click();
-        await page.waitForURL(`${origin}/dashboard/choose-name`);
+        await page.waitForURL(`${origin}/dashboard/products`);
 
         const registration = await registrationOf(email);
         expect(registration).toHaveLength(1);

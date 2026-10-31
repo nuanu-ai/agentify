@@ -9,6 +9,7 @@
 import { CDP_FACILITATOR_URL, PUBLIC_X402_FACILITATOR_URL } from "@agentify/core";
 import { ScriptedFacilitator } from "./adapters/memory/facilitator.js";
 import { queueOn } from "./adapters/pgboss/queue.js";
+import type { PostgresLiveSalesNotices } from "./adapters/postgres/live-sales.js";
 import { connect, PostgresStore } from "./adapters/postgres/store.js";
 import { facilitatorClientFor, refuseUnlessCoinbaseTakesTheKey } from "./adapters/x402/client.js";
 import { X402Facilitator } from "./adapters/x402/facilitator.js";
@@ -214,6 +215,7 @@ const DATABASE_CONNECTION_WAIT_MS = 3_000;
 export async function startGateway(
   config: GatewayConfig,
   announcer: Announcer,
+  liveSalesNotices?: PostgresLiveSalesNotices,
 ): Promise<RunningGateway> {
   // The Postgres queue notices a due reminder up to half a second late, and a
   // synchronous sale must still have room for a second attempt.
@@ -243,7 +245,13 @@ export async function startGateway(
     // An envelope that must not be lost is written in the same transaction as
     // its order, so a process that dies mid-flight did both or neither. This
     // works only because the queue and the store share one Postgres.
-    store: PostgresStore.over(db, config.payment.network, randomIds, queue.envelopes()),
+    store: PostgresStore.over(
+      db,
+      config.payment.network,
+      randomIds,
+      queue.envelopes(),
+      liveSalesNotices,
+    ),
     queue,
     facilitator: await paymentLayer(config),
     clock: systemClock,

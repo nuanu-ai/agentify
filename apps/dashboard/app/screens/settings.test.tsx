@@ -1,3 +1,4 @@
+import { ADDRESS_ANSWERS } from "../wallet/address-answer.js";
 // @vitest-environment jsdom
 
 /**
@@ -35,8 +36,10 @@ import {
 } from "../../src/settings-view.js";
 import { readable } from "../../src/testing/html.js";
 import { TEST_AUTH_SECRET } from "../../src/testing/secrets.js";
-import { WALLET_WORDS } from "../wallet/buttons.js";
+import { ADDRESS_STATE } from "../wallet/address-button.js";
+import { PAYOUT_WORDS } from "../wallet/payout-button.js";
 import type { Wallet } from "../wallet/requests.js";
+import { ADDRESS_WORDS } from "../wallet/settings-address.js";
 import { WALLET_ANSWERS_WITHIN_MS } from "../wallet/waiting.js";
 import { PayoutWalletPanel, SettingsScreen } from "./settings.js";
 
@@ -945,7 +948,7 @@ describe("what Getting paid says in each state", () => {
     expect(viewOf(looking).payout?.kind).toBe(kind);
     expect(html.includes("<textarea")).toBe(kind === "send");
     render(routed(() => <SettingsScreen view={viewOf(looking)} />));
-    expect(screen.queryByRole("button", { name: WALLET_WORDS.payOut }) !== null).toBe(
+    expect(screen.queryByRole("button", { name: PAYOUT_WORDS.payOut }) !== null).toBe(
       kind === "send" && looking.mode === "live",
     );
     if (kind === "too_many") expect(text).toMatch(/21 payout contracts/);
@@ -1031,17 +1034,17 @@ describe("what the payout would bring", () => {
 
 describe("creating or connecting a Coinbase Wallet from the settings", () => {
   const CHECKSUMMED = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
-  const button = () => screen.getByRole("button", { name: WALLET_WORDS.connect });
+  const button = () => screen.getByRole("button", { name: ADDRESS_WORDS.connect });
   const box = () => screen.getByLabelText(/wallet address/i) as HTMLInputElement;
   const press = async (control: HTMLElement) => {
     await act(async () => {
       fireEvent.click(control);
     });
-    await waitFor(() => expect(screen.queryByText(WALLET_WORDS.waitingAddress)).toBeNull());
+    await waitFor(() => expect(screen.queryByText(ADDRESS_STATE.waitingAddress)).toBeNull());
   };
 
   it("is offered only once the page's script runs, so a page without script shows no button that does nothing", () => {
-    expect(walletPanel({ mode: "live" })).not.toContain(WALLET_WORDS.connect);
+    expect(walletPanel({ mode: "live" })).not.toContain(ADDRESS_WORDS.connect);
 
     render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "live" }).wallet} />));
 
@@ -1059,7 +1062,7 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
   it("is not offered in the sandbox, where no wallet is ever paid", () => {
     render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "sandbox" }).wallet} />));
 
-    expect(screen.queryByRole("button", { name: WALLET_WORDS.connect })).toBeNull();
+    expect(screen.queryByRole("button", { name: ADDRESS_WORDS.connect })).toBeNull();
   });
 
   it("puts the wallet's address into the box in a wallet's spelling, and saves nothing until the merchant presses Save", async () => {
@@ -1082,7 +1085,7 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
     expect(box().value).toBe(CHECKSUMMED);
     expect(submitted).toBe(false);
     for (const submit of submits) submit.mockRestore();
-    expect(screen.getByText(WALLET_WORDS.addressInTheBox)).toBeTruthy();
+    expect(screen.getByText(ADDRESS_ANSWERS.addressInTheBox)).toBeTruthy();
   });
 
   it("leaves the button and the box usable while it waits, so a window that closed without a word strands nobody", async () => {
@@ -1093,7 +1096,7 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
       fireEvent.click(button());
     });
 
-    expect(screen.getByText(WALLET_WORDS.waitingAddress)).toBeTruthy();
+    expect(screen.getByText(ADDRESS_STATE.waitingAddress)).toBeTruthy();
     expect((button() as HTMLButtonElement).disabled).toBe(false);
     expect(box().disabled || box().readOnly).toBe(false);
   });
@@ -1107,7 +1110,7 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
 
     expect(box().value).toBe("0x1234");
     expect(box().disabled || box().readOnly).toBe(false);
-    expect(screen.getByText(WALLET_WORDS.connectClosed)).toBeTruthy();
+    expect(screen.getByText(ADDRESS_ANSWERS.connectClosed)).toBeTruthy();
   });
 
   it("keeps the box for an address typed by hand when Coinbase Wallet cannot be opened", async () => {
@@ -1118,7 +1121,7 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
     await press(button());
 
     expect(box().value).toBe("0x1234");
-    expect(screen.getByText(WALLET_WORDS.connectNotOpened)).toBeTruthy();
+    expect(screen.getByText(ADDRESS_STATE.connectNotOpened)).toBeTruthy();
   });
 
   it("says in words of its own, never the wallet's or the browser's, that no address came", async () => {
@@ -1132,7 +1135,7 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
       await press(button());
 
       expect(screen.queryByText(new RegExp(thrown.message))).toBeNull();
-      expect(screen.getByText(WALLET_WORDS.connectFailed)).toBeTruthy();
+      expect(screen.getByText(ADDRESS_ANSWERS.connectFailed)).toBeTruthy();
       cleanup();
       coinbase.provider = undefined;
     }
@@ -1151,7 +1154,7 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
     });
 
     expect(box().value).toBe(CHECKSUMMED);
-    expect(screen.getByText(WALLET_WORDS.addressInTheBox)).toBeTruthy();
+    expect(screen.getByText(ADDRESS_ANSWERS.addressInTheBox)).toBeTruthy();
   });
 
   it.each(["accept", "fail"] as const)(
@@ -1164,15 +1167,15 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
         fireEvent.click(button());
       });
       await act(async () => {
-        fireEvent.click(screen.getByRole("button", { name: WALLET_WORDS.payOut }));
+        fireEvent.click(screen.getByRole("button", { name: PAYOUT_WORDS.payOut }));
       });
-      await waitFor(() => expect(screen.getByText(WALLET_WORDS.payoutSent(SHOWN))).toBeTruthy());
+      await waitFor(() => expect(screen.getByText(PAYOUT_WORDS.payoutSent(SHOWN))).toBeTruthy());
 
       await act(async () => {
         coinbase.held[0]?.[answer]();
       });
 
-      expect(screen.getByText(WALLET_WORDS.connectLost)).toBeTruthy();
+      expect(screen.getByText(ADDRESS_ANSWERS.connectLost)).toBeTruthy();
     },
   );
 
@@ -1185,19 +1188,19 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
       fireEvent.click(button());
     });
     await act(() => vi.advanceTimersByTimeAsync(WALLET_ANSWERS_WITHIN_MS - 1));
-    expect(screen.getByText(WALLET_WORDS.waitingAddress)).toBeTruthy();
+    expect(screen.getByText(ADDRESS_STATE.waitingAddress)).toBeTruthy();
 
     await act(() => vi.advanceTimersByTimeAsync(1));
 
-    expect(screen.queryByText(WALLET_WORDS.waitingAddress)).toBeNull();
-    expect(screen.getByText(asTyped(WALLET_WORDS.connectUnanswered))).toBeTruthy();
+    expect(screen.queryByText(ADDRESS_STATE.waitingAddress)).toBeNull();
+    expect(screen.getByText(asTyped(ADDRESS_ANSWERS.connectUnanswered))).toBeTruthy();
     expect(coinbase.keys).toBe(false);
     expect(box().value).toBe("0x1234");
     await act(async () => {
       coinbase.held[0]?.accept();
     });
     expect(box().value).toBe("0x1234");
-    expect(screen.getByText(asTyped(WALLET_WORDS.connectUnanswered))).toBeTruthy();
+    expect(screen.getByText(asTyped(ADDRESS_ANSWERS.connectUnanswered))).toBeTruthy();
   });
 
   it("takes the refusal of an earlier address off the box it fills, so it is not read out against the new one", async () => {
@@ -1241,16 +1244,16 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
 
 describe("sending the payout from a Coinbase Wallet", () => {
   const W = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
-  const button = () => screen.getByRole("button", { name: WALLET_WORDS.payOut });
+  const button = () => screen.getByRole("button", { name: PAYOUT_WORDS.payOut });
   const press = async () => {
     await act(async () => {
       fireEvent.click(button());
     });
-    await waitFor(() => expect(screen.queryByText(WALLET_WORDS.waitingPayout)).toBeNull());
+    await waitFor(() => expect(screen.queryByText(PAYOUT_WORDS.waitingPayout)).toBeNull());
   };
 
   it("is offered only once the page's script runs, beside the transaction it sends", () => {
-    expect(settingsPage({ mode: "live", wallet: W })).not.toContain(WALLET_WORDS.payOut);
+    expect(settingsPage({ mode: "live", wallet: W })).not.toContain(PAYOUT_WORDS.payOut);
 
     render(routed(() => <SettingsScreen view={viewOf({ mode: "live", wallet: W })} />));
 
@@ -1281,7 +1284,7 @@ describe("sending the payout from a Coinbase Wallet", () => {
     const view = viewOf({ mode: "test", wallet: W });
     render(routed(() => <SettingsScreen view={view} />));
 
-    expect(screen.queryByRole("button", { name: WALLET_WORDS.payOut })).toBeNull();
+    expect(screen.queryByRole("button", { name: PAYOUT_WORDS.payOut })).toBeNull();
     const payout = view.payout;
     const absent =
       payout?.kind === "send" && payout.coinbase !== null && "absent" in payout.coinbase
@@ -1340,7 +1343,7 @@ describe("sending the payout from a Coinbase Wallet", () => {
 
     await press();
 
-    expect(screen.getByText(WALLET_WORDS.payoutClosed)).toBeTruthy();
+    expect(screen.getByText(PAYOUT_WORDS.payoutClosed)).toBeTruthy();
     expect(coinbase.sent).toEqual([]);
     expect((screen.getByLabelText("Data") as HTMLTextAreaElement).value).toBe(
       merchantPayout(networkOf("live"), [splitOf("live", W)], PAYOUT_SPLIT_NETWORKS).data,
@@ -1355,7 +1358,7 @@ describe("sending the payout from a Coinbase Wallet", () => {
       fireEvent.click(button());
     });
 
-    expect(screen.getByText(WALLET_WORDS.waitingPayout)).toBeTruthy();
+    expect(screen.getByText(PAYOUT_WORDS.waitingPayout)).toBeTruthy();
     expect((button() as HTMLButtonElement).disabled).toBe(false);
   });
 
@@ -1366,7 +1369,7 @@ describe("sending the payout from a Coinbase Wallet", () => {
     await press();
 
     expect(screen.queryByText(/did not send|Nothing was sent|sent nothing/)).toBeNull();
-    expect(screen.getByText(WALLET_WORDS.payoutUnconfirmed)).toBeTruthy();
+    expect(screen.getByText(PAYOUT_WORDS.payoutUnconfirmed)).toBeTruthy();
   });
 
   it("says in words of its own, never the wallet's or the browser's, that nothing was sent when the wallet stops before the payout is asked for", async () => {
@@ -1381,7 +1384,7 @@ describe("sending the payout from a Coinbase Wallet", () => {
 
       expect(coinbase.sent).toEqual([]);
       expect(screen.queryByText(new RegExp(thrown.message))).toBeNull();
-      expect(screen.getByText(WALLET_WORDS.payoutNotSent)).toBeTruthy();
+      expect(screen.getByText(PAYOUT_WORDS.payoutNotSent)).toBeTruthy();
       cleanup();
       coinbase.provider = undefined;
     }
@@ -1393,7 +1396,7 @@ describe("sending the payout from a Coinbase Wallet", () => {
 
     await press();
 
-    expect(screen.getByText(WALLET_WORDS.payoutNotSent)).toBeTruthy();
+    expect(screen.getByText(PAYOUT_WORDS.payoutNotSent)).toBeTruthy();
   });
 
   it("takes a second press while the first is still unanswered, and says what it sent", async () => {
@@ -1406,7 +1409,7 @@ describe("sending the payout from a Coinbase Wallet", () => {
     await press();
 
     expect(coinbase.sent).toHaveLength(1);
-    expect(screen.getByText(WALLET_WORDS.payoutSent(SHOWN))).toBeTruthy();
+    expect(screen.getByText(PAYOUT_WORDS.payoutSent(SHOWN))).toBeTruthy();
   });
 
   it("says it does not know, rather than that nothing was sent, once an earlier press's answer can no longer be read", async () => {
@@ -1423,8 +1426,8 @@ describe("sending the payout from a Coinbase Wallet", () => {
       coinbase.held[0]?.accept();
     });
 
-    expect(screen.queryByText(WALLET_WORDS.payoutClosed)).toBeNull();
-    expect(screen.getByText(WALLET_WORDS.payoutUnknown)).toBeTruthy();
+    expect(screen.queryByText(PAYOUT_WORDS.payoutClosed)).toBeNull();
+    expect(screen.getByText(PAYOUT_WORDS.payoutUnknown)).toBeTruthy();
   });
 
   it("never says nothing was sent when two presses wait in one window and neither answer can be read", async () => {
@@ -1443,8 +1446,8 @@ describe("sending the payout from a Coinbase Wallet", () => {
       coinbase.held[1]?.decline();
     });
 
-    expect(screen.queryByText(WALLET_WORDS.payoutClosed)).toBeNull();
-    expect(screen.getByText(WALLET_WORDS.payoutUnknown)).toBeTruthy();
+    expect(screen.queryByText(PAYOUT_WORDS.payoutClosed)).toBeNull();
+    expect(screen.getByText(PAYOUT_WORDS.payoutUnknown)).toBeTruthy();
   });
 
   it.each(["accept", "fail"] as const)(
@@ -1456,16 +1459,16 @@ describe("sending the payout from a Coinbase Wallet", () => {
         fireEvent.click(button());
       });
       await act(async () => {
-        fireEvent.click(screen.getByRole("button", { name: WALLET_WORDS.connect }));
+        fireEvent.click(screen.getByRole("button", { name: ADDRESS_WORDS.connect }));
       });
-      await waitFor(() => expect(screen.getByText(WALLET_WORDS.addressInTheBox)).toBeTruthy());
+      await waitFor(() => expect(screen.getByText(ADDRESS_ANSWERS.addressInTheBox)).toBeTruthy());
 
       await act(async () => {
         coinbase.held[0]?.[answer]();
       });
 
       expect(screen.queryByText(/did not send the payout/)).toBeNull();
-      expect(screen.getByText(WALLET_WORDS.payoutUnknown)).toBeTruthy();
+      expect(screen.getByText(PAYOUT_WORDS.payoutUnknown)).toBeTruthy();
     },
   );
 
@@ -1477,8 +1480,8 @@ describe("sending the payout from a Coinbase Wallet", () => {
     await press();
 
     expect(coinbase.sent).toHaveLength(1);
-    expect(screen.queryByText(WALLET_WORDS.payoutClosed)).toBeNull();
-    expect(screen.getByText(WALLET_WORDS.payoutEarlierStands)).toBeTruthy();
+    expect(screen.queryByText(PAYOUT_WORDS.payoutClosed)).toBeNull();
+    expect(screen.getByText(PAYOUT_WORDS.payoutEarlierStands)).toBeTruthy();
   });
 
   it("says it does not know whether the payout went out when the wallet's answer to it can no longer be read", async () => {
@@ -1487,7 +1490,7 @@ describe("sending the payout from a Coinbase Wallet", () => {
 
     await press();
 
-    expect(screen.getByText(WALLET_WORDS.payoutUnknown)).toBeTruthy();
+    expect(screen.getByText(PAYOUT_WORDS.payoutUnknown)).toBeTruthy();
   });
 
   it("never says the payout was not sent when the wallet's answer to it is a failure the page cannot read", async () => {
@@ -1501,7 +1504,7 @@ describe("sending the payout from a Coinbase Wallet", () => {
       await press();
 
       expect(screen.queryByText(/did not send|Nothing was sent|sent nothing/)).toBeNull();
-      expect(screen.getByText(WALLET_WORDS.payoutUnknown)).toBeTruthy();
+      expect(screen.getByText(PAYOUT_WORDS.payoutUnknown)).toBeTruthy();
       cleanup();
       coinbase.provider = undefined;
     }
@@ -1516,8 +1519,8 @@ describe("sending the payout from a Coinbase Wallet", () => {
 
     await press();
 
-    expect(screen.queryByText(WALLET_WORDS.payoutClosed)).toBeNull();
-    expect(screen.getByText(WALLET_WORDS.payoutUnknown)).toBeTruthy();
+    expect(screen.queryByText(PAYOUT_WORDS.payoutClosed)).toBeNull();
+    expect(screen.getByText(PAYOUT_WORDS.payoutUnknown)).toBeTruthy();
   });
 
   it("says it does not know, not that nothing was sent, when the screen was drawn again while a payout waited", async () => {
@@ -1537,8 +1540,8 @@ describe("sending the payout from a Coinbase Wallet", () => {
       coinbase.held[0]?.accept();
     });
 
-    expect(screen.queryByText(WALLET_WORDS.payoutClosed)).toBeNull();
-    expect(screen.getByText(WALLET_WORDS.payoutUnknown)).toBeTruthy();
+    expect(screen.queryByText(PAYOUT_WORDS.payoutClosed)).toBeNull();
+    expect(screen.getByText(PAYOUT_WORDS.payoutUnknown)).toBeTruthy();
   });
 
   it("says it does not know, not that nothing was sent, while an earlier payout press still waits", async () => {
@@ -1551,8 +1554,8 @@ describe("sending the payout from a Coinbase Wallet", () => {
 
     await press();
 
-    expect(screen.queryByText(WALLET_WORDS.payoutClosed)).toBeNull();
-    expect(screen.getByText(WALLET_WORDS.payoutUnknown)).toBeTruthy();
+    expect(screen.queryByText(PAYOUT_WORDS.payoutClosed)).toBeNull();
+    expect(screen.getByText(PAYOUT_WORDS.payoutUnknown)).toBeTruthy();
   });
 
   /** A payout pressed whose window then gives no answer for as long as the page waits. */
@@ -1568,13 +1571,13 @@ describe("sending the payout from a Coinbase Wallet", () => {
 
   it("says it does not know whether the payout went out once the limit passes, and leaves no keys of the wallet's session in the page", async () => {
     await unansweredFor(WALLET_ANSWERS_WITHIN_MS - 1);
-    expect(screen.getByText(WALLET_WORDS.waitingPayout)).toBeTruthy();
+    expect(screen.getByText(PAYOUT_WORDS.waitingPayout)).toBeTruthy();
     expect(coinbase.keys).toBe(true);
     await act(() => vi.advanceTimersByTimeAsync(1));
 
-    expect(screen.queryByText(WALLET_WORDS.waitingPayout)).toBeNull();
+    expect(screen.queryByText(PAYOUT_WORDS.waitingPayout)).toBeNull();
     expect(screen.queryByText(/did not send|Nothing was sent|sent nothing/)).toBeNull();
-    expect(screen.getByText(asTyped(WALLET_WORDS.payoutUnanswered))).toBeTruthy();
+    expect(screen.getByText(asTyped(PAYOUT_WORDS.payoutUnanswered))).toBeTruthy();
     expect(coinbase.keys).toBe(false);
   });
 
@@ -1591,8 +1594,8 @@ describe("sending the payout from a Coinbase Wallet", () => {
       expect(
         screen.getByText(
           answer === "acknowledge"
-            ? WALLET_WORDS.payoutSent(SHOWN)
-            : asTyped(WALLET_WORDS.payoutUnanswered),
+            ? PAYOUT_WORDS.payoutSent(SHOWN)
+            : asTyped(PAYOUT_WORDS.payoutUnanswered),
         ),
       ).toBeTruthy();
     },
@@ -1607,7 +1610,7 @@ describe("sending the payout from a Coinbase Wallet", () => {
     });
     await act(() => vi.advanceTimersByTimeAsync(0));
 
-    expect(screen.queryByText(WALLET_WORDS.payoutClosed)).toBeNull();
-    expect(screen.getByText(WALLET_WORDS.payoutUnknown)).toBeTruthy();
+    expect(screen.queryByText(PAYOUT_WORDS.payoutClosed)).toBeNull();
+    expect(screen.getByText(PAYOUT_WORDS.payoutUnknown)).toBeTruthy();
   });
 });

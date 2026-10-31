@@ -67,7 +67,7 @@ if (databaseUrl === null) {
   describeOperatorFigures("the operator's figures on Postgres", async () => {
     await emptied();
     return {
-      store: PostgresStore.over(db, NETWORK, countedIds()),
+      store: PostgresStore.over(db, NETWORK, countedIds(), undefined, { within: async () => {} }),
       reader: postgresOperatorReader(db, NETWORK),
     };
   });

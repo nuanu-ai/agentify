@@ -29,7 +29,10 @@ const useFocusKept = (form: RefObject<HTMLFormElement | null>, pending: boolean)
     if (pending || !pressed.current) return;
     pressed.current = false;
     if (document.activeElement === document.body) {
-      form.current?.querySelector<HTMLElement>("button")?.focus({ preventScroll: true });
+      const button = Array.from(form.current?.elements ?? []).find(
+        (element): element is HTMLButtonElement => element instanceof HTMLButtonElement,
+      );
+      button?.focus({ preventScroll: true });
     }
   }, [pending, form]);
   useLayoutEffect(() => {
@@ -61,7 +64,10 @@ const useFocusKept = (form: RefObject<HTMLFormElement | null>, pending: boolean)
     };
   }, [form]);
   return () => {
-    pressed.current = form.current?.contains(document.activeElement) === true;
+    pressed.current =
+      form.current?.contains(document.activeElement) === true ||
+      (document.activeElement instanceof HTMLButtonElement &&
+        document.activeElement.form === form.current);
   };
 };
 
@@ -178,6 +184,7 @@ export function PostForm({
   answeredWithinMs = ANSWER_WITHIN_MS,
   replace,
   className,
+  id,
   children,
 }: Readonly<{
   /** A path under the dashboard's prefix, without it. */
@@ -185,6 +192,7 @@ export function PostForm({
   document?: boolean;
   replace?: boolean;
   className?: string;
+  id?: string;
   children: (pending: boolean) => ReactNode;
   /**
    * The server's longest wait for this press's answer, for a whole-page press:
@@ -210,6 +218,7 @@ export function PostForm({
   return (
     <Form
       ref={form}
+      id={id}
       method="post"
       action={action}
       reloadDocument={document}

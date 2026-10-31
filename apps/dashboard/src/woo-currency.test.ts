@@ -7,7 +7,7 @@
  * the merchant's own, 18000 rupiah to the dollar.
  */
 
-import { coinbaseRateOf } from "@agentify/recorded";
+import { coinbaseRateOf, coinbaseRates } from "@agentify/recorded";
 import type { Order } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
 import { merchantItemIdFor } from "./woo-catalog.js";
@@ -36,7 +36,7 @@ const RATE: RateEntry = {
   rate: "18000",
   setAt: SET,
   sessionSignedInAt: new Date("2026-10-09T09:00:00.000Z"),
-  reference: { rate: coinbaseRateOf("IDR"), source: "Coinbase", readAt: SET },
+  reference: { rate: coinbaseRateOf("IDR"), source: "Coinbase", readAt: coinbaseRates.readAt },
   confirmed: false,
 };
 const KEYS = { shopUrl: SHOP, consumerKey: "ck_abc", consumerSecret: "cs_def" };
@@ -399,7 +399,8 @@ describe("a price question for a card from a shop priced in rupiah", () => {
     const shops = memoryWooShops();
     const rate = await shops.saveRate("acc_1", SHOP, RATE);
 
-    const answer = await quoteFromTheShop(CONNECTION, QUESTION, NOW, parts(shops));
+    const answer =
+      (await quoteFromTheShop(CONNECTION, QUESTION, NOW, parts(shops)))?.answer ?? null;
 
     expect(answer).toEqual({
       available: true,
@@ -422,7 +423,8 @@ describe("a price question for a card from a shop priced in rupiah", () => {
   it("is not available, and binds nothing, while no rate is set", async () => {
     const shops = memoryWooShops();
 
-    const answer = await quoteFromTheShop(CONNECTION, QUESTION, NOW, parts(shops));
+    const answer =
+      (await quoteFromTheShop(CONNECTION, QUESTION, NOW, parts(shops)))?.answer ?? null;
 
     expect(answer).toEqual({ available: false, as_of: NOW.toISOString() });
   });
@@ -432,7 +434,8 @@ describe("a price question for a card from a shop priced in rupiah", () => {
     await shops.saveRate("acc_1", SHOP, RATE);
     const inEuros = { ...A_DOWNLOAD, price: { amount: "14.50", currency: "EUR" } };
 
-    const answer = await quoteFromTheShop(CONNECTION, QUESTION, NOW, parts(shops, inEuros));
+    const answer =
+      (await quoteFromTheShop(CONNECTION, QUESTION, NOW, parts(shops, inEuros)))?.answer ?? null;
 
     expect(answer).toEqual({ available: false, as_of: NOW.toISOString() });
   });
@@ -457,12 +460,15 @@ describe("a price question for a card from a shop priced in rupiah", () => {
       priced: { ok: false, why: "untaxed", again: false, saidNo: false },
     };
 
-    const answer = await quoteFromTheShop(
-      CONNECTION,
-      { ...QUESTION, ship_to: { country: "ID", state: "BA", city: "Tabanan" } },
-      NOW,
-      { ...parts(shops, sarong), shippingRates: async () => rates },
-    );
+    const answer =
+      (
+        await quoteFromTheShop(
+          CONNECTION,
+          { ...QUESTION, ship_to: { country: "ID", state: "BA", city: "Tabanan" } },
+          NOW,
+          { ...parts(shops, sarong), shippingRates: async () => rates },
+        )
+      )?.answer ?? null;
 
     // 264000 / 18000 = 14.6666…, rounded up.
     expect(answer).toMatchObject({ available: true, price: { amount: "14.67", currency: "USD" } });
@@ -488,12 +494,15 @@ describe("a parcel's price where the shop's cart answers in another currency tha
       priced: { ok: false, why: "untaxed", again: false, saidNo: false },
     });
 
-    const answer = await quoteFromTheShop(
-      CONNECTION,
-      { ...QUESTION, ship_to: { country: "ID", state: "BA", city: "Tabanan" } },
-      NOW,
-      { ...parts(shops, sarong), shippingRates: inYen },
-    );
+    const answer =
+      (
+        await quoteFromTheShop(
+          CONNECTION,
+          { ...QUESTION, ship_to: { country: "ID", state: "BA", city: "Tabanan" } },
+          NOW,
+          { ...parts(shops, sarong), shippingRates: inYen },
+        )
+      )?.answer ?? null;
 
     expect(answer).toEqual({ available: false, as_of: NOW.toISOString() });
   });

@@ -283,8 +283,7 @@ describe("the banner about the account", () => {
   it("names what holds the account in a heading a screen reader can move to", async () => {
     framed("orders", { account: accountOf({ ...LIVE, sellerName: null }) });
     await screen.findByText("The screen");
-    const drawn = banner();
-    if (drawn === null) throw new Error("no banner was drawn");
+    const drawn = await screen.findByRole("region", { name: "About your account" });
 
     expect(within(drawn).getByRole("heading", { level: 2 })).toBeTruthy();
   });
@@ -295,15 +294,14 @@ describe("the banner about the account", () => {
       const notes = accountOf({ ...LIVE, sellerName: null, liveApproval: !multiple });
       framed("orders", { account: notes });
       await screen.findByText("The screen");
-      const drawn = banner();
-      if (drawn === null) throw new Error("no banner was drawn");
+      const drawn = await screen.findByRole("region", { name: "About your account" });
 
       expect(drawn.textContent).toMatch(/products.*off sale/i);
       expect(
         within(drawn)
           .getAllByRole("link")
           .map((link) => link.getAttribute("href")),
-      ).toEqual(multiple ? ["/settings", TEST_DASHBOARD] : ["/settings"]);
+      ).toEqual(multiple ? ["/settings", "/products"] : ["/settings"]);
       if (multiple) {
         expect(
           within(drawn)
@@ -316,9 +314,8 @@ describe("the banner about the account", () => {
     },
   );
 
-  it("leads a live merchant not yet approved to the test channel's own dashboard, and nobody else", async () => {
-    // A merchant who signed up on the live site makes the first sale on the
-    // test channel, which is another dashboard and another account.
+  it("keeps the approval banner on its channel without offering practice", async () => {
+    // Optional practice belongs only to the initial platform question.
     const toTheTest = () =>
       banner() === null
         ? []
@@ -328,7 +325,7 @@ describe("the banner about the account", () => {
 
     framed("products", { account: accountOf({ ...LIVE, liveApproval: false }) });
     await screen.findByText("The screen");
-    expect(toTheTest()).toHaveLength(1);
+    expect(toTheTest()).toHaveLength(0);
 
     for (const viewer of [
       LIVE,
@@ -390,8 +387,7 @@ describe("a waiting change of the payout wallet", () => {
     async (tab, page) => {
       framed(tab, { account: notes });
       await screen.findByText("The screen");
-      const drawn = banner();
-      if (drawn === null) throw new Error("no banner was drawn");
+      const drawn = await screen.findByRole("region", { name: "About your account" });
       const cancel = cancelIn(drawn);
       if (cancel === null) throw new Error("the banner offers no cancel");
 
@@ -412,8 +408,7 @@ describe("a waiting change of the payout wallet", () => {
   it("is said on Settings without a second cancel, which the wallet's own section holds", async () => {
     framed("settings", { account: notes });
     await screen.findByText("The screen");
-    const drawn = banner();
-    if (drawn === null) throw new Error("no banner was drawn");
+    const drawn = await screen.findByRole("region", { name: "About your account" });
 
     expect(drawn.querySelector("[data-reason]")?.getAttribute("data-reason")).toBe("wallet_change");
     expect(cancelIn(drawn)).toBeNull();

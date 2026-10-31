@@ -14,30 +14,39 @@
  * the browser says about its cache.
  */
 
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { fileURLToPath } from "node:url";
+import { randomIds } from "@agentify/gateway";
 import { type Harness, harness } from "@agentify/gateway/testing";
 import { firstVisitScripts, type ViteManifest } from "@agentify/ui/budget";
 import { dragUp, launchChromium } from "@agentify/ui/chromium";
 import express from "express";
 import type { Browser, Locator, Page, Route } from "playwright";
 import type { ServerBuild } from "react-router";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, onTestFinished } from "vitest";
 import { loadConfig } from "./config.js";
 import { DRAWN_FOR } from "./drawn-for.js";
-import { identityFor } from "./identity.js";
+import { type Identity, identityFor } from "./identity.js";
 import type { Message } from "./mail.js";
 import { builtPages } from "./pages.js";
+import { SCRIPT_BUDGET } from "./script-budget.js";
 import { buildApp } from "./server.js";
 import { ONE_CLIENT } from "./testing/link-sends.js";
 import { TEST_AUTH_SECRET } from "./testing/secrets.js";
+import { merchantItemIdFor } from "./woo-catalog.js";
+import { publicShopOf } from "./woo-connect.js";
+import { inspectProductInTheShop } from "./woo-shop.js";
+import { memoryWooShops } from "./woo-shops.js";
 
 const PERSON = "owner@example.com";
 const SLOW_MS = 1_500;
 const BASE = "/dashboard";
 
 let harnessed: Harness;
+let onboardingIdentity: Identity;
+let onboardingMessages: Message[];
+let signInMailHandover: "accepted" | "refused" = "accepted";
 let browser: Browser;
 let close: () => Promise<void>;
 let origin: string;
@@ -56,12 +65,14 @@ beforeAll(async () => {
     BASE_PATH: BASE,
   });
   const mails: Message[] = [];
+  onboardingMessages = mails;
   const identity = identityFor(config, {
     postman: async (message) => {
       mails.push(message);
-      return "accepted";
+      return signInMailHandover;
     },
   });
+  onboardingIdentity = identity;
   await identity.make(PERSON, harnessed.merchant.id);
   // Cards enough to scroll a short window, published as the merchant's own
   // code publishes them, and one paid order awaiting delivery, so the orders
@@ -213,6 +224,32 @@ describe("the page data Chromium keeps", () => {
   });
 });
 
+/** Initial conditional modules count too, even where the route graph calls them dynamic. */
+const scriptsRequestedBy = (page: Page): Set<string> => {
+  const scripts = new Set<string>();
+  page.on("request", (request) => {
+    const { pathname } = new URL(request.url());
+    if (pathname.startsWith(`${BASE}/assets/`) && pathname.endsWith(".js")) {
+      scripts.add(pathname.slice(`${BASE}/`.length));
+    }
+  });
+  return scripts;
+};
+
+const withinScriptBudget = async (state: string, page: Page, scripts: ReadonlySet<string>) => {
+  await page.waitForLoadState("networkidle");
+  const files = await Promise.all(
+    [...scripts].map(async (script) => ({
+      script,
+      bytes: (await stat(fileURLToPath(new URL(`../dist/client/${script}.br`, import.meta.url))))
+        .size,
+    })),
+  );
+  const bytes = files.reduce((sum, file) => sum + file.bytes, 0);
+  console.info("[initial scripts]", JSON.stringify({ state, bytes, limit: SCRIPT_BUDGET, files }));
+  expect.soft(bytes, `${state}: initial script bytes`).toBeLessThanOrEqual(SCRIPT_BUDGET);
+};
+
 describe("a page's first visit in Chromium", () => {
   it.each([
     ["/sign-in", "routes/sign-in", false],
@@ -220,6 +257,8 @@ describe("a page's first visit in Chromium", () => {
   ])(
     "loads the scripts the speed budget counts for it, no more and no fewer: %s",
     async (path, routeId, signedIn) => {
+      // The manifest's base graph is an open catalog; paused banners have separate state budgets.
+      if (signedIn) await harnessed.gateway.setSelling(harnessed.merchant.id, "open");
       const context = await browser.newContext();
       if (signedIn) await context.addCookies(cookies.map((one) => ({ ...one, url: origin })));
       const page = await context.newPage();
@@ -753,6 +792,23 @@ it("closes fulfillment from a keyboard-accessible order form and preserves the m
 });
 
 describe("a request that fails or stops on its way", () => {
+  it("keeps the unknown-outcome recovery visible when the browser loses both data and asset access", async () => {
+    const page = await onTheCards();
+    try {
+      await page.context().setOffline(true);
+      await page.locator("form[action*='pause='] button").first().click();
+      await page
+        .getByRole("heading", { name: "We don't know if this was done", exact: true })
+        .waitFor({ timeout: 5000 });
+      expect(
+        await page.getByRole("link", { name: "Open Products", exact: true }).getAttribute("href"),
+      ).toBe(`${BASE}/products`);
+    } finally {
+      await page.context().setOffline(false);
+      await page.context().close();
+    }
+  });
+
   /** A failure on the way to the dashboard: the connection dropped, or a proxy answered for it while it restarted. */
   const FAILURES = [
     ["the connection drops", (route: Route) => route.abort("connectionreset")],
@@ -877,3 +933,961 @@ describe("a request that fails or stops on its way", () => {
     // The site's save waits out the gateway's ten seconds before it says so.
   }, 40_000);
 });
+
+it.each(["products", "keys"])(
+  "keeps the new-key dialog protected and clears its secret on Done from %s",
+  async (section) => {
+    const email = `onboarding-${section}@example.com`;
+    const merchant = await harnessed.gateway.registerMerchant();
+    const person = await onboardingIdentity.make(email, merchant);
+    if (person === null) throw new Error("the account was not created");
+    await onboardingIdentity.choosePlatform(person.id, "api");
+    await onboardingIdentity.requestLink(email, "default", ONE_CLIENT);
+    const mail = onboardingMessages.at(-1);
+    const link = new URL(mail?.body.match(/https?:\/\/\S+/)?.[0] ?? "");
+    const signedIn = await onboardingIdentity.openLink(link.searchParams.get("token") ?? "");
+    if (signedIn.status !== "opened") throw new Error("onboarding sign-in did not open");
+    const context = await browser.newContext({
+      viewport: { width: section === "products" ? 375 : 1024, height: 812 },
+    });
+    await context.addCookies(
+      signedIn.setCookies.map((line) => {
+        const pair = line.split(";")[0] ?? "";
+        const equals = pair.indexOf("=");
+        return { name: pair.slice(0, equals), value: pair.slice(equals + 1), url: origin };
+      }),
+    );
+    const page = await context.newPage();
+    try {
+      const scripts = scriptsRequestedBy(page);
+      await page.goto(`${origin}${BASE}/${section}`);
+      await withinScriptBudget(`${section}: code entry`, page, scripts);
+      const keyLabel = `Worker${"x".repeat(94)}`;
+      await page.getByRole("textbox", { name: "Key name" }).fill(keyLabel);
+      const beforeIssue = [...scripts].sort();
+      await page.getByRole("button", { name: "Create key", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Copy your new key" });
+      await dialog.waitFor();
+      expect([...scripts].sort(), "issuance must not fetch disclosure code").toEqual(beforeIssue);
+      if (section === "products") {
+        await page.waitForTimeout(11_000);
+        expect(await dialog.isVisible()).toBe(true);
+      }
+      const secret = await dialog.getByRole("textbox", { name: "New API key" }).inputValue();
+      expect(secret).toMatch(/^csk_test_/);
+      expect(await page.locator("dialog").evaluate((element) => element.matches(":modal"))).toBe(
+        true,
+      );
+      await page.keyboard.press("Escape");
+      expect(await dialog.isVisible()).toBe(true);
+      await page.mouse.click(1, 1);
+      expect(await dialog.isVisible()).toBe(true);
+      for (let count = 0; count < 8; count += 1) {
+        await page.keyboard.press("Tab");
+        expect(await dialog.evaluate((element) => element.contains(document.activeElement))).toBe(
+          true,
+        );
+      }
+      const focusAfter = section === "products" ? "code-quickstart" : "create-api-key";
+      const destination = await page.locator(`#${focusAfter}`).elementHandle();
+      if (destination === null) throw new Error("the dialog has no return control");
+      // Keep the final page on its way while dismissal restores its first focus.
+      const held: Route[] = [];
+      await page.route(
+        `${origin}${BASE}/${section}.data*`,
+        (route) => {
+          if (route.request().method() === "GET") held.push(route);
+          else void route.fallback();
+        },
+        { times: 1 },
+      );
+      await dialog.getByRole("button", { name: "Done", exact: true }).click();
+      await expect.poll(() => held.length).toBe(1);
+      await dialog.waitFor({ state: "hidden" });
+      await expect
+        .poll(() => destination.evaluate((element) => element === document.activeElement))
+        .toBe(true);
+      expect(await page.locator("body").innerHTML()).not.toContain(secret);
+      await held[0]?.continue();
+      // The issued label proves the loader's view arrived at this unchanged URL.
+      await page.getByText(keyLabel, { exact: section === "keys" }).waitFor();
+      await page.waitForURL(`${origin}${BASE}/${section}`);
+      await page.waitForFunction((id) => document.activeElement?.id === id, focusAfter);
+      expect(await page.getByRole("dialog").count()).toBe(0);
+      expect(await page.locator("body").innerHTML()).not.toContain(secret);
+      if (section === "products") {
+        await harnessed.gateway.poll(merchant, 0, { through: "api" });
+        await expect
+          .poll(() => page.getByText("Your code connected", { exact: false }).count(), {
+            timeout: 15_000,
+          })
+          .toBe(1);
+      }
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      ).toBe(true);
+      await page.reload();
+      expect(await page.getByRole("dialog").count()).toBe(0);
+      expect(await page.locator("body").innerHTML()).not.toContain(secret);
+    } finally {
+      await context.close();
+    }
+  },
+  40_000,
+);
+
+it.each([
+  {
+    state: "live code request",
+    test: false,
+    shop: false,
+    pending: false,
+    intent: "request-live-sales",
+    fields: ["seller_name"],
+  },
+  {
+    state: "live code request with a pending wallet change",
+    test: false,
+    shop: false,
+    pending: false,
+    intent: "request-live-sales",
+    fields: ["seller_name"],
+    walletChange: true,
+  },
+  {
+    state: "live pending wallet",
+    test: false,
+    shop: false,
+    pending: true,
+    intent: "save-onboarding-wallet",
+    fields: ["payout_wallet"],
+  },
+  {
+    state: "test code profile",
+    test: true,
+    shop: false,
+    pending: false,
+    intent: "save-onboarding-profile",
+    fields: ["seller_name", "payout_wallet"],
+  },
+  {
+    state: "test checked shop profile and publish",
+    test: true,
+    shop: true,
+    pending: false,
+    intent: "save-onboarding-profile",
+    fields: ["seller_name", "payout_wallet", "checked_job"],
+  },
+  {
+    state: "live publication waiting for job",
+    test: false,
+    shop: true,
+    pending: false,
+    publication: true,
+    intent: "",
+    fields: [] as string[],
+  },
+])(
+  "keeps the first account form usable within the initial script budget: $state",
+  async (fixture) => {
+    const channel: Record<string, string> = fixture.test
+      ? { PAYMENT_NETWORK: "eip155:84532", FACILITATOR_URL: "https://x402.org/facilitator" }
+      : {
+          PAYMENT_NETWORK: "eip155:8453",
+          FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
+          CDP_API_KEY_ID: "local-browser-fixture",
+          CDP_API_KEY_SECRET: "local-browser-fixture",
+        };
+    // Real channel rules, with local payment I/O and an inert transactional notice adapter.
+    const isolated = await harness(channel, { liveSalesNotices: { stage: () => () => {} } });
+    onTestFinished(() => isolated.stop());
+    const config = loadConfig({
+      ...channel,
+      DATABASE_URL: "postgres://nobody@nowhere/unused",
+      AUTH_SECRET: TEST_AUTH_SECRET,
+      BASE_PATH: BASE,
+    });
+    const mails: Message[] = [];
+    const identity = identityFor(config, {
+      postman: async (message) => {
+        mails.push(message);
+        return "accepted";
+      },
+    });
+    onTestFinished(() => identity.close());
+    const merchant = await isolated.gateway.registerMerchant();
+    const person = await identity.make("account-first-visit@example.com", merchant);
+    if (person === null) throw new Error("the account was not created");
+    if ("walletChange" in fixture && fixture.walletChange) {
+      const waiting = "0x0000000000000000000000000000000000000009";
+      await isolated.gateway.setPayoutWallet(
+        merchant,
+        "0x0000000000000000000000000000000000000008",
+        { kind: "signed_in", email: person.email },
+      );
+      await isolated.gateway.setPayoutWallet(merchant, waiting, {
+        kind: "signed_in",
+        email: person.email,
+      });
+      expect((await isolated.store.merchantById(merchant))?.payoutWallet.pending?.address).toBe(
+        waiting,
+      );
+    }
+    await identity.acknowledgeTest(person.id);
+    await identity.choosePlatform(person.id, fixture.shop ? "woocommerce" : "api");
+    const shops = memoryWooShops();
+    let publicationPending = "publication" in fixture && fixture.publication === true;
+    let checkedJob: string | undefined;
+    if (fixture.shop) {
+      await isolated.gateway.setSellerName(merchant, { seller_site: "https://woo.nuanu.ai" });
+      await isolated.gateway.sellThrough(merchant, "woocommerce");
+      await shops.connect({
+        accountId: person.id,
+        shopUrl: "https://woo.nuanu.ai",
+        consumerKey: "ck_browser_fixture",
+        consumerSecret: "cs_browser_fixture",
+        permissions: "read_write",
+        revision: "account-first-visit",
+        connectedAt: new Date(isolated.now()),
+        currency: { code: "USD", decimals: 2 },
+      });
+      const { job } = await shops.jobs.request({
+        accountId: person.id,
+        merchantId: merchant,
+        connectionRevision: "account-first-visit",
+        shopUrl: "https://woo.nuanu.ai",
+        kind: "check",
+      });
+      checkedJob = job.id;
+      if ((await shops.jobs.claim())?.id !== job.id) throw new Error("the check was not claimed");
+      await shops.jobs.currency(job.id, { code: "USD", decimals: 2 });
+      await shops.jobs.record(
+        job.id,
+        {
+          id: "28",
+          title: "Canvas tote bag",
+          group: "ready",
+          reason: "ready",
+          why: "",
+          published: false,
+        },
+        1,
+      );
+      await shops.jobs.total(job.id, 1);
+      await shops.jobs.finish(job.id, { status: "completed", stopCode: null, why: null });
+    }
+    if (publicationPending) {
+      await isolated.gateway.setSellerName(merchant, { seller_name: "Their own shop" });
+      await isolated.gateway.setPayoutWallet(
+        merchant,
+        "0x0000000000000000000000000000000000000009",
+        {
+          kind: "signed_in",
+          email: person.email,
+        },
+      );
+      await isolated.store.grantLiveApproval(merchant, isolated.now());
+    }
+    if (!fixture.shop) await isolated.addKey(merchant);
+    await isolated.gateway.poll(merchant, 0, { through: fixture.shop ? "woocommerce" : "api" });
+    if (fixture.pending) {
+      await isolated.gateway.setSellerName(merchant, { seller_name: "Their own shop" });
+      await isolated.store.requestLiveSales(
+        {
+          merchantId: merchant,
+          accountId: person.id,
+          sellerName: "Their own shop",
+          evidence: { integration: "api", connectedAt: isolated.now() },
+        },
+        isolated.now(),
+      );
+    }
+    await identity.requestLink(person.email, "default", ONE_CLIENT);
+    const link = new URL(mails.at(-1)?.body.match(/https?:\/\/\S+/)?.[0] ?? "");
+    const signedIn = await identity.openLink(link.searchParams.get("token") ?? "");
+    if (signedIn.status !== "opened") throw new Error("the account sign-in did not open");
+    const app = buildApp(config, {
+      pages: await builtPages(),
+      gateway: isolated.gateway,
+      identity,
+      wooShops: shops,
+      livePublicationPending: async () => publicationPending,
+      now: () => new Date(isolated.now()),
+      shop: {
+        grantScreen: async () => {
+          throw new Error("this first visit must not connect a shop");
+        },
+        preview: async () => {
+          throw new Error("this first visit must not read a shop");
+        },
+        inspectProduct: async () => {
+          throw new Error("this first visit must not read a product");
+        },
+        reference: async () => ({ ok: false, listed: null }),
+      },
+    });
+    const server = app.listen(0, "127.0.0.1");
+    onTestFinished(async () => {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    });
+    await new Promise<void>((resolve) => server.once("listening", resolve));
+    const local = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const context = await browser.newContext();
+    onTestFinished(() => context.close());
+    {
+      await context.addCookies(
+        signedIn.setCookies.map((line) => {
+          const pair = line.split(";")[0] ?? "";
+          const at = pair.indexOf("=");
+          return { name: pair.slice(0, at), value: pair.slice(at + 1), url: local };
+        }),
+      );
+      const page = await context.newPage();
+      const errors: string[] = [];
+      page.on("pageerror", (error) => errors.push(error.message));
+      const scripts = scriptsRequestedBy(page);
+      const response = await page.goto(`${local}${BASE}/products`);
+      if (response === null) throw new Error("the account page did not arrive");
+      const html = await response.text();
+      await withinScriptBudget(fixture.state, page, scripts);
+      if ("publication" in fixture && fixture.publication) {
+        const publish = page
+          .locator("main form")
+          .filter({ has: page.locator('input[name="checked_job"]') });
+        await page.locator('main [role="status"]').waitFor({ state: "visible" });
+        expect(await publish.count()).toBe(0);
+        publicationPending = false;
+        await publish.waitFor({ state: "visible", timeout: 12_000 });
+        expect(await publish.locator('input[name="checked_job"]').inputValue()).toBe(checkedJob);
+        expect(await publish.locator('button[type="submit"]').isEnabled()).toBe(true);
+        expect(errors).toEqual([]);
+        return;
+      }
+
+      if ("walletChange" in fixture && fixture.walletChange) {
+        expect(await page.getByRole("button", { name: "Cancel this change" }).isVisible()).toBe(
+          true,
+        );
+      }
+      // The form is server-rendered and still actionable after hydration; no copy is pinned.
+      expect(
+        await page.evaluate(
+          ({ html, intent }) => {
+            const document = new DOMParser().parseFromString(html, "text/html");
+            return [...document.querySelectorAll('form input[name="intent"]')].some(
+              (input) => (input as HTMLInputElement).value === intent,
+            );
+          },
+          { html, intent: fixture.intent },
+        ),
+      ).toBe(true);
+      const form = page
+        .locator("main form")
+        .filter({ has: page.locator(`input[name="intent"][value="${fixture.intent}"]`) });
+      expect(await form.isVisible()).toBe(true);
+      for (const field of fixture.fields) {
+        const input = form.locator(`input[name="${field}"]`);
+        expect(await input.count(), `${fixture.state}: ${field}`).toBe(1);
+        expect(await input.isEnabled()).toBe(true);
+        if (field === "checked_job") expect(await input.inputValue()).toBe(checkedJob);
+        else expect(await input.isVisible()).toBe(true);
+      }
+      const primary = page.locator("main .button-primary");
+      expect(await primary.count()).toBe(1);
+      expect(await form.locator(".button-primary").isEnabled()).toBe(true);
+      expect(await page.getByRole("dialog").count()).toBe(0);
+      if (fixture.fields.includes("payout_wallet")) {
+        const wallet = "0x0000000000000000000000000000000000000009";
+        const box = form.locator('input[name="payout_wallet"]');
+        await box.fill(wallet);
+        await page.waitForFunction(
+          (wallet) =>
+            document.querySelector("#payout_wallet-entered .address")?.textContent === wallet,
+          wallet,
+        );
+        const overlong = `0x${"a".repeat(64)}`;
+        await box.fill("");
+        await box.pressSequentially(overlong);
+        expect(await box.inputValue(), `${fixture.state}: complete wallet input`).toBe(overlong);
+      }
+      expect(errors).toEqual([]);
+    }
+  },
+);
+
+it("keeps an overlong wallet address whole in Settings", async () => {
+  const page = await onTheCards();
+  onTestFinished(() => page.context().close());
+  await page.goto(`${origin}${BASE}/settings`);
+  await page.waitForLoadState("networkidle");
+  const box = page.locator('input[name="payout_wallet"]');
+  const overlong = `0x${"a".repeat(64)}`;
+
+  await box.fill("");
+  await box.pressSequentially(overlong);
+
+  expect(await box.inputValue()).toBe(overlong);
+});
+
+it("keeps the compiled sign-in page and its answers out of search when mail or the session read fails", async () => {
+  const context = await browser.newContext();
+  const whoIs = onboardingIdentity.whoIs;
+  const address = `${origin}${BASE}/sign-in`;
+  try {
+    const normal = await context.request.get(address);
+    const trailingSlash = await context.request.get(`${address}/`);
+    const requested = await context.request.post(address, {
+      headers: { Origin: origin },
+      form: { email: "metadata-requested@example.com" },
+    });
+    signInMailHandover = "refused";
+    const unavailable = await context.request.post(address, {
+      headers: { Origin: origin },
+      form: { email: "metadata-unavailable@example.com" },
+    });
+    // A real dependency read fails after the compiled route has been selected.
+    onboardingIdentity.whoIs = async () => {
+      throw new Error("declared session storage read failure");
+    };
+    const failed = await context.request.get(address);
+    for (const [response, status] of [
+      [normal, 200],
+      [trailingSlash, 200],
+      [requested, 202],
+      [unavailable, 503],
+      [failed, 500],
+    ] as const) {
+      expect(response.status()).toBe(status);
+      const html = await response.text();
+      const head = html.slice(0, html.indexOf("</head>"));
+      expect(
+        head.match(/<meta\b[^>]*name="robots"[^>]*>/)?.[0] ?? "",
+        `sign-in status ${status}`,
+      ).toMatch(/content="noindex"/);
+    }
+  } finally {
+    signInMailHandover = "accepted";
+    onboardingIdentity.whoIs = whoIs;
+    await context.close();
+  }
+});
+
+it("requires the test acknowledgement, keeps focus inside it and focuses the first platform after saving", async () => {
+  const channel = {
+    PAYMENT_NETWORK: "eip155:84532",
+    FACILITATOR_URL: "https://x402.org/facilitator",
+  };
+  const isolated = await harness(channel);
+  const config = loadConfig({
+    ...channel,
+    DATABASE_URL: "postgres://nobody@nowhere/unused",
+    AUTH_SECRET: TEST_AUTH_SECRET,
+    BASE_PATH: BASE,
+  });
+  const mails: Message[] = [];
+  const identity = identityFor(config, {
+    postman: async (message) => {
+      mails.push(message);
+      return "accepted";
+    },
+  });
+  const merchant = await isolated.gateway.registerMerchant();
+  await identity.make("test-welcome@example.com", merchant);
+  await identity.requestLink("test-welcome@example.com", "default", ONE_CLIENT);
+  const link = new URL(mails.at(-1)?.body.match(/https?:\/\/\S+/)?.[0] ?? "");
+  const signedIn = await identity.openLink(link.searchParams.get("token") ?? "");
+  if (signedIn.status !== "opened") throw new Error("the test sign-in did not open");
+  const testShops = memoryWooShops();
+  const app = buildApp(config, {
+    pages: await builtPages(),
+    gateway: isolated.gateway,
+    identity,
+    wooShops: testShops,
+    shop: {
+      reference: async () => ({ ok: false, listed: null }),
+      preview: async () => {
+        throw new Error("This stored-result reader does not preview a shop");
+      },
+      grantScreen: async () => {
+        throw new Error("This stored-result reader does not request a grant");
+      },
+      inspectProduct: async () => {
+        throw new Error("This stored-result reader does not buy a product");
+      },
+    },
+  });
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise<void>((resolve) => server.once("listening", resolve));
+  const testOrigin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const context = await browser.newContext({ viewport: { width: 375, height: 812 } });
+  await context.addCookies(
+    signedIn.setCookies.map((line) => {
+      const pair = line.split(";")[0] ?? "";
+      const equals = pair.indexOf("=");
+      return { name: pair.slice(0, equals), value: pair.slice(equals + 1), url: testOrigin };
+    }),
+  );
+  const plain = await browser.newContext({
+    javaScriptEnabled: false,
+    viewport: { width: 375, height: 812 },
+  });
+  await plain.addCookies(await context.cookies());
+  try {
+    const page = await plain.newPage();
+    await page.goto(`${testOrigin}${BASE}/products`);
+    const welcome = page.getByRole("dialog", { name: "This is the test environment" });
+    await welcome.waitFor();
+    const bounds = await welcome.boundingBox();
+    expect(bounds).not.toBeNull();
+    expect(bounds?.y).toBeGreaterThanOrEqual(0);
+    expect((bounds?.y ?? 0) + (bounds?.height ?? 0)).toBeLessThanOrEqual(812);
+    expect(await welcome.getByRole("button", { name: "Start testing" }).isVisible()).toBe(true);
+  } finally {
+    await plain.close();
+  }
+  const page = await context.newPage();
+  try {
+    const scripts = scriptsRequestedBy(page);
+    await page.goto(`${testOrigin}${BASE}/products`);
+    await withinScriptBudget("TEST acknowledgement and platform choice", page, scripts);
+    const dialog = page.getByRole("dialog", { name: "This is the test environment" });
+    await dialog.waitFor();
+    const start = dialog.getByRole("button", { name: "Start testing" });
+    await expect.poll(() => start.isDisabled()).toBe(true);
+    await page.keyboard.press("Escape");
+    expect(await dialog.isVisible()).toBe(true);
+    for (let count = 0; count < 4; count += 1) {
+      await page.keyboard.press("Tab");
+      expect(await dialog.evaluate((element) => element.contains(document.activeElement))).toBe(
+        true,
+      );
+    }
+    await dialog.getByRole("checkbox", { name: "I've read and understood" }).check();
+    await start.click();
+    await page.waitForFunction(
+      () => document.activeElement?.getAttribute("data-platform") === "woocommerce",
+    );
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBe(true);
+    expect(await page.getByRole("dialog").count()).toBe(0);
+    await page.reload();
+    expect(await page.getByRole("dialog").count()).toBe(0);
+
+    const shopMerchantId = await isolated.gateway.registerMerchant();
+    await isolated.gateway.setSellerName(shopMerchantId, {
+      seller_name: "Their own shop",
+      seller_site: "https://woo.nuanu.ai",
+    });
+    const existing = await identity.make("existing-test-shop@example.com", shopMerchantId);
+    if (existing === null) throw new Error("the existing shop identity was not created");
+    await isolated.gateway.setPayoutWallet(
+      shopMerchantId,
+      "0x0000000000000000000000000000000000000004",
+      { kind: "signed_in", email: existing.email },
+    );
+    await identity.choosePlatform(existing.id, "woocommerce");
+    await identity.requestLink(existing.email, "default", ONE_CLIENT);
+    const existingLink = new URL(mails.at(-1)?.body.match(/https?:\/\/\S+/)?.[0] ?? "");
+    const existingSession = await identity.openLink(existingLink.searchParams.get("token") ?? "");
+    if (existingSession.status !== "opened")
+      throw new Error("the existing shop sign-in did not open");
+    for (const state of ["new", "paused", "connected", "checked", "checked_idr"] as const) {
+      const checked = state === "checked" || state === "checked_idr";
+      if (state === "paused") {
+        const card = await isolated.gateway.publishCard(shopMerchantId, {
+          merchant_item_id: "room-101",
+          title: "A room for the night",
+          description: "One night in room 101",
+          price: { amount: "80.00", currency: "USD" },
+          result: { access_code: { type: "string" } },
+          fulfillment: "sync",
+        });
+        if (!card.ok) throw new Error("the existing shop product was not published");
+        await isolated.gateway.setSelling(shopMerchantId, "paused");
+      }
+      if (state === "connected")
+        await testShops.connect({
+          accountId: existing.id,
+          shopUrl: "https://woo.nuanu.ai",
+          consumerKey: "ck_browser_fixture",
+          consumerSecret: "cs_browser_fixture",
+          permissions: "read_write",
+          revision: "browser-fixture-connection",
+          connectedAt: new Date("2026-10-30T12:00:00Z"),
+          currency: { code: "USD", decimals: 2 },
+        });
+      if (checked) {
+        await isolated.gateway.sellThrough(shopMerchantId, "woocommerce");
+        const wooCard = await isolated.gateway.publishCard(
+          shopMerchantId,
+          {
+            merchant_item_id: merchantItemIdFor("https://woo.nuanu.ai", "28"),
+            title: "Canvas tote bag",
+            description: "A physical item shipped to the buyer.",
+            price: { amount: "20.00", currency: "USD" },
+            fulfillment: "ship",
+            price_check: "handler",
+            ship_within_seconds: 604800,
+          },
+          "woocommerce",
+        );
+        expect(wooCard.ok).toBe(true);
+        await isolated.gateway.setSelling(shopMerchantId, "paused");
+        expect(await isolated.store.merchantById(shopMerchantId)).toMatchObject({
+          integration: "woocommerce",
+          selling: "paused",
+        });
+        const currency =
+          state === "checked_idr"
+            ? { code: "IDR", decimals: 0 as const }
+            : { code: "USD", decimals: 2 as const };
+        await testShops.noteCurrency(existing.id, currency, "browser-fixture-connection");
+        if (state === "checked_idr")
+          await testShops.saveRate(existing.id, "https://woo.nuanu.ai", {
+            currency: "IDR",
+            rate: "16000",
+            setAt: new Date(),
+            sessionSignedInAt: null,
+            reference: null,
+            confirmed: false,
+          });
+        const { job } = await testShops.jobs.request({
+          accountId: existing.id,
+          merchantId: shopMerchantId,
+          connectionRevision: "browser-fixture-connection",
+          shopUrl: "https://woo.nuanu.ai",
+          kind: "check",
+        });
+        expect((await testShops.jobs.claim())?.id).toBe(job.id);
+        await testShops.jobs.currency(job.id, currency);
+        await testShops.jobs.rate(
+          job.id,
+          await testShops.currentRate(existing.id, "https://woo.nuanu.ai", currency.code),
+        );
+        await testShops.jobs.record(
+          job.id,
+          {
+            id: "28",
+            title: "Canvas tote bag",
+            group: "ready",
+            reason: "ready",
+            why: "",
+            published: false,
+          },
+          1,
+        );
+        await testShops.jobs.finish(job.id, { status: "completed", stopCode: null, why: null });
+      }
+      const firstVisit = await browser.newContext();
+      await firstVisit.addCookies(
+        existingSession.setCookies.map((line) => {
+          const pair = line.split(";")[0] ?? "";
+          const at = pair.indexOf("=");
+          return { name: pair.slice(0, at), value: pair.slice(at + 1), url: testOrigin };
+        }),
+      );
+      try {
+        const entry = await firstVisit.newPage();
+        const initial = scriptsRequestedBy(entry);
+        await entry.goto(`${testOrigin}${BASE}/${state === "new" ? "products" : "woocommerce"}`);
+        await withinScriptBudget(
+          state === "new"
+            ? "TEST and Woo entry"
+            : state === "paused"
+              ? "TEST, Woo and paused account"
+              : state === "connected"
+                ? "TEST, connected Woo and paused account"
+                : state === "checked_idr"
+                  ? "TEST, paused Woo account, checked products and saved IDR rate"
+                  : "TEST, paused Woo account and checked products",
+          entry,
+          initial,
+        );
+        expect(
+          await entry.getByRole("dialog", { name: "This is the test environment" }).isVisible(),
+        ).toBe(true);
+        if (state === "connected" || checked)
+          expect(await entry.getByText("Connected", { exact: true }).count()).toBe(1);
+        else
+          expect(
+            await entry.getByRole("textbox", { name: "Shop address", includeHidden: true }).count(),
+          ).toBe(1);
+        if (state !== "new") expect(await entry.locator("[data-reason=paused]").count()).toBe(1);
+        if (state === "checked_idr")
+          expect(
+            await entry
+              .getByRole("textbox", { name: "IDR per US dollar", includeHidden: true })
+              .inputValue(),
+          ).toBe("16000");
+        if (checked) {
+          expect(
+            await (await entry.request.get(`${testOrigin}${BASE}/shop-job`)).json(),
+          ).toMatchObject({
+            current: true,
+            currency: state === "checked_idr" ? "IDR" : "USD",
+            status: "completed",
+            ready: 1,
+          });
+          expect(await entry.locator('[aria-label="Shop products"]').textContent()).toContain(
+            "Canvas tote bag",
+          );
+          expect(
+            await entry
+              .getByRole("button", { name: "Check again", exact: true, includeHidden: true })
+              .count(),
+          ).toBe(1);
+        }
+        if (state === "checked_idr") {
+          const catalogueContext = await browser.newContext({
+            storageState: await firstVisit.storageState(),
+          });
+          try {
+            const catalogue = await catalogueContext.newPage();
+            const catalogueScripts = scriptsRequestedBy(catalogue);
+            await catalogue.goto(`${testOrigin}${BASE}/products`);
+            await withinScriptBudget(
+              "Products: connected shop with a saved check and published products",
+              catalogue,
+              catalogueScripts,
+            );
+            expect(
+              await catalogue
+                .locator('[aria-label="Products"]')
+                .getByText("Canvas tote bag", { exact: true })
+                .count(),
+            ).toBe(1);
+          } finally {
+            await catalogueContext.close();
+          }
+        }
+      } finally {
+        await firstVisit.close();
+      }
+    }
+  } finally {
+    await context.close();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await identity.close();
+    await isolated.stop();
+  }
+});
+
+it("checks a WooCommerce shop on Products, invalidates edited results and keeps the action below the result at four widths", async () => {
+  const isolated = await harness({}, { ids: randomIds });
+  const mails: Message[] = [];
+  const config = loadConfig({
+    DATABASE_URL: "postgres://nobody@nowhere/unused",
+    AUTH_SECRET: TEST_AUTH_SECRET,
+    PAYMENT_NETWORK: "eip155:84532",
+    FACILITATOR_URL: "sandbox:scripted",
+    BASE_PATH: BASE,
+    PUBLIC_BASE_URL: "https://dashboard.example.com",
+  });
+  const identity = identityFor(config, {
+    postman: async (message) => {
+      mails.push(message);
+      return "accepted";
+    },
+  });
+  const shopMerchantId = await isolated.gateway.registerMerchant();
+  const person = await identity.make("shop-check@example.com", shopMerchantId);
+  if (person === null) throw new Error("the shop account was not created");
+  await identity.choosePlatform(person.id, "woocommerce");
+  await identity.requestLink(person.email, "default", ONE_CLIENT);
+  const link = new URL(mails.at(-1)?.body.match(/https?:\/\/\S+/)?.[0] ?? "");
+  const signedIn = await identity.openLink(link.searchParams.get("token") ?? "");
+  if (signedIn.status !== "opened") throw new Error("the shop sign-in did not open");
+  const codePerson = await identity.make("existing-code-shop@example.com", isolated.merchant.id);
+  if (codePerson === null) throw new Error("the existing-code account was not created");
+  await identity.choosePlatform(codePerson.id, "woocommerce");
+  await identity.requestLink(codePerson.email, "default", ONE_CLIENT);
+  const codeLink = new URL(mails.at(-1)?.body.match(/https?:\/\/\S+/)?.[0] ?? "");
+  const codeSession = await identity.openLink(codeLink.searchParams.get("token") ?? "");
+  if (codeSession.status !== "opened") throw new Error("the existing-code sign-in did not open");
+  const shops = memoryWooShops();
+  const product = {
+    type: "simple",
+    is_purchasable: true,
+    is_in_stock: true,
+    is_on_backorder: false,
+    stock_availability: { text: "" },
+    low_stock_remaining: null,
+    prices: { price: "2500", currency_code: "USD", currency_minor_unit: 2 },
+  };
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  let first = true;
+  const app = express();
+  app.use(
+    "/styles",
+    express.static(
+      fileURLToPath(new URL("../../../packages/visual/public/styles", import.meta.url)),
+    ),
+  );
+  app.use(
+    buildApp(config, {
+      pages: await builtPages(),
+      gateway: isolated.gateway,
+      identity,
+      wooShops: shops,
+      shop: {
+        preview: (url) =>
+          publicShopOf(url, async () => {
+            if (first) {
+              first = false;
+              entered.resolve();
+              await release.promise;
+            }
+            return Response.json(
+              [product, { ...product, type: "variable" }, { ...product, low_stock_remaining: 0 }],
+              { headers: { "x-wp-total": "3" } },
+            );
+          }),
+        grantScreen: async () => ({
+          ok: false,
+          why: "This local browser test never leaves for approval.",
+        }),
+        inspectProduct: inspectProductInTheShop,
+      },
+    }),
+  );
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise<void>((resolve) => server.once("listening", resolve));
+  const testOrigin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const context = await browser.newContext();
+  await context.addCookies(
+    signedIn.setCookies.map((line) => {
+      const pair = line.split(";")[0] ?? "";
+      const at = pair.indexOf("=");
+      return { name: pair.slice(0, at), value: pair.slice(at + 1), url: testOrigin };
+    }),
+  );
+  const plain = await browser.newContext({
+    javaScriptEnabled: false,
+    viewport: { width: 375, height: 900 },
+  });
+  await plain.addCookies(await context.cookies());
+  try {
+    const page = await plain.newPage();
+    await page.goto(`${testOrigin}${BASE}/products`);
+    expect(await page.getByRole("textbox", { name: "Shop address" }).isVisible()).toBe(true);
+    await page.getByRole("textbox", { name: "Shop address" }).fill("woo.nuanu.ai");
+    // This first request also checks the SSR path before the lazy module is warm.
+    first = false;
+    await page.getByRole("button", { name: "Check my shop", exact: true }).click();
+    expect(await page.getByRole("button", { name: "Connect shop", exact: true }).isVisible()).toBe(
+      true,
+    );
+    expect(
+      await page.getByText("1 of 3 products looks ready to sell.", { exact: true }).isVisible(),
+    ).toBe(true);
+  } finally {
+    await plain.close();
+    first = true;
+  }
+  const page = await context.newPage();
+  const scripts = scriptsRequestedBy(page);
+  try {
+    for (const width of [1440, 1024, 768, 375]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`${testOrigin}${BASE}/products`);
+      await page.waitForLoadState("networkidle");
+      if (width === 1440) await withinScriptBudget("Products: Woo shop entry", page, scripts);
+      const address = page.getByRole("textbox", { name: "Shop address" });
+      await address.fill("woo.nuanu.ai/");
+      const check = page.getByRole("button", { name: "Check my shop", exact: true });
+      const clicked = check.click();
+      if (width === 1440) {
+        await entered.promise;
+        await expect.poll(() => check.isEnabled()).toBe(false);
+        expect(await address.getAttribute("readonly")).not.toBeNull();
+        release.resolve();
+      }
+      await clicked;
+      const connect = page.getByRole("button", { name: "Connect shop", exact: true });
+      await connect.waitFor();
+      expect(await address.inputValue()).toBe("https://woo.nuanu.ai");
+      const result = page.getByText("1 of 3 products looks ready to sell.", { exact: true });
+      const geometry = await result.boundingBox();
+      const press = await connect.boundingBox();
+      expect((geometry?.y ?? 0) + (geometry?.height ?? 0)).toBeLessThan(press?.y ?? 0);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+        true,
+      );
+      expect(await shops.grantFor(person.id)).toBeNull();
+      await address.fill("www.woo.nuanu.ai");
+      expect(await result.count()).toBe(0);
+      expect(await connect.count()).toBe(0);
+      await address.press("Enter");
+      await connect.waitFor();
+      expect(await address.inputValue()).toBe("https://www.woo.nuanu.ai");
+      expect(await shops.grantFor(person.id)).toBeNull();
+      expect(new URL(page.url()).pathname).toBe(`${BASE}/products`);
+    }
+
+    const published = await isolated.gateway.publishCard(isolated.merchant.id, {
+      merchant_item_id: "pending-delivery",
+      title: "A room for the night",
+      description: "One night in room 101",
+      price: { amount: "80.00", currency: "USD" },
+      result: { access_code: { type: "string" } },
+      fulfillment: "async",
+      fulfill_deadline_seconds: 3600,
+    });
+    if (!published.ok) throw new Error("the blocking product was not published");
+    const offered = await isolated.gateway.beginPurchase(published.id, {});
+    if (offered.step !== "pay") throw new Error("the blocking order was not priced");
+    const paid = await isolated.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "BLOCKING_ORDER_PAYMENT",
+      "BLOCKING_ORDER_PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
+    if (paid.step !== "under_way") throw new Error("the blocking order was not accepted");
+    const orderId = paid.order.order.id;
+    const refusal = await browser.newContext({ javaScriptEnabled: false });
+    await refusal.addCookies(
+      codeSession.setCookies.map((line) => {
+        const pair = line.split(";")[0] ?? "";
+        const at = pair.indexOf("=");
+        return { name: pair.slice(0, at), value: pair.slice(at + 1), url: testOrigin };
+      }),
+    );
+    try {
+      const plainPage = await refusal.newPage();
+      await plainPage.goto(`${testOrigin}${BASE}/woocommerce`);
+      await plainPage.getByRole("textbox", { name: "Shop address" }).fill("woo.nuanu.ai");
+      await plainPage.getByRole("button", { name: "Check my shop", exact: true }).click();
+      const orders = plainPage.getByRole("list", { name: "The orders still open" });
+      expect(await orders.isVisible()).toBe(true);
+      await orders.locator("summary").click();
+      expect(await orders.locator(".ident-all").textContent()).toBe(orderId);
+    } finally {
+      await refusal.close();
+    }
+    await context.grantPermissions([], { origin: testOrigin });
+    await page.context().clearCookies();
+    await page.context().addCookies(
+      codeSession.setCookies.map((line) => {
+        const pair = line.split(";")[0] ?? "";
+        const at = pair.indexOf("=");
+        return { name: pair.slice(0, at), value: pair.slice(at + 1), url: testOrigin };
+      }),
+    );
+    await page.goto(`${testOrigin}${BASE}/woocommerce`);
+    await page.getByRole("textbox", { name: "Shop address" }).fill("woo.nuanu.ai");
+    await page.getByRole("button", { name: "Check my shop", exact: true }).click();
+    const orders = page.getByRole("list", { name: "The orders still open" });
+    await orders.getByRole("button", { name: /Copy the whole order ID/ }).click();
+    await expect.poll(() => orders.locator(".copy-whole").textContent()).toBe(orderId);
+    expect(await orders.locator(".copy-whole").isVisible()).toBe(true);
+  } finally {
+    release.resolve();
+    await context.close();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await identity.close();
+    await isolated.stop();
+  }
+}, 40_000);

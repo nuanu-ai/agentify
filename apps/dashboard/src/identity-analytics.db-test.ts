@@ -139,6 +139,31 @@ if (databaseUrl === null) {
     ).rows;
 
   describe("what the identity records for product analytics on PostgreSQL", () => {
+    it("commits platform analytics with the answer and preserves the answer when the outbox is unavailable", async () => {
+      const person = await identity.make(EMAIL, "mer_platform");
+      if (!person) throw new Error("account missing");
+      await identity.choosePlatform(person.id, "api", "woocommerce");
+      await identity.choosePlatform(person.id, "api", "woocommerce");
+      expect((await recorded()).filter((row) => row.name === "agc_setup_result")).toMatchObject([
+        { properties: { step: "platform_answer", platform: "code", integration: "woocommerce" } },
+      ]);
+      await pool.query(`create function refuse_platform() returns trigger language plpgsql as
+        $$ begin raise exception 'answer could not commit'; end $$`);
+      await pool.query(`create constraint trigger refuse_platform after update on dashboard_accounts
+        deferrable initially deferred for each row execute function refuse_platform()`);
+      await expect(identity.choosePlatform(person.id, "other", "woocommerce")).rejects.toThrow();
+      expect((await identity.onboardingChoices(person.id)).platform).toBe("api");
+      expect((await recorded()).filter((row) => row.name === "agc_setup_result")).toHaveLength(1);
+      await pool.query("drop trigger refuse_platform on dashboard_accounts");
+      await pool.query(`create function refuse_analytics() returns trigger language plpgsql as
+        $$ begin raise exception 'outbox unavailable'; end $$`);
+      await pool.query(`create trigger refuse_analytics before insert on commerce_analytics_events
+        for each row execute function refuse_analytics()`);
+      await identity.choosePlatform(person.id, "other", "woocommerce");
+      expect((await identity.onboardingChoices(person.id)).platform).toBe("other");
+      expect((await recorded()).filter((row) => row.name === "agc_setup_result")).toHaveLength(1);
+    });
+
     it("records a first verification as one confirmed sign-in committed with it, and a returning one as not the first", async () => {
       const first = await signIn();
       const again = await signIn();

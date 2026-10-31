@@ -22,6 +22,12 @@ import {
   wooRates,
   wooShops,
 } from "./schema.js";
+import { memoryShopJobs, postgresShopJobs, requestShopJob, type ShopJobs } from "./shop-jobs.js";
+import {
+  memoryWooCardPauses,
+  postgresWooCardPauses,
+  type WooCardPauses,
+} from "./woo-card-pauses.js";
 import {
   emptyCartResources,
   ownsCartResources,
@@ -38,6 +44,7 @@ export interface ShopCurrency {
 }
 
 interface WooGrant {
+  readonly merchantId?: string;
   /** Unguessable and one-time; it travels as `user_id`. */
   readonly token: string;
   readonly accountId: string;
@@ -192,13 +199,15 @@ type OrderClaim =
 // the only transitions.
 
 export interface WooShops extends WooCartResources {
+  readonly jobs: ShopJobs;
+  readonly cardPauses: WooCardPauses;
   /**
    * Records a product analytics event of the connector's that has no write of
-   * its own, such as an import's result, outside any transaction. It never
+   * its own, such as a refused Connect, outside any transaction. It never
    * rejects.
    */
   recordAnalytics(event: AnalyticsEvent, at: Date): Promise<void>;
-  beginGrant(grant: WooGrant): Promise<void>;
+  beginGrant(grant: WooGrant, analytics?: AnalyticsEvent): Promise<void>;
   /**
    * One account-serialised operation, because a callback is unauthenticated and
    * may arrive after the merchant began another Connect; split in two, the
@@ -239,7 +248,7 @@ export interface WooShops extends WooCartResources {
   /** What the worker draws its work from. */
   connections(): Promise<readonly WooConnection[]>;
   /** The shop's currency as an import read it from the shop's own settings. */
-  noteCurrency(accountId: string, currency: ShopCurrency): Promise<void>;
+  noteCurrency(accountId: string, currency: ShopCurrency, revision?: string): Promise<void>;
   /** Added, never written over: the earlier versions stay for the prices bound to them. */
   saveRate(accountId: string, shopOrigin: string, entry: RateEntry): Promise<SavedRate>;
   currentRate(accountId: string, shopOrigin: string, currency: string): Promise<SavedRate | null>;
@@ -456,7 +465,11 @@ const savedRateOfRow = (row: typeof wooRates.$inferSelect): SavedRate => ({
   confirmed: row.confirmed,
 });
 
-export const postgresWooShops = (pool: Pool, authSecret: string): WooShops => {
+export const postgresWooShops = (
+  pool: Pool,
+  authSecret: string,
+  ownershipPool: Pool = pool,
+): WooShops => {
   const db = drizzle(pool);
   const cartKey = createHash("sha256")
     .update("Agentify WooCommerce cart identities\0")
@@ -531,9 +544,11 @@ export const postgresWooShops = (pool: Pool, authSecret: string): WooShops => {
 
   return {
     ...cartResources,
+    jobs: postgresShopJobs(pool, ownershipPool),
+    cardPauses: postgresWooCardPauses(pool),
     recordAnalytics: (event, at) => recordObserved(db, event, at),
 
-    async beginGrant(grant) {
+    async beginGrant(grant, event) {
       await db.transaction(async (tx) => {
         // Serialises two Connect presses by this account, so replacing its row
         // neither leaves an older token usable nor sweeps away another owner's
@@ -551,6 +566,7 @@ export const postgresWooShops = (pool: Pool, authSecret: string): WooShops => {
           expiresAt: grant.expiresAt,
           createdAt: grant.startedAt,
         });
+        if (event) await recordAlong(tx, event, grant.startedAt);
       });
     },
 
@@ -636,6 +652,14 @@ export const postgresWooShops = (pool: Pool, authSecret: string): WooShops => {
           .insert(wooShops)
           .values({ accountId: connection.accountId, ...written })
           .onConflictDoUpdate({ target: wooShops.accountId, set: written });
+        if (account?.merchantId && keys.permissions === "read_write")
+          await requestShopJob(tx, {
+            merchantId: account.merchantId,
+            accountId: connection.accountId,
+            connectionRevision: connection.revision,
+            shopUrl: connection.shopUrl,
+            kind: "check",
+          });
         await resulted({ outcome: "completed" });
         return connection;
       });
@@ -703,31 +727,69 @@ export const postgresWooShops = (pool: Pool, authSecret: string): WooShops => {
       return (await db.select().from(wooShops)).map(connectionOfRow);
     },
 
-    async noteCurrency(accountId, currency) {
+    async noteCurrency(accountId, currency, revision) {
       await db
         .update(wooShops)
         .set({ currency: currency.code, currencyDecimals: currency.decimals })
-        .where(eq(wooShops.accountId, accountId));
+        .where(
+          and(
+            eq(wooShops.accountId, accountId),
+            revision === undefined ? undefined : eq(wooShops.revision, revision),
+          ),
+        );
     },
 
     async saveRate(accountId, shopOrigin, entry) {
-      const [row] = await db
-        .insert(wooRates)
-        .values({
-          accountId,
-          shopOrigin,
-          currency: entry.currency,
-          rate: entry.rate,
-          setAt: entry.setAt,
-          sessionSignedInAt: entry.sessionSignedInAt,
-          referenceRate: entry.reference?.rate ?? null,
-          referenceSource: entry.reference?.source ?? null,
-          referenceReadAt: entry.reference?.readAt ?? null,
-          confirmed: entry.confirmed,
-        })
-        .returning();
-      if (row === undefined) throw new Error("a saved rate came back with no row");
-      return savedRateOfRow(row);
+      return await db.transaction(async (tx) => {
+        const previous = await tx
+          .select()
+          .from(wooRates)
+          .where(
+            and(
+              eq(wooRates.accountId, accountId),
+              eq(wooRates.shopOrigin, shopOrigin),
+              eq(wooRates.currency, entry.currency),
+            ),
+          )
+          .limit(1);
+        const [row] = await tx
+          .insert(wooRates)
+          .values({
+            accountId,
+            shopOrigin,
+            currency: entry.currency,
+            rate: entry.rate,
+            setAt: entry.setAt,
+            sessionSignedInAt: entry.sessionSignedInAt,
+            referenceRate: entry.reference?.rate ?? null,
+            referenceSource: entry.reference?.source ?? null,
+            referenceReadAt: entry.reference?.readAt ?? null,
+            confirmed: entry.confirmed,
+          })
+          .returning();
+        if (row === undefined) throw new Error("a saved rate came back with no row");
+        if (previous.length === 0) {
+          const [connection] = await tx
+            .select()
+            .from(wooShops)
+            .where(eq(wooShops.accountId, accountId));
+          const [account] = await tx.select().from(accounts).where(eq(accounts.id, accountId));
+          if (
+            connection &&
+            account?.merchantId &&
+            new URL(connection.shopUrl).origin === shopOrigin &&
+            connection.permissions === "read_write"
+          )
+            await requestShopJob(tx, {
+              merchantId: account.merchantId,
+              accountId,
+              connectionRevision: connection.revision,
+              shopUrl: connection.shopUrl,
+              kind: "check",
+            });
+        }
+        return savedRateOfRow(row);
+      });
     },
 
     async currentRate(accountId, shopOrigin, currency) {
@@ -987,6 +1049,8 @@ export const memoryWooShops = (): WooShops & {
     return change(state);
   });
   const analytics: { event: AnalyticsEvent; at: Date }[] = [];
+  const jobs = memoryShopJobs((event, at) => analytics.push({ event, at }));
+  const merchants = new Map<string, string>();
   const grants = new Map<string, WooGrant>();
   const shops = new Map<string, WooConnection>();
   const rates: (SavedRate & { accountId: string; shopOrigin: string })[] = [];
@@ -1028,6 +1092,8 @@ export const memoryWooShops = (): WooShops & {
 
   return {
     ...cartResources,
+    jobs,
+    cardPauses: memoryWooCardPauses(),
     get recordedAnalytics() {
       return [...analytics];
     },
@@ -1036,13 +1102,15 @@ export const memoryWooShops = (): WooShops & {
       analytics.push({ event, at });
     },
 
-    async beginGrant(grant) {
+    async beginGrant(grant, event) {
       for (const [token, found] of grants) {
         if (found.accountId === grant.accountId) {
           grants.delete(token);
         }
       }
       grants.set(grant.token, grant);
+      if (grant.merchantId) merchants.set(grant.accountId, grant.merchantId);
+      if (event) analytics.push({ event, at: grant.startedAt });
     },
 
     async connectFromGrant(token, keys, now) {
@@ -1076,6 +1144,15 @@ export const memoryWooShops = (): WooShops & {
         currency: grant.currency,
       };
       shops.set(grant.accountId, connection);
+      const merchantId = merchants.get(grant.accountId);
+      if (merchantId && keys.permissions === "read_write")
+        await jobs.request({
+          merchantId,
+          accountId: grant.accountId,
+          connectionRevision: connection.revision,
+          shopUrl: connection.shopUrl,
+          kind: "check",
+        });
       resulted({ outcome: "completed" });
       return connection;
     },
@@ -1115,14 +1192,36 @@ export const memoryWooShops = (): WooShops & {
       return [...shops.values()];
     },
 
-    async noteCurrency(accountId, currency) {
+    async noteCurrency(accountId, currency, revision) {
       const connection = shops.get(accountId);
-      if (connection !== undefined) shops.set(accountId, { ...connection, currency });
+      if (connection !== undefined && (revision === undefined || connection.revision === revision))
+        shops.set(accountId, { ...connection, currency });
     },
 
     async saveRate(accountId, shopOrigin, entry) {
       const saved = { ...entry, version: (rates.at(-1)?.version ?? 0) + 1 };
+      const first = !rates.some(
+        (one) =>
+          one.accountId === accountId &&
+          one.shopOrigin === shopOrigin &&
+          one.currency === entry.currency,
+      );
       rates.push({ ...saved, accountId, shopOrigin });
+      const connection = shops.get(accountId);
+      const merchantId = merchants.get(accountId);
+      if (
+        first &&
+        connection?.permissions === "read_write" &&
+        merchantId &&
+        new URL(connection.shopUrl).origin === shopOrigin
+      )
+        await jobs.request({
+          merchantId,
+          accountId,
+          connectionRevision: connection.revision,
+          shopUrl: connection.shopUrl,
+          kind: "check",
+        });
       return saved;
     },
 

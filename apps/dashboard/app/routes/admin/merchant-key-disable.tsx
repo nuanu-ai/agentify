@@ -7,3 +7,5 @@ export const middleware = readsLeadToTheMerchant;
 export const action = pressing((params) => ({ kind: "disable_key", keyId: params.key_id ?? "" }));
 
 export default MerchantPressed;
+
+export { handle } from "./merchant.js";

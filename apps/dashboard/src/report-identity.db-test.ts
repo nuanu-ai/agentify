@@ -17,6 +17,7 @@ const wanted = (() => {
 const databaseUrl = await readyDatabase(wanted);
 const here = dirname(fileURLToPath(import.meta.url));
 const migrationsIn = join(here, "..", "drizzle");
+const gatewayMigrations = join(here, "..", "..", "gateway", "drizzle");
 
 const EMAIL = "owner@example.com";
 const SCAN = "019b41a0-7c51-7d63-84bd-a5a20faef497";
@@ -26,8 +27,8 @@ const OPERATION_ONE = "019b41a0-7c51-7d63-84bd-a5a20faef497";
 const OPERATION_TWO = "019b41a0-7c52-7d63-84bd-a5a20faef497";
 const NOW = new Date("2026-09-17T12:00:00.000Z");
 
-async function statementsOf(file: string): Promise<string[]> {
-  const source = await readFile(join(migrationsIn, file), "utf8");
+async function statementsOf(file: string, directory = migrationsIn): Promise<string[]> {
+  const source = await readFile(join(directory, file), "utf8");
   return source
     .split("--> statement-breakpoint")
     .map((chunk) => chunk.trim())
@@ -41,7 +42,7 @@ if (databaseUrl === null) {
   });
 } else {
   const reportDatabaseUrl = databaseUrl;
-  const pool = new Pool({ connectionString: databaseUrl, max: 8 });
+  let pool = new Pool({ connectionString: reportDatabaseUrl, max: 8 });
 
   afterAll(async () => {
     await pool.end();
@@ -49,17 +50,16 @@ if (databaseUrl === null) {
   afterEach(() => vi.useRealTimers());
 
   async function emptyEverything(): Promise<void> {
-    await pool.query("drop function if exists fail_report_request() cascade");
-    await pool.query("drop function if exists wait_report_tombstone() cascade");
-    await pool.query(`
-      drop table if exists
-        dashboard_report_deletion_tombstones, dashboard_report_identity_secrets,
-        dashboard_link_sends, dashboard_woo_quotes, dashboard_woo_rates, dashboard_registration_postbacks,
-        dashboard_ad_reports, dashboard_woo_cart_resources,
-        dashboard_woo_orders, dashboard_woo_shops, dashboard_woo_grants, dashboard_verifications,
-        dashboard_credentials, dashboard_sessions, dashboard_accounts
-      cascade
-    `);
+    await pool.end();
+    pool = new Pool({ connectionString: reportDatabaseUrl, max: 8 });
+    await pool.query("drop schema public cascade");
+    await pool.query("create schema public");
+    for (const file of (await readdir(gatewayMigrations))
+      .filter((name) => name.endsWith(".sql"))
+      .sort()) {
+      for (const statement of await statementsOf(file, gatewayMigrations))
+        await pool.query(statement);
+    }
   }
 
   /** Every checked-in migration, in order, which is what a deployment applies. */

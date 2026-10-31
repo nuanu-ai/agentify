@@ -18,7 +18,8 @@ import {
 import { acted, formOf, readOnly } from "../answer.js";
 import { Frame } from "../components/frame.js";
 import { readFailedIn } from "../components/not-loaded.js";
-import { KeysScreen, NewKeyScreen } from "../screens/keys.js";
+import { KeysScreen } from "../screens/keys.js";
+import { NewKeyScreen } from "../screens/new-key.js";
 import { services, signedIn } from "../services.js";
 
 /**
@@ -66,13 +67,11 @@ export default function Keys() {
   if (view === null) {
     throw new Error("the keys page was loaded after a press and drawn without its answer");
   }
-  return view.screen === "issued" ? (
-    <Frame tab="keys" title="Your new key">
-      <NewKeyScreen view={view} />
-    </Frame>
-  ) : (
+  const list = view.screen === "issued" ? loaded : view;
+  return (
     <Frame tab="keys" title="API keys">
-      <KeysScreen view={view} />
+      {list === null ? null : <KeysScreen view={list} />}
+      {view.screen === "issued" ? <NewKeyScreen view={view} /> : null}
     </Frame>
   );
 }

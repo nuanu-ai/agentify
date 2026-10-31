@@ -273,9 +273,14 @@ describe("a dashboard with a mail provider", () => {
   });
 
   it.each([
+    // The message itself is wrong; sending it again gets the same answer.
     [400, "refused"],
     [422, "refused"],
-    [429, "refused"],
+    // The provider takes nothing from this account for now: a revoked key, a
+    // sender domain that lost its check, a spent quota. This message did not go.
+    [401, "held"],
+    [403, "held"],
+    [429, "held"],
     // A repeat of a key with another message, or one still in flight: the
     // first one under that key may have been sent.
     [409, "unknown"],

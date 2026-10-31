@@ -9,6 +9,7 @@
 import { type Order, outcomeFor, type SurfaceMode } from "@agentify/core";
 import type { Card, MerchantFinding } from "@nuanu-ai/agentify-contracts";
 import { type SQL, sql } from "drizzle-orm";
+import type { LiveSalesRequest } from "../../../ports/live-sales.js";
 import {
   askedOn,
   dayOf,
@@ -31,6 +32,7 @@ import {
 import { type Tally, tallyOf } from "../../../ports/operator/money.js";
 import type { Integration } from "../../../ports/store.js";
 import { listOf, microsOfSum, refuseUnaddable, SETTLED, settledSales } from "./figures-sql.js";
+import { pendingRequest } from "./live-requests.js";
 import { PAYMENT_UNKNOWN } from "./predicates.js";
 import type { ReadOnlyTransaction } from "./read-only.js";
 import type { OperatorScope } from "./scope.js";
@@ -69,9 +71,11 @@ function judged(scope: OperatorScope, at: number, surface: SurfaceMode, only?: s
     standing as (
       select m.id, m.service_name, m.seller_site, m.created_at, m.integration, m.selling,
         m.live_approved_at, m.payout_wallet, m.pending_payout_wallet_from,
+        ${pendingRequest} as live_request, ${ms("r.requested_at")} as requested_ms,
         case when m.pending_payout_wallet_from <= ${now}
           then m.pending_payout_wallet else m.payout_wallet end as wallet
       from merchants m
+      left join merchant_live_requests r on r.merchant_id = m.id and r.state = 'pending' and m.live_approved_at is null
       ${only === undefined ? sql`` : sql`where m.id = ${only}`}
     ),
     facts as (
@@ -107,10 +111,8 @@ function judged(scope: OperatorScope, at: number, surface: SurfaceMode, only?: s
     judged as (
       select j.*,
         case
-          when j.no_seller_name or j.no_payout_wallet or j.no_operator_approval then
-            case when ${sql.raw(surface === "live" ? "true" : "false")}
-                and not j.no_seller_name and not j.no_payout_wallet
-              then 'waiting' else 'setting_up' end
+          when ${sql.raw(surface === "live" ? "true" : "false")} and j.live_request is not null then 'waiting'
+          when j.no_seller_name or j.no_payout_wallet or j.no_operator_approval then 'setting_up'
           when j.of_integration = 0 then 'setting_up'
           when j.selling = 'paused' or j.unpaused = 0 then 'paused'
           else 'selling'
@@ -165,6 +167,7 @@ const settledIn = (
 function rowOf(row: Row, surface: SurfaceMode, settled: Tally, from: number): MerchantRow {
   return {
     id: String(row.id),
+    liveRequest: row.live_request as LiveSalesRequest | null,
     serviceName: row.service_name as string | null,
     sellerSite: row.seller_site as string | null,
     createdAt: instantOf(row.created_ms),
@@ -185,13 +188,14 @@ function rowOf(row: Row, surface: SurfaceMode, settled: Tally, from: number): Me
 
 /**
  * Where a merchant stands in the list, as one row comparison in the list's
- * order: who waits for the operator, the latest sale (never is the least),
- * when they were made, and the identifier by its bytes.
+ * order: oldest pending request first, otherwise latest sale then creation;
+ * the identifier breaks ties by its bytes.
  */
-const PLACE = sql`((j.segment = 'waiting')::int, coalesce(j.last_sale, -1)::float8, j.created_ms,
-  j.id collate "C")`;
+const PLACE = sql`((j.segment = 'waiting')::int,
+  case when j.segment = 'waiting' then -j.requested_ms else coalesce(j.last_sale, -1)::float8 end,
+  case when j.segment = 'waiting' then 0 else j.created_ms end, j.id collate "C")`;
 const placeOf = (place: MerchantPlace): SQL =>
-  sql`(${Number(place.waiting)}::int, ${place.lastSaleAt ?? -1}::float8, ${place.createdAt}::float8,
+  sql`(${Number(place.waiting)}::int, ${place.waiting ? -(place.requestedAt ?? 0) : (place.lastSaleAt ?? -1)}::float8, ${place.waiting ? 0 : place.createdAt}::float8,
     ${place.id}::text collate "C")`;
 
 export const postgresOperatorMerchants = (scope: OperatorScope): OperatorMerchants => ({
@@ -238,8 +242,7 @@ export const postgresOperatorMerchants = (scope: OperatorScope): OperatorMerchan
         tx,
         sql`with ${facts} select j.* from judged j
           where ${found(query)} and ${inSegment} and ${past ?? sql`true`}
-          order by (j.segment = 'waiting') ${direction}, coalesce(j.last_sale, -1) ${direction},
-            j.created_ms ${direction}, j.id collate "C" ${direction}
+          order by ${PLACE} ${direction}
           limit ${limit + 1}`,
       );
       const rows = read.slice(0, limit);

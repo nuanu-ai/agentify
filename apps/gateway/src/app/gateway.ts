@@ -1063,6 +1063,13 @@ export class Gateway {
     };
   }
 
+  /** One own card, with the same selling decision as the complete catalogue. */
+  async merchantCard(merchantId: string, id: string): Promise<MerchantCard | null> {
+    const stored = await this.runtime.store.cardById(id);
+    if (stored?.merchantId !== merchantId) return null;
+    return merchantCardOf(stored, await this.#howTheySell(merchantId), this.runtime.clock());
+  }
+
   /**
    * The merchant's selling word, the integration they sell through, whether a
    * sale of theirs could be made at all (a payout wallet and a name), whether
@@ -1186,6 +1193,9 @@ export class Gateway {
       readonly takesEffectAt: number;
     } | null;
     readonly liveApproved: boolean;
+    readonly hasProducts: boolean;
+    readonly lastContact: number | null;
+    readonly contactAlive: boolean;
     readonly outOfTouch: { readonly since: number | null } | null;
     readonly unserved: boolean;
     readonly withdrawn: { readonly at: number; readonly note: string | null } | null;
@@ -1196,7 +1206,11 @@ export class Gateway {
     }
     const at = this.runtime.clock();
     const wallet = payoutWalletAt(merchant.payoutWallet, at);
+    const lastContact = await this.runtime.store.lastContact(merchant.id);
     return {
+      hasProducts: await this.runtime.store.hasProducts(merchantId, merchant.integration),
+      lastContact,
+      contactAlive: !silentAt(lastContact, at),
       selling: merchant.selling,
       through: merchant.integration,
       sellerName: merchant.serviceName,
@@ -1206,7 +1220,7 @@ export class Gateway {
           ? null
           : { address: wallet.pending.address, takesEffectAt: wallet.pending.takesEffectAt },
       liveApproved: merchant.liveApprovedAt !== null,
-      outOfTouch: await this.#refusedForSilence(merchant, at),
+      outOfTouch: await this.#refusedForSilence(merchant, at, lastContact),
       // Read while paused too, so a seller learns of it before resuming into it.
       unserved: await this.#unserved(merchant.id),
       withdrawn: await this.#standingWithdrawal(merchant),
@@ -1235,11 +1249,11 @@ export class Gateway {
   async #refusedForSilence(
     merchant: StoredMerchant,
     at: number,
+    since: number | null,
   ): Promise<{ readonly since: number | null } | null> {
     if (merchant.selling !== "open" || !sellableBy(merchant, this.runtime.config, at)) {
       return null;
     }
-    const since = await this.runtime.store.lastContact(merchant.id);
     if (!silentAt(since, at)) {
       return null;
     }
@@ -1404,6 +1418,20 @@ export class Gateway {
     if (merchant === null) {
       throw new Error(`this call was made as ${merchantId}, and there is no such merchant`);
     }
+    return { seller_name: merchant.serviceName, seller_site: merchant.sellerSite };
+  }
+
+  /** Fills a missing seller site, preserving any site chosen before the write lands. */
+  async fillSellerSite(merchantId: string, site: string, askedBy: Caller): Promise<SellerName> {
+    const merchant = await setSellerSite(
+      this.runtime.store,
+      merchantId,
+      site,
+      this.runtime.clock(),
+      setupResult(merchantId, actedBy(askedBy), "seller_site", { outcome: "completed" }),
+      true,
+    );
+    if (merchant === null) throw new Error("the merchant whose site was being filled is missing");
     return { seller_name: merchant.serviceName, seller_site: merchant.sellerSite };
   }
 

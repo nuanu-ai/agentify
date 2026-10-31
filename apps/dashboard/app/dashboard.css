@@ -56,6 +56,21 @@ textarea {
   align-items: center;
 }
 
+.step-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-block);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.step-actions :is(form, .copy-row) {
+  margin: 0;
+}
+
 /* --- the key's box ------------------------------------------------------ */
 
 /* The box a new key's secret is shown in, scrolling sideways rather than
@@ -406,6 +421,7 @@ form.inline {
 }
 
 .account-banner h2 {
+  font-size: var(--text-heading);
   margin-bottom: var(--space-snug);
   color: color-mix(in srgb, var(--notice-ink) 80%, var(--fg));
 }
@@ -529,6 +545,7 @@ h2 {
 }
 
 .settings-panel {
+  --panel-inset: var(--space-card);
   min-width: 0;
   border: var(--hairline) solid var(--line);
   border-radius: var(--radius-panel);
@@ -537,13 +554,13 @@ h2 {
 }
 
 .settings-panel > .lede {
-  padding: var(--space-card) var(--space-card) 0;
+  padding: var(--panel-inset) var(--panel-inset) 0;
 }
 
 /* A panel's form stands as far under its words as the panel's edge is under
    it; a second form follows the first at that one distance, not two. */
 .settings-panel > .issue {
-  padding: var(--gap-actions) var(--space-card) var(--space-card);
+  padding: var(--gap-actions) var(--panel-inset) var(--panel-inset);
 }
 
 .settings-panel > .issue + .issue {
@@ -558,7 +575,13 @@ h2 {
 /* A panel that ends in words ends the same distance from its edge as one that
    ends in a form; otherwise its last line sits on the bottom border. */
 .settings-panel > .lede:last-child {
-  padding-bottom: var(--space-card);
+  padding-bottom: var(--panel-inset);
+}
+
+@media (max-width: 480px) {
+  .settings-panel {
+    --panel-inset: var(--space-block);
+  }
 }
 
 @media (max-width: 980px) {

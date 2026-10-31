@@ -1,18 +1,24 @@
 # Selling through a WooCommerce shop
 
 You run a WooCommerce shop and want buyers, which are programs buying on a
-person's behalf, to buy from it without anybody writing code. The WooCommerce page of
-your dashboard connects the shop, imports its products, and from then on the
-shop takes the paid orders. This page is what each of those steps does to your
-shop, your products on Agentify and your money.
+person's behalf, to buy from it without anybody writing code. Start on Products
+in your dashboard to connect your shop and check its products. Published
+products receive paid orders in your shop. This page explains what connecting,
+checking and selling do to your shop, your products on Agentify and your money.
 
 The connector runs on the test channel, where the money is not real, and on
 the live channel, where buyers pay in real USDC on Base. Each channel has its
 own dashboard and its own account, so you connect the shop on each one. On
-the live channel nothing is published until an Agentify operator has approved
-your business, which you ask for at admin@agentify.ad: Import says so and reads
-nothing from your shop, and you import again once you are approved
-([How to start](/#how-to-start)). A purchase on the
+the live channel publication waits until an Agentify operator has approved
+your business. When the product check finds ready products, enter your
+seller name and press **Ask for live sales** on Products. The name is filled
+from your WordPress site's title where it can be read; check it before
+saving. A wallet is not needed to ask. While you wait, you can add the payout
+wallet and check your products again. Products keeps the request and the
+operator's full note if it is declined, with **Ask again** to send a new
+request. A decline also sends the note by email.
+Your products can be checked before approval,
+before choosing a seller name and before setting a payout wallet. A purchase on the
 test channel makes a paid order in the shop connected there, as a live one
 does. Its Agentify lines say it came from the test channel and was paid in
 test USDC, which is not real money, so do not ship goods for it.
@@ -34,7 +40,7 @@ Such a product is imported as one of two kinds:
 | A virtual download with exactly one protected file, unlimited downloads and no expiry | the download, once it is paid for | a paid order |
 | A physical product, neither virtual nor downloadable | a parcel: it pays the price plus your shop's cheapest shipping rate to the buyer's place, and any tax your shop charges there | a paid order carrying the buyer's shipping address |
 
-Every other product stays in your shop untouched, and the import names it with
+Every other product stays in your shop untouched, and the check names it with
 the reason. A product also needs a name and a description in plain text,
 because the description is what a buyer reads before it decides to buy.
 
@@ -78,10 +84,9 @@ never sends a buyer's name, street address or phone number.
 
 If your shop will not open a cart for a visitor at all, its parcels cannot be
 priced. A security plugin or firewall that keeps visitors away from
-`/wp-json/wc/store/v1/cart` does this. The import then holds each parcel back
-under To fix, naming the HTTP status your shop answered and what
-to allow, and once visitors can reach the cart, importing again publishes
-them.
+`/wp-json/wc/store/v1/cart` does this. The check then holds each parcel back
+under To fix in your shop, saying what to allow. Once visitors can reach the
+cart, check again and sync with your shop to publish them.
 
 The buyer gets a download through Agentify: once your shop has created the
 order, the order the buyer reads from us carries your shop's private download
@@ -232,21 +237,45 @@ are yours to settle; this page does not answer them.
 
 ## Connecting your shop
 
-You type the public https address at the root of your shop, and your browser
-goes there next so that WooCommerce can ask you to approve access. Approve read
-and write: with read alone, every purchase is refused before payment, because
-Agentify cannot create the order in your shop. Agentify never asks for your
-shop password.
+Choose WooCommerce on Products, type your shop's address and press **Check my
+shop**. You can type just the host, an http address or a trailing slash; the
+field shows the https origin Agentify checks, keeping `www` where you typed it.
+An address with a password, query or page path is refused rather than guessed.
+A WordPress installed in a subfolder cannot connect yet.
 
-Before your browser leaves for the shop, Agentify reads one product from your
-shop's public catalogue to learn the currency it is priced in and the decimals
-it writes. A shop priced in another currency than US dollars is refused there,
-before you approve anything and with nothing changed in how you sell, when its
-prices are written with any number of decimals other than none or two, or when
-Coinbase gives no rate for its currency. When Coinbase does not answer, Connect
-stops and asks you to press it again in a moment. When the catalogue gives no
-clear answer, because the shop has no products yet or does not serve its public
-catalogue, Connect goes ahead and the import names each product it cannot sell.
+The check reads the first 100 products in one public catalogue request and
+uses the shop's `X-WP-Total` count where it is readable. The estimate says how
+many were read and how many look ready. An absent count stays unknown, and a
+partial list is not reported as the whole shop. Options, inferred stock
+counting and products not for sale are counted separately. Stock counting is
+inferred from WooCommerce's availability text or low-stock quantity on a
+product in stock and not on backorder, so a theme or plugin can affect the
+estimate. Shipping, downloads, tax and shipping settings are checked after
+connection.
+
+The same check refuses more than 2,000 products where the shop gives that
+count, a different connected shop, open orders from your code, an unreadable
+https address or a page that is not the public product list. For a shop priced
+outside US dollars, it checks the written decimals and whether Coinbase gives
+a reference rate. Only zero or two decimals are supported for such a shop.
+Coinbase not answering is different from Coinbase giving no rate: the page
+asks you to check again. A blocked, slow or unreadable public catalogue is
+reported as unknown, never as no products. The check waits up to fifteen
+seconds and asks your shop for no access.
+
+Read the result, then press **Connect shop**. WooCommerce asks you to approve
+read and write access: with read alone, every purchase is refused before
+payment because Agentify cannot create the order in your shop. Agentify never
+asks for your shop password. Editing the address removes the estimate and
+returns to Check my shop. Without script, sending a changed address checks it
+instead of connecting it. Connect repeats the door checks, so an old estimate
+cannot bypass a shop or account restriction that changed meanwhile.
+
+Once read and write access is confirmed, the connected shop's origin fills an
+empty seller site. A site you already chose in Settings is kept. If saving
+the site fails, the connection stays and the page offers a retry without
+asking you to type the address again. A shop address with a port cannot be a
+seller site; the page leads to Settings to choose a site without one.
 
 Every request the connector makes to your shop names itself with the User-Agent
 `Agentify/1 (+https://agentify.ad)`, so if a firewall or security plugin in
@@ -284,8 +313,8 @@ of your currency one US dollar buys, written in digits, such as 18000 for
 eighteen thousand rupiah, with a dot only before a fraction and nothing between
 thousands. The currency is your shop's own setting, read from the shop; you do
 not choose it, and a shop priced in US dollars is asked for no rate. Nothing
-from such a shop is published until you set one, and saving a rate imports
-your products again, so they are listed at prices in dollars at it.
+from such a shop is published until you set one. Your first saved rate starts
+the product check.
 
 A buyer pays in US dollars, as USDC: your shop's price, or for a parcel your
 cart's total, divided by your rate and rounded up to the next cent, so, for
@@ -361,56 +390,94 @@ If you sell through the shop while none is connected, nothing sells. The
 WooCommerce page offers the way back to your own code; its products come back
 with selling stopped until you resume it on Products.
 
-## Importing
+## Checking, publishing and synchronizing
 
-An import reads up to 2,000 products and publishes the ones the connector
-supports. A shop with more than 2,000 products is refused whole rather than cut
-short. Running the import again updates the products it published before and
-does not double them, and a product you paused stays paused through it.
+Once you connect, Agentify reads your products and shop settings directly
+through the access you approved. This check starts automatically and publishes
+nothing. A shop priced outside US dollars first needs an exchange rate; saving
+its first rate starts the check. **Check again** runs a fresh check after you
+change your shop.
 
-The page answers once every product has been read and published, so a large
-shop takes a while: the import asks your shop for a hundred products at a time,
-a few requests at once, and how long that takes depends on how quickly your
-shop answers. If you leave the page, the import carries on and the products it
-publishes appear on Products, but its list of what was published and what was
-not shows only on the page that started it. One import of a shop runs at a
-time; pressing Import again while one runs reads nothing and says so. A shop
-that reports more than 2,000 products is refused on the first page it
-answers.
+Checks and publication run on Agentify's server. You can leave the page and
+return on another device to the same progress and result. Only one task runs
+for your merchant at a time; pressing again shows that task. If Agentify
+restarts during the work, the result stays stopped, with the products already
+read and the rest explicitly unknown. A retry is a new task.
 
-Nothing is read until the name your products are sold under is set in
-Settings, and the wallet your share is paid out to on a channel where payments
-settle: without them every product would be refused, so Import stays unavailable
-and says which of them to set. A shop priced in another currency imports
-nothing until its rate is set, which the page asks for first.
+The connector reads up to 2,000 published products, a hundred at a time: the
+products the public catalogue counts before you connect, and out-of-stock ones
+even where the shop hides them from its catalogue. Drafts and
+private products are not read; a product of yours on sale through Agentify
+that is no longer published is checked on its own and taken off sale. A larger
+count reported by the public catalogue prevents connection. A shop that grows past
+the limit after connecting is refused or stopped, with the result saying how
+much was read. A count the shop does not provide stays unknown while the check
+runs; a partial read is never presented as the whole shop.
 
-Every product imported from WooCommerce is paid for before it is delivered or
-shipped, so buyers need your shop's site to read your cancellation, refund and
-support terms before they pay. Set the site in Settings before you import:
-products are not published without it. Products already published without a
-site leave the catalogue and refuse new purchases until you set one, and orders
-already paid go ahead as usual.
+Publishing needs a seller name, your shop's site, a payout wallet on a channel
+where payments settle, and approval on the live channel. The page identifies
+what still needs completing before it can start publication; those account
+requirements are separate from the product results. Every WooCommerce product
+is paid for before it is delivered or shipped, so buyers need your shop's site
+to read your cancellation, refund and support terms before they pay. The
+connection fills an empty seller site. If it could not, complete that step
+before publishing: publication reads no products while the site is missing.
+Products already published without a site leave the catalogue and refuse new
+purchases until you set one. Orders already paid keep their existing course.
 
-The result lists every product it read under one of these headings, in this
-order:
+The result groups the products it read under these headings. Empty groups are
+omitted; **On sale** replaces **Ready** after publication and counts products
+confirmed on sale during that publication. This is a saved result;
+Products shows which products are on sale now.
 
-| Heading | What happened | What you do |
+| Heading | What it means | What you do |
 | --- | --- | --- |
-| To fix | Agentify's publishing rules refused it, in the sentences shown, or the connector left it for something the shop can change, such as a product not published or a download limit | change what they name and import again; a length is counted with the formatting removed, so your shop's editor shows a larger number |
-| No verdict | Agentify did not answer about it, so whether it was published is not known | import again; it does not double products |
-| Not attempted | the import stopped at the first product with no verdict | import again |
-| Not supported | the connector does not sell its kind, such as a variable or grouped product, a product with stock tracking, or a download that also ships | nothing in Agentify; the connector does not take the product as it is |
-| Published | the product is on Products, folded under the other headings | nothing; whether it sells is on Products |
+| Ready | The product passed the check | Complete the account step above the lists to publish it |
+| To fix in your shop | A product or shop setting prevents it selling, such as a missing description or a download limit | Change what the reason names, then check again |
+| Not for sale in your shop | Your shop has it out of stock, unpublished or not offered for sale | Leave it if that is intended, or change its state in your shop |
+| Not supported yet | Agentify cannot sell its kind, such as a product with options or counted stock | See [what can be imported](#what-can-be-imported) |
+| No answer from your shop | The product could not be checked; its eligibility is unknown | Check again once the shop can answer |
+
+Repeated reasons in **To fix in your shop** and **Not supported yet** appear
+once with their product count. Each reason and the Ready list start with ten
+products. **Show 50 more** reveals the next fifty; the link, reload and Back
+keep the same number visible. The page always says how many remain hidden.
+The full result is also on WooCommerce in Integrations after your Products
+page has become the list of products on sale.
+
+**Sync with your shop** publishes eligible products and updates the products
+published before, without duplicates. After a complete read it also takes a
+product off sale when your shop directly confirms it was deleted, unpublished,
+withdrawn from sale or changed into a kind the connector cannot sell. An
+incomplete read or a product missing from a list establishes no such fact, so
+nothing is taken off sale on that evidence. A product simply out of stock
+stays listed: its price questions refuse purchases until your shop has stock
+again.
+
+A product taken off sale by the connector says **Off sale after a shop check**
+on Products, with the observation time. The shop may have stopped selling it,
+or it may no longer meet the connector's conditions. Once it is ready to sell,
+sync again to return it to sale. A product you paused in Agentify
+stays paused through synchronization; only you can resume your own pause.
 
 ## When a product changes in the shop
 
-A product deleted from the shop, sold out, or no longer supported stays on
-Products, but the price check refuses its purchase before payment. Pause the
-products you no longer want buyers to see. A change that lands after a buyer was quoted
-and before the order is placed, such as a new price, or for a parcel a
-different shipping rate, leaves that paid sale unfulfilled on your Orders
-screen, because the connector checks the product and the rate again before it
-creates the order and refuses what no longer matches what was paid.
+The connector checks the product again at each price question. When your shop
+directly confirms that the product was deleted, unpublished, withdrawn from
+sale or no longer meets the connector's conditions, the connector takes its
+Agentify card off sale by the same rule as synchronization. A refusal to ship
+to this buyer, a missing shipping or exchange rate, temporary lack of stock
+or an unknown shop answer takes nothing off sale.
+
+Once the product is ready again, run **Sync with your shop** to update it and
+return it to sale. A price question does not resume a paused product, and
+synchronization preserves a pause you made yourself.
+
+A change that lands after a buyer was quoted and before the order is placed,
+such as a new price or, for a parcel, a different shipping rate, leaves that
+paid sale unfulfilled on your Orders screen. The connector checks the product
+and rate again before creating the order and refuses what no longer matches
+what was paid.
 
 ## Parcels
 

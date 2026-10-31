@@ -3250,6 +3250,9 @@ describe("a merchant's standing in one read", () => {
       payoutWallet: harnessed.merchant.wallet,
       pendingPayoutWallet: null,
       liveApproved: false,
+      hasProducts: false,
+      lastContact: harnessed.now(),
+      contactAlive: true,
       outOfTouch: null,
       unserved: false,
       withdrawn: null,
@@ -3264,6 +3267,8 @@ describe("a merchant's standing in one read", () => {
     const changed = await harnessed.gateway.standingOf(id);
     expect(changed).toEqual({
       ...initial,
+      lastContact: null,
+      contactAlive: false,
       selling: "paused",
       through: "woocommerce",
       sellerName: "Another name",

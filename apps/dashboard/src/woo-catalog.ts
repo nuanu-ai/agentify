@@ -123,7 +123,7 @@ interface ImportedCard {
  * product or to the shop's settings lets it import; otherwise the connector
  * does not sell its kind at all, and the merchant has nothing to change.
  */
-export interface SkippedProduct {
+interface SkippedProduct {
   readonly id: string;
   readonly title: string;
   readonly why: string;

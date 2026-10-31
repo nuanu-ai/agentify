@@ -16,6 +16,8 @@ const counted = () => {
 };
 
 describeOperatorOrders("the operator's orders in memory", async () => {
-  const store = new MemoryStore("eip155:84532", counted());
+  const store = new MemoryStore("eip155:84532", counted(), undefined, undefined, {
+    stage: () => () => {},
+  });
   return { store, orders: memoryOperatorReader(store).orders };
 });

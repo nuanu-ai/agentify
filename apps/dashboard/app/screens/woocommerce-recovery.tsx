@@ -3,10 +3,10 @@ import type { ReactNode } from "react";
 import type { Unavailable, WooRecoveryView } from "../../src/woo-recovery-pages.js";
 import { PARCEL_NOT_CREATED, RECONNECT_FIRST, shopNameOf } from "../../src/woo-words.js";
 import { ORDER_WORDS } from "../../src/words.js";
-import { Ident } from "../components/copy.js";
 import { Fact, Facts } from "../components/list.js";
 import { PostForm } from "../components/post-form.js";
 import { Word } from "../components/word.js";
+import { Ident } from "../display/copy.js";
 import styles from "./woocommerce-recovery.module.css";
 
 /** Where the parcel's rules are written; this page recovers downloads only. */

@@ -224,14 +224,14 @@
 
 /* The foot under the frame lines its words up with the content beside the
    sidebar, as the bar over the page does, rather than with the window. */
-.app-shell + .foot .foot-inner {
+.app-shell ~ .foot .foot-inner {
   --workspace: calc(100% - 252px);
   --content: min(1180px, calc(var(--workspace) - clamp(44px, 8vw, 104px)));
   width: var(--content);
   margin-inline: calc(252px + (var(--workspace) - var(--content)) / 2) 0;
 }
 @media (max-width: 910px) {
-  .app-shell + .foot .foot-inner {
+  .app-shell ~ .foot .foot-inner {
     width: calc(100% - 36px);
     margin-inline: auto;
   }

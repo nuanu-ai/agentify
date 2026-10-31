@@ -1,24 +1,3 @@
-/* The ways to a first card, under the sentence that says there is none yet:
-   buttons, not the underlined links of an empty list, one under the other
-   where the list's box is narrow. */
-.ways {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: var(--space-control);
-  margin-top: var(--space-block);
-}
-
-.ways > :global(.button) {
-  text-decoration: none;
-}
-
-@container (max-width: 560px) {
-  .ways {
-    flex-direction: column;
-  }
-}
-
 /* What a narrow row says on its own line that a wide row says under the
    title. The list's own box decides, as it does for the row's lines. */
 .narrowOnly {
@@ -52,4 +31,44 @@
   margin: 0 0 var(--space-section);
   color: var(--muted);
   font-size: var(--text-small);
+}
+
+.shopStopped {
+  display: grid;
+  gap: var(--space-tight);
+}
+
+.shopStopped > :global(.quiet) {
+  font-size: var(--text-small);
+  color: var(--muted);
+}
+
+:global(.cell-state):has(.shopStopped) {
+  max-width: 100%;
+}
+
+.shopStopped :global(.badge) {
+  white-space: normal;
+}
+
+.shopStopped > a {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+}
+
+@container (width > 860px) {
+  :global(.cell-state):has(.shopStopped) {
+    grid-column: 4 / -1;
+  }
+}
+
+@container (max-width: 860px) {
+  :global(.list-row):has(.shopStopped) :global(.cell-state) {
+    flex-basis: 100%;
+  }
+
+  :global(.list-row):has(.shopStopped) :global(.cell-fact) {
+    flex-basis: 100%;
+  }
 }

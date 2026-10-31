@@ -1,3 +1,4 @@
+import type { WooCardPause, WooCardPauses } from "./woo-card-pauses.js";
 /**
  * The dashboard calls the gateway's application in-process, as the merchant on
  * the signed-in account's row. A refusal comes back with the sentence and
@@ -40,6 +41,12 @@ import {
   SPLITS_PER_PAYOUT,
 } from "@agentify/gateway";
 import { failureNamed } from "@agentify/gateway/failure-named";
+import {
+  type LiveSalesAsked,
+  type LiveSalesEvidence,
+  type LiveSalesRequest,
+  requestLiveSales,
+} from "@agentify/gateway/live-sales";
 import {
   API_ROUTES,
   type CardInput,
@@ -201,7 +208,11 @@ const broughtWithin = async (
 };
 
 export interface GatewayClient {
-  cards(): Promise<Answer<MerchantCardList>>;
+  cards(): Promise<
+    Answer<
+      MerchantCardList & { readonly integrationPauses?: Readonly<Record<string, WooCardPause>> }
+    >
+  >;
   pauseCard(itemId: string, paused: boolean): Promise<Answer<MerchantCard>>;
   setSelling(selling: boolean): Promise<Answer<MerchantCardList>>;
   /** The orders accepted for payment, optionally narrowed to the open list. */
@@ -233,10 +244,17 @@ export interface GatewayClient {
   /** Null for none. */
   sellerName(): Promise<Answer<string | null>>;
   liveApproval(): Promise<Answer<boolean>>;
+  liveSalesRequest(): Promise<Answer<LiveSalesRequest | null>>;
+  askForLiveSales(
+    accountId: string,
+    sellerName: string,
+    evidence: LiveSalesEvidence | null,
+  ): Promise<Answer<LiveSalesAsked>>;
   setSellerName(name: string): Promise<Answer<string | null>>;
   /** Either is null where none was given. */
   seller(): Promise<Answer<{ readonly name: string | null; readonly site: string | null }>>;
   setSellerSite(site: string): Promise<Answer<string | null>>;
+  fillSellerSite(site: string): Promise<Answer<string | null>>;
   payoutWallet(): Promise<Answer<PayoutWallet>>;
   payoutSplits(): Promise<Answer<PayoutSplits>>;
   /** The only way a wallet is set; no HTTP route does it. */
@@ -263,10 +281,8 @@ export interface GatewayClient {
     }>
   >;
   /**
-   * What the frame says over every page, from one read of the merchant's row
-   * and none of their cards: the selling state, the integration, the seller
-   * name, the wallet paid now with a change of it waiting, and the operator's
-   * approval for live sales.
+   * The account's standing and small navigation facts, without catalogue
+   * payloads: this read serves every section of the dashboard.
    */
   standing(): Promise<
     Answer<{
@@ -280,6 +296,10 @@ export interface GatewayClient {
         readonly takesEffectAt: number;
       } | null;
       readonly liveApproved: boolean;
+      readonly commissionRate: CommissionRate;
+      readonly hasProducts: boolean;
+      readonly lastContact: number | null;
+      readonly contactAlive: boolean;
       /**
        * Present while the merchant's purchases are refused, and their cards
        * left out of the catalogue, because their process has not polled: when
@@ -587,6 +607,7 @@ export const gatewayFor = (
   application: Gateway,
   acting: Acting,
   answerWithinMs: number = ANSWER_WITHIN_MS,
+  cardPauses?: WooCardPauses,
 ): GatewayClient => {
   const { merchantId } = acting;
   const session = { kind: "signed_in", email: acting.email } as const;
@@ -607,13 +628,39 @@ export const gatewayFor = (
 
   return {
     cards: () =>
-      call("reading the cards", async () =>
-        answered(API_ROUTES.list_merchant_cards, await application.merchantCards(merchantId)),
-      ),
+      call("reading the cards", async () => {
+        const document = API_ROUTES.list_merchant_cards.response.document.parse(
+          await application.merchantCards(merchantId),
+        ) as MerchantCardList;
+        const integrationPauses = (await cardPauses?.list(merchantId)) ?? {};
+        return done({ ...document, integrationPauses });
+      }),
     pauseCard: (itemId, paused) =>
       call(paused ? "pausing a card" : "resuming a card", async () => {
-        const card = await application.setCardPaused(merchantId, itemId, paused, caller);
-        return card === null ? refusedAs(NO_SUCH_ITEM) : answered(API_ROUTES.pause_card, card);
+        const change = async (
+          ownership?: Parameters<Parameters<WooCardPauses["withLock"]>[2]>[0],
+        ): Promise<Answer<MerchantCard>> => {
+          const stored = await application.runtime.store.cardById(itemId);
+          if (!stored || stored.merchantId !== merchantId) return refusedAs(NO_SUCH_ITEM);
+          if (
+            !paused &&
+            stored.paused &&
+            ownership?.pause !== null &&
+            ownership?.pause !== undefined
+          )
+            return {
+              ok: false,
+              status: 409,
+              why: "This product is off sale after a shop check. Sync with your shop to check it again and return it to sale if it's ready.",
+            };
+          const card = await application.setCardPaused(merchantId, itemId, paused, caller);
+          if (card === null) return refusedAs(NO_SUCH_ITEM);
+          // The seller's act takes the pause from the connector, an already paused card included,
+          // and only once the card write stands.
+          await ownership?.save(null);
+          return answered(API_ROUTES.pause_card, card);
+        };
+        return cardPauses ? cardPauses.withLock(merchantId, itemId, change) : change();
       }),
     setSelling: (selling) =>
       call(selling ? "resuming the selling" : "stopping the selling", async () => {
@@ -737,6 +784,16 @@ export const gatewayFor = (
         );
         return held.ok ? done(held.document.seller_site) : held;
       }),
+    fillSellerSite: (site) =>
+      call("filling the shop's site", async () => {
+        const asked = sent(API_ROUTES.set_seller_name, { seller_site: site });
+        if (!asked.ok) return asked.refused;
+        const held = answered(
+          API_ROUTES.set_seller_name,
+          await application.fillSellerSite(merchantId, site, caller),
+        );
+        return held.ok ? done(held.document.seller_site) : held;
+      }),
     // The whole document, because the screen must draw a waiting change beside
     // the address paid now; shown only the current address after asking for
     // another, a merchant would think the change did not happen.
@@ -807,8 +864,25 @@ export const gatewayFor = (
         done(await application.integrationOf(merchantId)),
       ),
     standing: () =>
-      call("reading the merchant's standing", async () =>
-        done(await application.standingOf(merchantId)),
+      call("reading the merchant's standing", async () => {
+        const standing = await application.standingOf(merchantId);
+        const { commissionAllocation, totalAllocation } = application.runtime.config.payoutSplit;
+        return done({ ...standing, commissionRate: { commissionAllocation, totalAllocation } });
+      }),
+    liveSalesRequest: () =>
+      call("reading the live-sales request", async () =>
+        done(await application.runtime.store.liveSalesRequest(merchantId)),
+      ),
+    askForLiveSales: (accountId, sellerName, evidence) =>
+      call("requesting live sales", async () =>
+        done(
+          await requestLiveSales(
+            application.runtime.store,
+            { merchantId, accountId, sellerName, evidence },
+            application.runtime.clock(),
+            application.runtime.config.surfaceMode,
+          ),
+        ),
       ),
     sellThrough: (to) =>
       call("switching the integration", async () => {

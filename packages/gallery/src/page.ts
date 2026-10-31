@@ -68,6 +68,14 @@ const fetchedBy = (html: string): string[] =>
     ),
   ].filter((address) => !address.startsWith("data:"));
 
+/** React reserves segment IDs for transport that needs reveal scripts, including table and SVG wrappers. */
+export const hasHiddenTransport = (html: string): boolean => {
+  for (const [tag] of html.matchAll(/<[a-z][^>]*>/gi)) {
+    if (/\sid=["'][^"']*S:[a-f0-9]+["']/i.test(tag)) return true;
+  }
+  return false;
+};
+
 /**
  * Refuses what would break in the published page or in a comment about it: a
  * state named twice, a name the host would not pass on as an anchor, a state
@@ -91,6 +99,9 @@ export function refusalsIn(surfaces: readonly DrawnSurface[]): string[] {
       for (const field of ["screen", "address", "when", "cause"] as const) {
         if (state[field].trim() === "")
           refusals.push(`The state ${state.id} says nothing in ${field}.`);
+      }
+      if (hasHiddenTransport(state.html)) {
+        refusals.push(`The state ${state.id} leaves content hidden until a script reveals it.`);
       }
       for (const address of fetchedBy(state.html)) {
         refusals.push(`The state ${state.id} asks for ${address}, which the page cannot fetch.`);

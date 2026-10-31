@@ -7,6 +7,7 @@
  * recorded on 2026-10-21.
  */
 
+import { coinbaseRateOf } from "@agentify/recorded";
 import { describe, expect, it } from "vitest";
 import {
   dollarsAt,
@@ -21,7 +22,7 @@ import {
 const CENSUS_MEDIAN = "170000";
 const CHEAPEST = "2000";
 const DEAREST = "40500000";
-const COINBASE_IDR = "18035.292596";
+const COINBASE_IDR = coinbaseRateOf("IDR");
 
 describe("a price in a shop's own currency, turned into US dollars at the merchant's rate", () => {
   it("is the shop's amount divided by the rate, rounded up to the cent", () => {

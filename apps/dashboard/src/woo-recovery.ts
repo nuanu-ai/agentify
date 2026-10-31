@@ -168,7 +168,7 @@ const recover = async (
   if (!inspected.ok && !inspected.saidNo) {
     return unresolved(
       `The shop's answer to the product check could not be read or trusted: ${inspected.why}` +
-        " Nothing was changed. If the shop's keys were revoked, connect it again, then run the" +
+        " Nothing was changed. If the shop's access was revoked, connect it again, then run the" +
         " recovery again.",
     );
   }

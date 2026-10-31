@@ -9,13 +9,20 @@ import { type LoaderFunctionArgs, useLoaderData } from "react-router";
 import { readOnly } from "../../answer.js";
 import { readFailedIn } from "../../components/admin/read-failed.js";
 import { AdminFrame } from "../../components/admin-frame.js";
+import observer from "../../operator-shop-job.js?url";
 import { MerchantScreen } from "../../screens/admin/merchants.js";
 import { workspaceIn } from "../../services.js";
+
+// This page observes persisted shop progress without refreshing the operator's forms.
+export const handle = { script: observer };
 
 export async function loader(asked: LoaderFunctionArgs) {
   const { admin, operator } = workspaceIn(asked.context);
   const { params } = asked;
-  return await readOnly(() => admin.merchants.one(operator, params.merchant_id ?? ""), asked);
+  return await readOnly(
+    () => admin.merchants.one(operator, params.merchant_id ?? "", asked.url.searchParams),
+    asked,
+  );
 }
 
 /** A read that failed, said in the workspace's frame. */

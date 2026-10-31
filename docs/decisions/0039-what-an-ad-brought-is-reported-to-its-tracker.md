@@ -37,7 +37,7 @@ to `https://aisamuraihub.com/postback` with the tracker's key in
 scanner keeps no click.
 
 Where reporting is on, one click identifier of the tracker's form travels with
-the sign-in it starts, in the claim ADR-0026 §1 keeps with a link's token or in
+the sign-in it starts, in the claim a link's token keeps (research note 95) or in
 the server's record of a Google sign-in's single-use state, never in a cookie of
 ours or in what Google is sent. Anybody can ask for a link for any address, and
 its press reports the click of whoever clicked the ad, which says nothing about

@@ -1,14 +1,8 @@
-/**
- * A new merchant's setup, on cards outside the dashboard's frame: the one
- * control that makes a merchant, and the name buyers read. Skipping the name is
- * allowed, but never silently: until a name is set, publishing a card is
- * refused, and every screen a merchant works on says so with a way to fix it.
- */
+/** The first seller-dashboard opening for a signed-in account with no merchant. */
 
-import { Button, Field } from "@agentify/ui";
-import { useEffect, useState } from "react";
+import { Button } from "@agentify/ui";
 import { useRouteLoaderData } from "react-router";
-import type { ChooseNameView, MerchantView } from "../../src/page-services.js";
+import type { MerchantView } from "../../src/page-services.js";
 import type { Chrome } from "../answer.js";
 import { GatePage } from "../components/gate-page.js";
 import { PostForm } from "../components/post-form.js";
@@ -49,84 +43,6 @@ export function MerchantScreen({ chrome, view }: Readonly<{ chrome: Chrome; view
           Signed in as <strong>{gate.who}</strong>.
         </p>
       </div>
-    </GatePage>
-  );
-}
-
-/**
- * No navigation: this is the last step of first-time setup. Choosing later is a
- * link to the cards, where the same missing-name notice waits with the page that
- * fixes it. The advice is against the common mistake, a description of the
- * goods, because a catalogue written into this box becomes the listing name and
- * nothing further down the line corrects it.
- *
- * With the box empty the only way on is to choose later, so the button waits
- * for a name. It is served pressable, as every button that waits here is,
- * because nothing could enable it again where the page's script did not run;
- * the server refuses an empty name for that browser.
- */
-export function ChooseNameScreen({
-  chrome,
-  view,
-}: Readonly<{ chrome: Chrome; view: ChooseNameView }>) {
-  const [typed, setTyped] = useState(view.typed);
-  const [alive, setAlive] = useState(false);
-  // What the box holds when the script arrives, since a name typed, filled in
-  // or restored by the browser before then fired no change here.
-  useEffect(() => {
-    const box = document.getElementById("seller_name");
-    if (box instanceof HTMLInputElement) setTyped(box.value);
-    setAlive(true);
-  }, []);
-  // The rule is the box's line until something is refused; then the refusal
-  // is, and the rule follows it unless the refusal already says it.
-  const line =
-    view.problem === undefined
-      ? view.rule === null
-        ? {}
-        : { hint: view.rule }
-      : { error: view.problem };
-  return (
-    <GatePage chrome={chrome} title="Choose a seller name">
-      <PostForm className={`message-panel ${styles.card}`} action="/choose-name">
-        {(pending) => (
-          <>
-            <h1>Choose a seller name</h1>
-            <p>
-              Buyers see it beside your products and in every payment they approve, so use the name
-              people know you by. You can change it later in{" "}
-              <a href={`${chrome.base}/settings`}>Settings</a>.
-            </p>
-            <Field
-              label="Seller name"
-              id="seller_name"
-              name="seller_name"
-              type="text"
-              autoComplete="organization"
-              maxLength={32}
-              defaultValue={view.typed}
-              autoFocus
-              required
-              onChange={(event) => setTyped(event.currentTarget.value)}
-              {...line}
-            />
-            {view.problem !== undefined && view.rule !== null ? (
-              <p className="quiet">{view.rule}</p>
-            ) : null}
-            <div className={`message-actions ${styles.actions}`}>
-              <Button pending={pending} disabled={alive && typed.trim() === ""}>
-                Use this name
-              </Button>
-              <a className="button button-secondary" href={`${chrome.base}/products`}>
-                Choose later
-              </a>
-            </div>
-            <p className={`quiet ${styles.caption}`}>
-              Nothing goes on sale until you choose a name.
-            </p>
-          </>
-        )}
-      </PostForm>
     </GatePage>
   );
 }

@@ -97,7 +97,7 @@ describe("the Merchants list", () => {
     const back = await operator.get(way(second.html, "prev") ?? "");
     expect(shops(back.html)).toStrictEqual(shops(first.html));
 
-    const past = await operator.get("/admin/merchants?after=0.-1.0.mch_none");
+    const past = await operator.get("/admin/merchants?after=0.-1.-1.-1.mch_none");
     expect(text(past.html)).toContain(`Showing ${of - 49}–${of} of ${of}`);
     const malformed = await operator.get("/admin/merchants?after=page-2");
     expect(shops(malformed.html)).toStrictEqual(shops(first.html));
@@ -419,6 +419,46 @@ describe("a press whose page cannot be read again", () => {
     expect(text(pressed.html)).toContain("could not be read again");
     expect(text(pressed.html)).not.toContain("Something went wrong");
     expect((await served.harnessed.store.merchantById(merchant.id))?.liveApprovedAt).toBeNull();
+  });
+});
+
+describe("a stale decline whose page cannot be read again", () => {
+  it("says the request it named is no longer pending, not that a decline already stood", async () => {
+    served = await adminServed({
+      channel: "live",
+      reader: (real) => ({
+        ...real,
+        merchants: {
+          ...real.merchants,
+          merchant: async () => {
+            throw new Error("the database is not answering");
+          },
+        },
+      }),
+    });
+    const merchantId = await served.harnessed.gateway.registerMerchant();
+    const ask = {
+      merchantId,
+      accountId: "acc_owner",
+      sellerName: "Coffee Roasters",
+      evidence: { integration: "api" as const, connectedAt: served.harnessed.now() },
+    };
+    const first = await served.harnessed.store.requestLiveSales(ask, served.harnessed.now());
+    if (first.kind !== "requested") throw new Error("request missing");
+    const operator = await served.signedIn(OPERATOR, { operator: true });
+    const decline = () =>
+      operator.post(`/admin/merchants/${merchantId}/decline`, {
+        ...TICKED,
+        request_id: first.request.id,
+        [REASON_FIELD]: "Use the name buyers know.",
+      });
+    await decline();
+    await served.harnessed.store.requestLiveSales(ask, served.harnessed.now() + 1);
+
+    const stale = text((await decline()).html);
+
+    expect(stale).toContain("no longer pending");
+    expect((await served.harnessed.store.liveSalesRequest(merchantId))?.state).toBe("pending");
   });
 });
 

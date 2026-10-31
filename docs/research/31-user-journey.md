@@ -73,7 +73,7 @@ this note's subject and nothing below is built for it.
 So "lead everyone to the cabinet" is right for the second and third kinds
 and wrong for the first. The porch keeps a bench: the report is a complete
 result on its own, and the door to the house is offered in words that say
-who it is for. ADR-0026 §5 opens the cabinet to anyone who can read their
+who it is for. ADR-0026 §1 opens the cabinet to anyone who can read their
 mail. That is an open door, not a funnel.
 
 ## What the site does today
@@ -311,7 +311,8 @@ places would repeat what the header and the links already give them.
 The cabinet's screens do not link back to a report. A merchant at work does
 not need the diagnostic, and the cabinet holds no knowledge of scans; the one
 scanner address it names is the page that sends a person without a merchant
-to their latest report, which is where ADR-0026 §1 says such a person starts.
+to their latest report, which is where such a person starts after signing in
+(research note 95).
 
 No page is written for the developer of a buying agent, the address of the
 `/agentic-shop` page is not changed, and the waitlist table is not renamed,

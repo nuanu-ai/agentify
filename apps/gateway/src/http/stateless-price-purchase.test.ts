@@ -75,7 +75,10 @@ async function started(card: Card = CARD) {
   h = await harness();
   served = await serve(h);
   itemId = (await h.store.publishCard(h.merchant.id, card, h.now())).id;
-  worker = workUntilStopped(h, {
+  worker = working(card);
+}
+function working(card: Card) {
+  return workUntilStopped(h, {
     onQuote: () => ({
       available: true,
       price: { amount: "75.00", currency: "USD" },
@@ -1062,16 +1065,24 @@ describe("a stamped price and an order born at payment", () => {
   it("tells a payment Agentify failed to check before writing anything to come again", async () => {
     await started();
     const offer = await quote();
+    // The fault belongs to payment admission; a concurrent poll would kill
+    // the helper worker before the retry could ask it to fulfill the order.
+    await worker.stop();
     const read = h.store.merchantById.bind(h.store);
     h.store.merchantById = () => Promise.reject(passing());
-    const refused = await pay(offer, "0x01");
-    h.store.merchantById = read;
+    let refused: Awaited<ReturnType<typeof pay>>;
+    try {
+      refused = await pay(offer, "0x01");
+    } finally {
+      h.store.merchantById = read;
+    }
 
     expect(refused.status).toBe(503);
     expect(refused.headers.get("retry-after")).toBe("2");
     expect(refused.body).toMatchObject({ error: { code: "gateway_failed", retryable: true } });
     expect(await h.store.orders(h.merchant.id)).toStrictEqual([]);
     expect(h.facilitator.verifies).toHaveLength(0);
+    worker = working(CARD);
     const paid = await pay(offer, "0x01");
     expect(paid.status).toBe(200);
     expect(h.facilitator.settles).toHaveLength(1);

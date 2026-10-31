@@ -448,7 +448,9 @@ describe("the preferences dialog", () => {
     window.dispatchEvent(new StorageEvent("storage", { key: CONSENT_STORAGE_KEY }));
 
     await waitFor(() => expect(box(/product analytics/i).checked).toBe(false));
-    expect(screen.getByRole("dialog").contains(document.activeElement)).toBe(true);
+    await waitFor(() =>
+      expect(screen.getByRole("dialog").contains(document.activeElement)).toBe(true),
+    );
   });
 
   it.each([

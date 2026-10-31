@@ -6,7 +6,7 @@
 
 import type { LoaderFunctionArgs } from "react-router";
 import { answer, useChrome } from "../answer.js";
-import { WooReturnScreen } from "../screens/woocommerce.js";
+import { WooReturnScreen } from "../screens/woo-return.js";
 import { WOOCOMMERCE, wooPagesIn } from "../woocommerce.js";
 
 export const handle = { ...WOOCOMMERCE, script: false };

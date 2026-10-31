@@ -11,6 +11,8 @@ const ids = (prefix: string): string => {
 };
 
 describeOperatorMerchants("the operator's merchants in memory", async () => {
-  const store = new MemoryStore("eip155:84532", ids);
+  const store = new MemoryStore("eip155:84532", ids, undefined, undefined, {
+    stage: () => () => {},
+  });
   return { store, merchants: memoryOperatorReader(store).merchants };
 });

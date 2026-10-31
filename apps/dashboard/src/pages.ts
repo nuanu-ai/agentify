@@ -21,6 +21,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { precompressedFrom } from "@agentify/ui/assets";
+import { zoneIn } from "@agentify/ui/zone";
 import { createRequestHandler } from "@react-router/express";
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 import {
@@ -31,6 +32,7 @@ import {
   type ServerBuild,
 } from "react-router";
 import { type Refusal, refusalOfPost } from "./form-post.js";
+import { inViewersZone } from "./moments.js";
 import type { PageServices } from "./page-services.js";
 import { pressReads } from "./press-reads.js";
 
@@ -243,7 +245,7 @@ const routesOf = (build: ServerBuild): RouteObject[] => {
         loader?: unknown;
         action?: unknown;
         middleware?: unknown;
-        handle?: { script?: boolean; keepsData?: boolean; takesEveryPost?: boolean };
+        handle?: { script?: boolean | string; keepsData?: boolean; takesEveryPost?: boolean };
       };
       // A layout with no path of its own, the root among them, is a frame
       // around pages and never a page, even while nothing is nested in it.
@@ -256,7 +258,9 @@ const routesOf = (build: ServerBuild): RouteObject[] => {
               module.default !== undefined ||
               module.middleware !== undefined
             : method === "POST" && module.action !== undefined),
-        keepsData: module.handle?.script !== false && module.handle?.keepsData !== false,
+        keepsData:
+          (module.handle?.script === undefined || module.handle.script === true) &&
+          module.handle?.keepsData !== false,
         takesEveryPost: module.handle?.takesEveryPost === true,
       };
       const shared = {
@@ -394,7 +398,9 @@ export function pagesHandler(
         `${PRESSED}=${pressed}; Path=${basename}; HttpOnly; SameSite=Lax${cookieSecure ? "; Secure" : ""}`,
       );
     }
-    void (async () => {
+    // Services are supplied by this process; the compiled route tree has its
+    // own module instance and cannot establish their request-local zone.
+    void inViewersZone(zoneIn(request.headers.cookie), async () => {
       const { build, routes, handle } = mount(
         typeof pages.build === "function" ? await pages.build() : pages.build,
       );
@@ -477,6 +483,6 @@ export function pagesHandler(
         response.setHeader("cache-control", "private, no-store");
       }
       handle(request, response, next);
-    })().catch(next);
+    }).catch(next);
   };
 }

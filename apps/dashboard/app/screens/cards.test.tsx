@@ -1,3 +1,4 @@
+import { onboardingAccountView } from "../../src/onboarding.js";
 // @vitest-environment jsdom
 
 /**
@@ -11,9 +12,15 @@ import { MerchantCardListSchema } from "@nuanu-ai/agentify-contracts";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createRoutesStub, Outlet, redirect } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
+import { keysView } from "../../src/keys.js";
+import { nextStepOf } from "../../src/next-step.js";
+import type { OnboardingView } from "../../src/onboarding.js";
+import { NAME_RULE } from "../../src/seller-name.js";
+import { ONBOARDING_CASES } from "../../src/testing/onboarding-cases.js";
 import type { Viewer } from "../../src/viewer.js";
 import { cardsView } from "../../src/views.js";
 import { CardsScreen } from "./cards.js";
+import { ProductsCatalog } from "./products-catalog.js";
 
 const SEEN_BY: Viewer = {
   base: "",
@@ -65,9 +72,7 @@ const pressable = () => {
             {
               id: "routes/products",
               path: "products",
-              Component: () => (
-                <CardsScreen view={cardsView(cards, "https://agentify.ad")} base="" />
-              ),
+              Component: () => <CardsScreen view={cardsView(cards, "https://agentify.ad")} />,
               loader: async () => {
                 if (state.pressed > 0) {
                   await new Promise<void>((resolve) => {
@@ -114,4 +119,82 @@ describe("a switch pressed on the cards", () => {
     await waitFor(() => expect(button.getAttribute("aria-busy")).toBeNull());
     expect(button.hasAttribute("disabled")).toBe(false);
   });
+});
+
+it("keeps asking for live sales as the one filled action while global and individual products are paused", async () => {
+  const situation = ONBOARDING_CASES.find((one) => one.row === 31);
+  if (!situation) throw new Error("missing withdrawal situation");
+  const onboarding: OnboardingView = {
+    mode: "live",
+    step: nextStepOf({ ...situation.facts, selling: "paused" }),
+    keys: keysView([]),
+    contact: null,
+    origin: "https://agentify.ad",
+    unread: false,
+    account: onboardingAccountView(nextStepOf({ ...situation.facts, selling: "paused" }), {
+      mode: situation.facts.mode,
+      sellerName: "Freeland",
+      savedWallet: null,
+      nameRule: NAME_RULE,
+      wallet: null,
+      email: SEEN_BY.who,
+      request: null,
+      decision: { at: { text: "30 Oct 2026, 09:00 UTC" }, note: "Use the name buyers know." },
+    }),
+  };
+  const view = cardsView(
+    {
+      ...cards,
+      selling: "paused",
+      cards: cards.cards.map((row) => ({ ...row, paused: true, selling: "paused" as const })),
+    },
+    "https://agentify.ad",
+  );
+  const Stub = createRoutesStub([
+    {
+      id: "root",
+      path: "/",
+      children: [
+        {
+          id: "routes/gate",
+          children: [
+            {
+              id: "routes/merchant-only",
+              children: [
+                {
+                  path: "products",
+                  Component: () => (
+                    <ProductsCatalog view={view} base="" shop={undefined} account={onboarding} />
+                  ),
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ]);
+  render(
+    <Stub
+      initialEntries={["/products"]}
+      hydrationData={{
+        loaderData: {
+          root: {
+            base: "",
+            surface: { attribute: "data-agentify-surface", mode: "live", words: null },
+          },
+          "routes/gate": { who: SEEN_BY.who },
+          "routes/merchant-only": { account: [], onboarding },
+        },
+      }}
+    />,
+  );
+  await screen.findByRole("button", { name: "Ask again" });
+  expect(
+    [...document.querySelectorAll("button.button-primary, a.button-primary")].map(
+      (element) => element.textContent,
+    ),
+  ).toEqual(["Ask again"]);
+  expect(screen.getByRole("button", { name: "Resume all sales" })).toBeDefined();
+  expect(screen.getByRole("button", { name: "Resume" })).toBeDefined();
 });

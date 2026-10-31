@@ -78,7 +78,7 @@ if (databaseUrl === null) {
   let store: PostgresStore;
   beforeEach(async () => {
     await pool.query(
-      "truncate table cards, orders, receipts, payment_claims, merchant_keys, merchant_contact, merchants, payout_splits, commerce_analytics_events",
+      "truncate table cards, orders, receipts, payment_claims, merchant_keys, merchant_contact, merchants, payout_splits, commerce_analytics_events, merchant_live_requests",
     );
     store = PostgresStore.over(db, "eip155:84532", countedIds());
     await store.addMerchant({ id: MERCHANT, name: "The merchant" }, 1_000);

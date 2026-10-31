@@ -9,7 +9,8 @@
  * sign-in first. A press is a request like any other, so every press is
  * checked again.
  *
- * The workspace's pages run no script and load the workspace's stylesheets
+ * The workspace's pages run no script unless a child explicitly needs a live
+ * observer. They load the workspace's stylesheets
  * after the dashboard's, the shared one first and then the dashboard's own, so
  * a merchant's page carries none of them.
  */

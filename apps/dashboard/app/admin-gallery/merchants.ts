@@ -24,6 +24,9 @@ import {
 import { stepUpViewOf } from "../../src/admin/step-up.js";
 import { NO_REASON } from "../../src/admin/words.js";
 import type { NamedAccount } from "../../src/dashboard-entry.js";
+import { presentShopJob } from "../../src/shop-job-presentation.js";
+import type { ShopJobState, ShopJobView } from "../../src/shop-job-view.js";
+import { momentView } from "../../src/views.js";
 import type { Trouble } from "../answer.js";
 import { line } from "./accounts.js";
 import {
@@ -88,6 +91,17 @@ const TOURS_THIRTY = {
 const ROWS: readonly MerchantRow[] = [
   {
     id: GIFT_CARDS,
+    liveRequest: {
+      id: "lrq_gallery",
+      merchantId: GIFT_CARDS,
+      accountId: null,
+      requestedAt: NOW - DAY,
+      evidence: { integration: "api", connectedAt: NOW - 3 * 60_000 },
+      state: "pending",
+      decline: null,
+      reminderDueAt: NOW + DAY,
+      reminderCreatedAt: null,
+    },
     serviceName: "Gift Card Shop",
     sellerSite: "https://giftcards.example",
     createdAt: Date.UTC(2026, 9, 19),
@@ -102,6 +116,7 @@ const ROWS: readonly MerchantRow[] = [
   },
   {
     id: TOURS,
+    liveRequest: null,
     serviceName: "City Walking Tours",
     sellerSite: "https://tours.example",
     createdAt: Date.UTC(2026, 8, 2),
@@ -116,6 +131,7 @@ const ROWS: readonly MerchantRow[] = [
   },
   {
     id: WOOL,
+    liveRequest: null,
     serviceName: "Wool Socks",
     sellerSite: null,
     createdAt: Date.UTC(2026, 9, 12),
@@ -130,6 +146,7 @@ const ROWS: readonly MerchantRow[] = [
   },
   {
     id: UNNAMED,
+    liveRequest: null,
     serviceName: null,
     sellerSite: null,
     createdAt: Date.UTC(2026, 9, 21),
@@ -168,6 +185,7 @@ const listed = (rows: readonly MerchantRow[], total = rows.length): MerchantList
       ? null
       : {
           waiting: last.segment === "waiting",
+          requestedAt: last.liveRequest?.requestedAt ?? null,
           lastSaleAt: last.lastSaleAt,
           createdAt: last.createdAt,
           id: last.id,
@@ -218,6 +236,7 @@ const card = (code: string, title: string, amount: string): Card => ({
 });
 
 const ADMITTED: MerchantRecord = {
+  liveRequest: null,
   id: TOURS,
   serviceName: "City Walking Tours",
   sellerSite: "https://tours.example",
@@ -385,14 +404,15 @@ const pageRead = (record: MerchantRecord, more: Partial<MerchantRead> = {}): Mer
 });
 
 /** The press routes, by what each adds to the merchant page's address. */
-type Pressed = "admit" | "withdraw" | Readonly<{ key: string }>;
+type Pressed = "admit" | "withdraw" | "decline" | Readonly<{ key: string }>;
 
 const pageState = (
   told: Pick<AdminGalleryState, "id" | "when" | "cause">,
   read: MerchantRead,
   pressed?: Pressed,
+  shopJob?: ShopJobView,
 ): AdminGalleryState => {
-  const view = merchantViewOf(read);
+  const view = { ...merchantViewOf(read), shopJob };
   const page = `/admin/merchants/${read.record.id}`;
   if (pressed === undefined) {
     return {
@@ -416,8 +436,66 @@ const pageState = (
   };
 };
 
+const SHOP_CHECK_MERCHANT: MerchantRecord = {
+  liveRequest: null,
+  id: "mch_shop_check_example",
+  serviceName: "Anonymized WooCommerce shop",
+  sellerSite: "https://shop.example",
+  createdAt: Date.UTC(2026, 9, 12),
+  integration: "woocommerce",
+  segment: "setting_up",
+  missing: ["no_payout_wallet", "no_operator_approval"],
+  lastContactAt: null,
+  lastSaleAt: null,
+  selling: "open",
+  liveApprovedAt: null,
+  wallet: null,
+  keys: { rows: [], total: 0, working: 0 },
+  cards: { rows: [], total: 0, onSale: 0 },
+  thirtyDays: { ...empty(), days: selling(() => "0.00") },
+  worthALook: { rows: [], total: 0 },
+};
+
+const OPERATOR_SHOP_JOBS: readonly [string, string, Partial<ShopJobState>][] = [
+  [
+    "progress",
+    "An operator reads the same active product check as the merchant.",
+    { status: "running", read: 2, total: 6, ready: 1 },
+  ],
+  [
+    "rate-required",
+    "A stored check needs the merchant's exchange rate; the operator cannot save it here.",
+    {
+      status: "stopped",
+      stopCode: "rate_required",
+      currency: "IDR",
+      why: "Save an exchange rate to check your products.",
+    },
+  ],
+  [
+    "reconnect",
+    "A stored check says the shop refused access and its merchant must reconnect it.",
+    {
+      status: "stopped",
+      stopCode: "reconnect",
+      why: "Your shop refused access. Reconnect it, then check again.",
+    },
+  ],
+  [
+    "earlier-reconnect",
+    "An earlier connection refused access; the operator reads it beside the current shop connection.",
+    {
+      status: "stopped",
+      stopCode: "reconnect",
+      current: false,
+      why: "Your shop refused access. Reconnect it, then check again.",
+    },
+  ],
+];
+
 const WAITING: MerchantRecord = {
   ...ADMITTED,
+  liveRequest: ROWS[0]?.liveRequest ?? null,
   id: GIFT_CARDS,
   serviceName: GIFTS.name,
   sellerSite: GIFTS.site,
@@ -478,7 +556,7 @@ const WITHDRAWAL = row(
 
 const WITHDRAWN: MerchantRecord = {
   ...ADMITTED,
-  segment: "waiting",
+  segment: "setting_up",
   missing: ["no_operator_approval"],
   liveApprovedAt: null,
   cards: {
@@ -600,6 +678,27 @@ export const MERCHANTS_STATES: readonly AdminGalleryState[] = [
     },
     pageRead(ADMITTED),
   ),
+  ...(
+    [
+      ["no-wallet", { wallet: null }, {}],
+      [
+        "decline-note-needed",
+        { wallet: null },
+        { decline: { kind: "refused", said: NO_REASON, typed: "", field: "reason" } },
+      ],
+      ["decline-unknown", { wallet: null }, { decline: { kind: "unknown" } }],
+    ] as const
+  ).map(([suffix, record, answers]) =>
+    pageState(
+      {
+        id: `dashboard-admin-request-${suffix}`,
+        when: "An operator reviews a pending request without a payout wallet.",
+        cause: "The request itself puts the merchant in Needs you; the wallet is a fact beside it.",
+      },
+      pageRead({ ...WAITING, ...record }, { answers }),
+      suffix === "no-wallet" ? undefined : "decline",
+    ),
+  ),
   pageState(
     {
       id: "dashboard-admin-merchant-waiting",
@@ -712,6 +811,48 @@ export const MERCHANTS_STATES: readonly AdminGalleryState[] = [
       },
     ),
     { key: CI_KEY_ID },
+  ),
+  ...OPERATOR_SHOP_JOBS.map(([id, when, job]) =>
+    pageState(
+      {
+        id: `dashboard-admin-merchant-shop-job-${id}`,
+        when,
+        cause: "An anonymized merchant's stored shop job is read without merchant recovery forms.",
+      },
+      pageRead(SHOP_CHECK_MERCHANT, {
+        accounts: [{ id: "acc_shop_check_example", email: "owner@shop.example" }],
+        shop: {
+          url: "https://shop.example",
+          connected: momentView(new Date(NOW - 3_600_000).toISOString()),
+          permissions: "read_write",
+        },
+        history: historyOf([], 0),
+      }),
+      undefined,
+      presentShopJob(
+        {
+          id: `job_operator_${id}`,
+          shopHost: "shop.example",
+          revision: 1,
+          kind: "check",
+          status: "queued",
+          read: 0,
+          total: null,
+          ready: 0,
+          published: 0,
+          excluded: 0,
+          publicationUnknown: null,
+          currency: "USD",
+          when: momentView(new Date(NOW - 60_000).toISOString()),
+          why: null,
+          stopCode: null,
+          current: true,
+          groups: [],
+          ...job,
+        },
+        "operator",
+      ),
+    ),
   ),
   pageState(
     {

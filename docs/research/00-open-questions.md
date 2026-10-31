@@ -24,14 +24,14 @@ and git keeps the entries that were here.
 | Paging and search in the dashboard's lists of cards, orders and receipts, which hold hundreds of orders without breaking but let one be found only by eye | product owner | — |
 | Selling through a WooCommerce shop and one's own code at once: the design is ready (a card remembers the integration that published it, one queue per integration) and is built when a real merchant needs it | product owner | ADR-0036 |
 | Whether a merchant sees the exchange rates their WooCommerce shop has had, in one place: every saved rate is kept as its own version, each order shows the rate it was paid at, and each change is mailed with the previous rate, but no screen lists them | product owner | — |
-| How a connected WooCommerce shop's cards follow its products as they are added, changed and removed; today only a manual import, which takes nothing off sale | product owner | ADR-0023 |
+| Whether a connected WooCommerce shop is synchronized automatically on a schedule; manual synchronization and direct product checks at purchase follow product changes and preserve merchant pauses | product owner | ADR-0023, `92-merchant-onboarding.md` |
 | How a "not available" answer to a price check gives its reason, so an agent can tell "out of stock" from "not shipped there" and from "the address lacks what the merchant needs" | product owner | `37-physical-goods.md` |
 | Whether an order's other `params`, such as the email an eSIM card asks for, are erased the way a parcel's address is | product owner | ADR-0032 |
 | A seller's name and site are read as they are now, also in orders already delivered, so a renamed seller shows the new name on an old order | product owner | ADR-0034 |
 | How a merchant completes full offboarding without staff, preserving accepted orders and payment history; pausing and revoking keys do not delete an account | product owner | `54-self-service.md` |
-| Whether a merchant is also told by mail when they are admitted, when their admission is withdrawn, with its note, or when a key of theirs is disabled; their dashboard shows a withdrawal and its note | product owner | `85-operator-admin.md` |
-| Whether a merchant whose admission was withdrawn stays under "Needs you", where they count again today because they have a seller name and a payout wallet and are not admitted | product owner | `85-operator-admin.md` |
-| Whether an operator is told by mail or a message when something in the admin needs a look, or finds it only by opening the admin; nothing in the product alerts anybody today | product owner | `85-operator-admin.md` |
+| Whether a merchant is told by mail when a key of theirs is disabled; admission and withdrawal already send a dated email, with the full operator note for withdrawal | product owner | `85-operator-admin.md` |
+| ~~Whether a merchant whose admission was withdrawn stays under "Needs you"~~ — only an unresolved live-sales request appears there; the merchant can ask again after withdrawal (2026-10-30) | product owner | `85-operator-admin.md` |
+| Whether administrative work other than live-sales requests needs email alerts; a new live-sales request already emails every current operator and receives one reminder after two UTC weekdays | product owner | `85-operator-admin.md` |
 | How fresh a sign-in an administrative action asks for, fifteen minutes or another window, and whether reading the admin asks for one too | product owner, with the architect | `85-operator-admin.md` |
 | Whether the admin reads the splits' balances from the chain, so that the commission Agentify has received is a figure rather than a link to the explorer | product owner | `85-operator-admin.md` |
 | Who answers the access requests the scanner records through the route its privacy page names; the scanner's page counts them and nothing records an answer | product owner | `85-operator-admin.md` |
@@ -76,6 +76,7 @@ owner's to decide, and until then is a limit a parcel sells with.
 | When to stop reading a card as it is now for orders recorded before 2026-10-10, which keep no result of their own: once no channel holds such an order | engineering, by a query on each channel | — |
 | Reminders a dying process leaves claimed: up to 20 stay active until pg-boss expires them, 15 minutes by default, so a deadline can close that much later | engineering, by a database test | — |
 | Whether a scan left `queued` with no job in the queue ever finishes | engineering, by a test | — |
+| When to replace the WooCommerce recovery pass over every connection every thirty seconds with one database query selecting the shops that need work, as the number of connected shops grows | engineering | `2026-10-31-shop-job-ownership.md` |
 | What `/.well-known/x402` should serve; it answers 404, and agents find the catalogue through `/x402` and `/llms.txt` | engineering | — |
 | How the scanner's limits stated on its documentation page are held equal to the worker's literals, which no test compares | engineering | — |
 | How the release preflight's fixtures, snapshots of `docker compose config` taken by hand, are kept in step with `compose.yaml`; their synthetic encryption key also decodes to 33 bytes where the scanner needs 32 | engineering | — |

@@ -49,12 +49,13 @@ import {
 } from "./gateway.js";
 import { type IntegrationsView, integrationsView } from "./integrations-view.js";
 import { type KeysView, keysView, type NewKeyView, newKeyView } from "./keys.js";
+import { nextStepOf, type Platform } from "./next-step.js";
 import { noted } from "./noted.js";
+import { type OnboardingPress, type OnboardingView, onboardingAccountView } from "./onboarding.js";
 import { WALLET_NEEDED, whatIsWrongWithTheWallet } from "./payout-wallet.js";
 import {
   NAME_CANNOT_BE_TAKEN_AWAY,
   NAME_NEEDED,
-  NAME_REFUSED,
   NAME_RULE,
   SITE_CANNOT_BE_TAKEN_AWAY,
   whatIsWrongWithTheName,
@@ -65,6 +66,7 @@ import {
   type SettingsView,
   settingsView,
   type WalletNotice,
+  walletEntryView,
 } from "./settings-view.js";
 import type { Viewer } from "./viewer.js";
 import {
@@ -78,6 +80,7 @@ import {
   closedForGood,
   drawnClosedForGood,
   type FrameView,
+  momentView,
   type OrdersView,
   ordersPlace,
   ordersView,
@@ -85,7 +88,7 @@ import {
   receiptsView,
 } from "./views.js";
 import type { WooPages } from "./woo-pages.js";
-import type { ShopTile } from "./woo-views.js";
+import type { ShopTile, WooShopView } from "./woo-views.js";
 
 /** A view to draw, a place to send the browser, or a problem to show instead. */
 export type Outcome<View> =
@@ -243,15 +246,6 @@ export interface MerchantView {
   readonly unavailable: boolean;
 }
 
-/** The screen where a new merchant chooses the name buyers read. */
-export interface ChooseNameView {
-  /** What was typed, given back with its refusal so it can be corrected. */
-  readonly typed: string;
-  readonly problem?: string;
-  /** The catalogue's rule in words; null where the refusal already says it. */
-  readonly rule: string | null;
-}
-
 export interface PageServices {
   /**
    * Records for product analytics that a visit was answered with this screen,
@@ -273,6 +267,20 @@ export interface PageServices {
   readonly workspace: WorkspaceDoor | null;
   /** "" when mounted at the root of its origin. */
   readonly base: string;
+  practice(person: Person): Promise<void>;
+  readonly onboarding: {
+    press(
+      person: Person,
+      form: FormData,
+    ): Promise<Outcome<{ problem: string; platform?: Platform }>>;
+    account(person: Person, form: FormData): Promise<Outcome<OnboardingPress | WooShopView>>;
+    shopPress(
+      person: Person,
+      operation: string,
+      form: FormData,
+      cookie: string | undefined,
+    ): Promise<Outcome<WooShopView>>;
+  };
   readonly surface: Surface;
   readonly gate: Gate;
   readonly signIn: {
@@ -298,11 +306,6 @@ export interface PageServices {
     /** `cookie` says whether a sign-in just failed to make this person's merchant. */
     merchant(person: Person, cookie: string | undefined): Outcome<MerchantView>;
     openMerchant(person: Person): Promise<Outcome<MerchantView>>;
-  };
-  /** Choosing the name buyers read, the last step of a new merchant's setup. */
-  readonly sellerName: {
-    page(): Outcome<ChooseNameView>;
-    choose(person: Person, form: FormData): Promise<Outcome<ChooseNameView>>;
   };
   /** Stops this merchant's future Agentify fulfillment for one order. */
   readonly fulfillment: {
@@ -366,6 +369,7 @@ export interface PageServices {
 }
 
 export interface PageParts {
+  readonly livePublicationPending?: (merchantId: string) => Promise<boolean>;
   readonly workspace?: WorkspaceDoor;
   readonly identity: DashboardIdentity;
   /**
@@ -668,9 +672,21 @@ const FRAME_WITHIN_MS = 2_000;
 /** A gateway answer as the frame takes it: the document, or that it failed. */
 type Read<T> = Readonly<{ read: true; value: T }> | Readonly<{ read: false }>;
 
-const readOf = async <T>(ask: () => Promise<Answer<T>>): Promise<Read<T>> => {
+const readOf = async <T>(
+  ask: () => Promise<Answer<T>>,
+  withinMs = FRAME_WITHIN_MS,
+): Promise<Read<T>> => {
   try {
-    const answered = await ask();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const answered = await Promise.race([
+      ask(),
+      new Promise<Answer<T>>((resolve) => {
+        timer = setTimeout(
+          () => resolve({ ok: false, status: 0, why: "the frame read did not answer in time" }),
+          withinMs,
+        );
+      }),
+    ]).finally(() => clearTimeout(timer));
     return answered.ok ? { read: true, value: answered.document } : { read: false };
   } catch {
     console.error("[dashboard] a read for the frame failed");
@@ -973,8 +989,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
     person: Person,
   ): Promise<Readonly<{ location: string; setCookies: readonly string[] }> | null> => {
     const attached = await identity.attachMerchant(person.id, registerMerchant);
-    if (attached.status === "attached") return { location: `${base}/choose-name`, setCookies: [] };
-    if (attached.status === "already-attached")
+    if (attached.status === "attached" || attached.status === "already-attached")
       return { location: `${base}/products`, setCookies: [] };
     if (attached.status === "person-missing") {
       return {
@@ -1114,6 +1129,250 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
   };
 
   return {
+    onboarding: {
+      async account(person, form) {
+        const gateway = gatewayAs(person, WALLET_CHANGE_MS);
+        const intent = typedIn(form, "intent");
+        const sellerName = typedIn(form, "seller_name");
+        const wallet = typedIn(form, "payout_wallet");
+        const refused = (
+          problem: string | null,
+          status = 400,
+          fields: Partial<OnboardingPress> = {},
+        ): Outcome<OnboardingPress> => ({
+          kind: "view",
+          status,
+          view: { screen: "onboarding", problem, sellerName, wallet, ...fields },
+        });
+        if (intent === "request-live-sales") {
+          const previous = await gateway.liveSalesRequest().catch(() => null);
+          if (previous === null || !previous.ok)
+            return refused("We couldn't read your request. Check again before asking.", 503, {
+              requestNeedsCheck: true,
+              requestResolvedProblem:
+                "We checked again and found no pending request. You can ask again.",
+            });
+          if (previous.document?.state === "pending")
+            return { kind: "redirect", location: `${base}/products` };
+          const wrong = sellerName === "" ? NAME_NEEDED : whatIsWrongWithTheName(sellerName);
+          if (wrong !== null) return refused(null, 400, { nameProblem: wrong });
+          const standing = await gateway.standing();
+          if (!standing.ok) return refused("We couldn't check your connection. Try again.", 503);
+          const evidence =
+            standing.document.through === "woocommerce"
+              ? ((await parts.woo?.onboardingFacts(person))?.evidence ?? null)
+              : standing.document.contactAlive && standing.document.lastContact !== null
+                ? { integration: "api" as const, connectedAt: standing.document.lastContact }
+                : null;
+          if (evidence === null)
+            return refused(
+              "Check your shop products or reconnect your code before asking for live sales.",
+              409,
+            );
+          const asked = await gateway.askForLiveSales(person.id, sellerName, evidence).catch(() => {
+            console.error("[dashboard] a live-sales request result could not be confirmed");
+            return null;
+          });
+          if (asked === null || (!asked.ok && outcomeOf(asked) === undefined))
+            return refused("We couldn't confirm your request. Check again before asking.", 503, {
+              requestNeedsCheck: true,
+              requestResolvedProblem:
+                "We checked again and found no pending request. You can ask again.",
+            });
+          if (!asked.ok) return refused(saidOf(asked), asked.status);
+          if (asked.document.kind === "moved" || asked.document.kind === "missing")
+            return refused(
+              "Your account changed while you asked, so the request wasn't sent. Check again before asking.",
+              409,
+            );
+          return { kind: "redirect", location: `${base}/products` };
+        }
+        if (intent !== "save-onboarding-profile" && intent !== "save-onboarding-wallet")
+          return refused("There is no such setup action.", 404);
+        const profile = intent === "save-onboarding-profile";
+        const nameWrong = profile
+          ? sellerName === ""
+            ? NAME_NEEDED
+            : whatIsWrongWithTheName(sellerName)
+          : null;
+        const walletWrong =
+          config.surfaceMode === "sandbox" && wallet === ""
+            ? null
+            : wallet === ""
+              ? WALLET_NEEDED
+              : whatIsWrongWithTheWallet(wallet);
+        if (nameWrong !== null || walletWrong !== null)
+          return refused(null, 400, {
+            ...(nameWrong === null ? {} : { nameProblem: nameWrong }),
+            ...(walletWrong === null ? {} : { walletProblem: walletWrong }),
+          });
+        const finished = async (): Promise<Outcome<OnboardingPress | WooShopView>> => {
+          if (!profile || !form.has("checked_job"))
+            return { kind: "redirect", location: `${base}/products` };
+          const savedProfile =
+            wallet === ""
+              ? "Your seller name was saved."
+              : "Your seller name and wallet were saved.";
+          const problem = (
+            said: string,
+            status: number,
+          ): Outcome<OnboardingPress | WooShopView> => ({
+            kind: "problem",
+            problem: { status, said: `${savedProfile} ${said}` },
+          });
+          if (parts.woo === null)
+            return problem("Connect your shop from Integrations before publishing.", 409);
+          try {
+            const publication = await parts.woo.importCatalogue(
+              person,
+              typedIn(form, "checked_job"),
+            );
+            if (publication.kind === "view")
+              return { ...publication, view: { ...publication.view, savedProfile } };
+            if (publication.kind === "problem")
+              return problem(publication.problem.said, publication.problem.status);
+            return problem(
+              "Your shop is no longer connected. Open Integrations to reconnect it before publishing.",
+              409,
+            );
+          } catch {
+            console.error("[dashboard] an onboarding publication result could not be confirmed");
+            return problem(
+              "We couldn't confirm whether publication started. Open Products before trying again.",
+              503,
+            );
+          }
+        };
+        if (profile) {
+          const named = await gateway.setSellerName(sellerName).catch(() => {
+            console.error("[dashboard] an onboarding seller-name result could not be confirmed");
+            return null;
+          });
+          if (named === null || !named.ok)
+            return refused(
+              "We couldn't confirm your seller name. Check Settings before saving again.",
+              503,
+            );
+        }
+        if (wallet === "" && config.surfaceMode === "sandbox") return await finished();
+        const saved = await gateway.setPayoutWallet(wallet).catch(() => {
+          console.error("[dashboard] an onboarding wallet result could not be confirmed");
+          return null;
+        });
+        const unconfirmedWallet = `${profile ? "Your seller name was saved. " : ""}We couldn't confirm your wallet. Check Settings before saving again.`;
+        if (saved === null) return refused(unconfirmedWallet, 503);
+        if (!saved.ok) {
+          const known =
+            saved.nothingRecorded === true || (saved.status >= 400 && saved.status < 500);
+          return refused(
+            known
+              ? `${profile ? "Your seller name was saved. " : ""}${saidOf(saved)}`
+              : unconfirmedWallet,
+            known ? saved.status : 503,
+          );
+        }
+        return await finished();
+      },
+      async shopPress(person, operation, form, cookie) {
+        const woo = parts.woo;
+        if (woo === null)
+          return {
+            kind: "problem",
+            problem: { status: 404, said: "There is no shop connector on this dashboard." },
+          };
+        const operations: Readonly<Record<string, () => Promise<Outcome<WooShopView>>>> = {
+          connect: () => woo.connect(person, form),
+          check: () => woo.checkCatalogue(person),
+          import: () =>
+            woo.importCatalogue(
+              person,
+              typeof form.get("checked_job") === "string" ? String(form.get("checked_job")) : null,
+            ),
+          site: () => woo.useShopSite(person),
+          rate: () => woo.setRate(person, form, cookie),
+          switch: () => woo.switchToShop(person),
+          disconnect: () => woo.disconnect(person, form),
+        };
+        const press = Object.hasOwn(operations, operation) ? operations[operation] : undefined;
+        if (press === undefined)
+          return {
+            kind: "problem",
+            problem: { status: 404, said: "There is no such shop action." },
+          };
+        const result = await press();
+        return result.kind === "redirect" && result.location.startsWith(`${base}/woocommerce`)
+          ? {
+              ...result,
+              location: result.location.replace(`${base}/woocommerce`, `${base}/products`),
+            }
+          : result;
+      },
+      async press(person, form) {
+        const intent = typedIn(form, "intent");
+        const platform = typedIn(form, "platform");
+        const chosen =
+          platform === "woocommerce" || platform === "api" || platform === "other"
+            ? platform
+            : undefined;
+        try {
+          if (intent === "acknowledge-test") {
+            if (config.surfaceMode !== "test" || typedIn(form, "understood") !== "yes")
+              return {
+                kind: "view",
+                status: 400,
+                view: { problem: "Read and acknowledge the test environment before starting." },
+              };
+            await identity.acknowledgeTest(person.id);
+          } else {
+            if (chosen === undefined)
+              return {
+                kind: "view",
+                status: 400,
+                view: { problem: "Choose one of the available ways to add products." },
+              };
+            const integration = await gatewayAs(person, FRAME_WITHIN_MS)
+              .integration()
+              .catch(() => null);
+            if (integration?.ok !== true)
+              console.error(
+                "[analytics] a platform answer went unrecorded: its integration was not read",
+              );
+            await identity.choosePlatform(
+              person.id,
+              chosen,
+              integration?.ok === true ? integration.document.through : undefined,
+            );
+          }
+        } catch {
+          return {
+            kind: "view",
+            status: 503,
+            view: {
+              problem:
+                intent === "acknowledge-test"
+                  ? "We couldn't save that. Try again."
+                  : "We couldn't save your answer. Choose again.",
+              ...(chosen === undefined ? {} : { platform: chosen }),
+            },
+          };
+        }
+        return { kind: "redirect", location: `${base}/products` };
+      },
+    },
+    async practice(person) {
+      try {
+        if (person.merchant === null || (await identity.analyticsOptedOut(person.id))) return;
+        await identity.observe({
+          name: "agc_practice_opened",
+          actor: "human",
+          source: "dashboard",
+          refs: { person: person.id, merchant: person.merchant.id },
+          fields: {},
+        });
+      } catch {
+        console.error("[analytics] a practice visit could not be recorded");
+      }
+    },
     shown(screen, person, status, userAgent) {
       if (person === null && fetchedByAProgram(userAgent)) return;
       const who = person === null ? {} : { refs: whoIn(person) };
@@ -1361,36 +1620,6 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       },
     },
 
-    sellerName: {
-      // Asks the gateway for nothing: a merchant arrives here a second after
-      // creation, with no name to draw. Coming back later gives the same form,
-      // which sets the name as settings does.
-      page: () => ({ kind: "view", view: { typed: "", rule: NAME_RULE } }),
-
-      async choose(person, form) {
-        // Trimmed rather than refused, because a leading space is a typing
-        // accident and the catalogue's rule would make a padded name a second
-        // spelling. A missing field reads as an empty one.
-        const named = once(form.getAll("seller_name"));
-        const typed = typeof named === "string" ? named.trim() : "";
-        // Empty means the button was pressed with nothing in the box; the
-        // catalogue's rule is not what they broke.
-        const problem = typed === "" ? NAME_NEEDED : whatIsWrongWithTheName(typed);
-        if (problem !== null) {
-          setupRefused(person, "seller_name", typed === "" ? "profile_missing" : "invalid_input");
-          return {
-            kind: "view",
-            status: 400,
-            view: { typed, problem, rule: problem === NAME_REFUSED ? null : NAME_RULE },
-          };
-        }
-        const set = await gatewayAs(person).setSellerName(typed);
-        if (!set.ok) return problemOf(set);
-        noted(person, "chose the name their products are sold under");
-        return { kind: "redirect", location: `${base}/products` };
-      },
-    },
-
     fulfillment: {
       async close(person, form) {
         const id = IdentifierSchema.safeParse(once(form.getAll("order_id")));
@@ -1557,16 +1786,23 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         const [cards, integration] = await Promise.all([gateway.cards(), gateway.integration()]);
         if (!cards.ok) return problemOf(cards);
         if (!integration.ok) return problemOf(integration);
-        return {
-          kind: "view",
-          view: cardsView(
-            cards.document,
-            config.publicBaseUrl,
-            parts.woo !== null,
-            integration.document,
-            query,
-          ),
-        };
+        const view = cardsView(cards.document, config.publicBaseUrl, integration.document, query);
+        if (parts.woo !== null) {
+          const [choices, shop] = await Promise.all([
+            identity.onboardingChoices(person.id),
+            parts.woo.stateOf(person.id),
+          ]);
+          if (
+            choices.platform === "woocommerce" ||
+            shop.kind !== "none" ||
+            integration.document.through === "woocommerce"
+          ) {
+            const opened = await parts.woo.shop(person, query);
+            if (opened.kind !== "view") return opened;
+            return { kind: "view", view: { ...view, shop: opened.view } };
+          }
+        }
+        return { kind: "view", view };
       },
 
       orders: ordersScreen,
@@ -1597,49 +1833,200 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       // deadline: a read that fails or is slow does not take the page down or
       // hold it long, and the banner says it could not check.
       async frame(person) {
-        const standing = await readOf(() => gatewayAs(person, FRAME_WITHIN_MS).standing());
-        return {
-          account: standing.read
-            ? accountOf(
-                {
-                  ...viewing(person, standing.value.sellerName),
-                  payout: { wallet: standing.value.payoutWallet },
-                  liveApproval: standing.value.liveApproved,
-                },
-                {
-                  selling: standing.value.selling,
-                  ...(standing.value.pendingPayoutWallet === null
-                    ? {}
-                    : {
-                        walletChange: {
-                          wallet: standing.value.pendingPayoutWallet.address,
-                          takesEffectAt: new Date(
-                            standing.value.pendingPayoutWallet.takesEffectAt,
-                          ).toISOString(),
-                        },
-                      }),
-                  unserved: standing.value.unserved,
-                  ...(standing.value.withdrawn === null
-                    ? {}
-                    : {
-                        withdrawn: {
-                          at: new Date(standing.value.withdrawn.at).toISOString(),
-                          note: standing.value.withdrawn.note,
-                        },
-                      }),
-                  ...(standing.value.outOfTouch === null
-                    ? {}
-                    : {
-                        outOfTouch: {
-                          since:
-                            standing.value.outOfTouch.since === null
-                              ? null
-                              : new Date(standing.value.outOfTouch.since).toISOString(),
-                        },
-                      }),
-                },
+        const woo = parts.woo;
+        const frameStarted = performance.now();
+        const publicationPending = parts.livePublicationPending;
+        const merchantId = person.merchant?.id;
+        const gateway = gatewayAs(person, FRAME_WITHIN_MS);
+        const [standing, choices, shop, request, shopFacts, publication] = await Promise.all([
+          readOf(() => gateway.standing()),
+          readOf(async () => ({
+            ok: true as const,
+            document: await identity.onboardingChoices(person.id),
+          })),
+          woo === null
+            ? Promise.resolve({ kind: "none" as const })
+            : readOf(async () => ({
+                ok: true as const,
+                document: await woo.stateOf(person.id),
+              })).then((read) => (read.read ? read.value : { kind: "unread" as const })),
+          config.surfaceMode === "live"
+            ? readOf(() => gateway.liveSalesRequest())
+            : Promise.resolve({ read: true as const, value: null }),
+          woo === null
+            ? Promise.resolve({
+                read: true as const,
+                value: { evidence: null, connectedBefore: false },
+              })
+            : readOf(async () => ({
+                ok: true as const,
+                document: await woo.onboardingFacts(person),
+              })),
+          config.surfaceMode === "live" &&
+          merchantId !== undefined &&
+          publicationPending !== undefined
+            ? readOf(async () => ({
+                ok: true as const,
+                document: await publicationPending(merchantId),
+              }))
+            : Promise.resolve({ read: true as const, value: false }),
+        ]);
+        const remaining = Math.max(1, FRAME_WITHIN_MS - (performance.now() - frameStarted));
+        const keys =
+          standing.read && !standing.value.hasProducts && standing.value.through === "api"
+            ? await readOf(() => gatewayAs(person, remaining).keys(), remaining)
+            : { read: true as const, value: [] };
+        const unread =
+          !standing.read ||
+          !choices.read ||
+          !keys.read ||
+          !request.read ||
+          !shopFacts.read ||
+          !publication.read ||
+          shop.kind === "unread";
+        const value = standing.read ? standing.value : null;
+        const facts = {
+          mode: config.surfaceMode,
+          platform: choices.read ? choices.value.platform : null,
+          testAcknowledged: choices.read && choices.value.testAcknowledged,
+          cards: standing.read && standing.value.hasProducts ? 1 : 0,
+          keys: keys.read ? keys.value.length : 0,
+          contact: value?.lastContact == null ? null : new Date(value.lastContact).toISOString(),
+          contactAlive: value?.contactAlive === true,
+          outOfTouch: value?.outOfTouch != null,
+          shop:
+            shop.kind === "unread"
+              ? ("none" as const)
+              : shop.kind === "connected" && shop.shop.permissions !== "read_write"
+                ? ("read-only" as const)
+                : shop.kind,
+          through: value?.through ?? "api",
+          sellerName: value?.sellerName != null,
+          payoutWallet: value?.payoutWallet != null,
+          liveApproved: value?.liveApproved ?? false,
+          selling: value?.selling ?? "open",
+          unread,
+          withdrawn: value?.withdrawn != null,
+          walletChange: value?.pendingPayoutWallet != null,
+          unserved: value?.unserved ?? false,
+          request:
+            request.read && request.value?.state === "pending"
+              ? ("pending" as const)
+              : request.read && request.value?.state === "declined"
+                ? ("declined" as const)
+                : ("none" as const),
+          ready:
+            shopFacts.read && shopFacts.value.evidence?.integration === "woocommerce"
+              ? shopFacts.value.evidence.ready
+              : null,
+          connectedBefore: shopFacts.read && shopFacts.value.connectedBefore,
+        };
+        const step = nextStepOf(facts);
+        const prefill =
+          value?.sellerName == null &&
+          (step.account === "request" || step.account === "test-profile") &&
+          facts.through === "woocommerce" &&
+          woo !== null
+            ? await readOf(
+                async () => ({
+                  ok: true as const,
+                  document: await woo.sellerName(person),
+                }),
+                Math.max(1, FRAME_WITHIN_MS - (performance.now() - frameStarted)),
               )
-            : accountOf(viewing(person), { unread: true }),
+            : { read: true as const, value: null };
+        const onboarding: OnboardingView = {
+          mode: config.surfaceMode,
+          step,
+          publicationPending: publication.read && publication.value && value?.liveApproved === true,
+          keys: keys.read ? keysView(keys.value) : null,
+          contact: facts.contact === null ? null : momentView(facts.contact),
+          origin: config.publicBaseUrl,
+          unread,
+          ...(value === null
+            ? {}
+            : {
+                account: onboardingAccountView(step, {
+                  mode: config.surfaceMode,
+                  sellerName: value.sellerName ?? (prefill.read ? prefill.value : null) ?? "",
+                  savedWallet: value.payoutWallet,
+                  nameRule: NAME_RULE,
+                  wallet:
+                    config.surfaceMode !== "sandbox" &&
+                    (value.payoutWallet === null || step.account === "test-profile")
+                      ? walletEntryView(
+                          config.surfaceMode,
+                          value.commissionRate,
+                          config.walletChain,
+                        )
+                      : null,
+                  email: person.email,
+                  request:
+                    request.read && request.value?.state === "pending"
+                      ? { at: momentView(new Date(request.value.requestedAt).toISOString()) }
+                      : null,
+                  decision:
+                    request.read &&
+                    request.value?.state === "declined" &&
+                    request.value.decline !== null
+                      ? {
+                          at: momentView(new Date(request.value.decline.at).toISOString()),
+                          note: request.value.decline.reason,
+                        }
+                      : value.withdrawn === null
+                        ? null
+                        : {
+                            at: momentView(new Date(value.withdrawn.at).toISOString()),
+                            note: value.withdrawn.note,
+                          },
+                }),
+              }),
+        };
+        const account = standing.read
+          ? accountOf(
+              {
+                ...viewing(person, standing.value.sellerName),
+                payout: { wallet: standing.value.payoutWallet },
+                liveApproval: standing.value.liveApproved,
+              },
+              {
+                unread,
+                selling: standing.value.selling,
+                ...(standing.value.pendingPayoutWallet === null
+                  ? {}
+                  : {
+                      walletChange: {
+                        wallet: standing.value.pendingPayoutWallet.address,
+                        takesEffectAt: new Date(
+                          standing.value.pendingPayoutWallet.takesEffectAt,
+                        ).toISOString(),
+                      },
+                    }),
+                unserved: standing.value.unserved,
+                ...(standing.value.withdrawn === null
+                  ? {}
+                  : {
+                      withdrawn: {
+                        at: new Date(standing.value.withdrawn.at).toISOString(),
+                        note: standing.value.withdrawn.note,
+                      },
+                    }),
+                ...(standing.value.outOfTouch === null
+                  ? {}
+                  : {
+                      outOfTouch: {
+                        since:
+                          standing.value.outOfTouch.since === null
+                            ? null
+                            : new Date(standing.value.outOfTouch.since).toISOString(),
+                      },
+                    }),
+              },
+            )
+          : accountOf(viewing(person), { unread: true });
+        return {
+          onboarding,
+          account: account.filter((note) => note.reason === step.reason).slice(0, 1),
         };
       },
     },

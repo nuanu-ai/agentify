@@ -8,6 +8,7 @@
 
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { QUOTE_RESPONSE_MS } from "@agentify/core/published";
 import {
   buyOverHttp,
   type Harness,
@@ -28,11 +29,14 @@ import {
 } from "@nuanu-ai/agentify-contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { gatewayFor } from "./gateway.js";
+import { shopPublisherFor, workShopJob } from "./shop-job-runner.js";
+import { cardsView } from "./views.js";
 import { cardsFromTheShop, merchantItemIdFor, type StoreProduct } from "./woo-catalog.js";
 import type { QuotedSale } from "./woo-quoted-sale.js";
 import type { WooRequest } from "./woo-request.js";
 import * as wooTransport from "./woo-request.js";
 import {
+  connectedCatalogue,
   createTheOrderInTheShop,
   createTheParcelInTheShop,
   type EligibleWooProduct,
@@ -57,6 +61,7 @@ import {
   quoteFromTheShop,
   startWooWorker,
   turnOnce,
+  type WorkingParts,
 } from "./woo-worker.js";
 
 beforeEach(() => {
@@ -75,7 +80,10 @@ beforeEach(() => {
     return original(url, init);
   });
 });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
 
 /** Fixture facts echoed by the gateway on an authenticated paid merchant order. */
 type Filling = ProductionFilling & { readonly offered?: QuotedSale | null };
@@ -141,6 +149,9 @@ const RULED_OUT: ProductInspection = {
   why: "This product cannot be imported: it is out of stock.",
   again: false,
   saidNo: true,
+};
+const noCatalogueMutation = (): never => {
+  throw new Error("No catalogue mutation belongs to this case");
 };
 const MERCHANT_EMAIL = "merchant@example.com";
 
@@ -1051,6 +1062,7 @@ describe("the whole way through, against a real gateway", () => {
           merchant: { id: open?.merchant.id ?? "" },
         }),
       },
+      publisherFor: noCatalogueMutation,
       clientFor: (acting) => gatewayFor(application, acting),
       now: () => new Date("2026-09-14T12:00:00.000Z"),
       waitSeconds: 1,
@@ -1095,6 +1107,7 @@ describe("the whole way through, against a real gateway", () => {
           merchant: { id: open?.merchant.id ?? "" },
         }),
       },
+      publisherFor: noCatalogueMutation,
       clientFor: () => gateway,
       now: () => new Date("2026-09-14T12:00:00.000Z"),
       waitSeconds: 1,
@@ -1144,6 +1157,7 @@ describe("the whole way through, against a real gateway", () => {
             merchant: { id: "mer_1" },
           }),
         },
+        publisherFor: noCatalogueMutation,
         clientFor: () => gateway,
         now: () => new Date("2026-09-14T12:00:00.000Z"),
         inspectProduct: async () => {
@@ -1222,6 +1236,7 @@ describe("a price question off the merchant's stream", () => {
           merchant: { id: "mer_1" },
         }),
       },
+      publisherFor: noCatalogueMutation,
       clientFor: () => gateway,
       now: () => new Date(NOW),
       inspectProduct,
@@ -1319,6 +1334,7 @@ describe("a price question off the merchant's stream", () => {
             merchant: { id: "mer_1" },
           }),
         },
+        publisherFor: noCatalogueMutation,
         clientFor: () => gateway,
         now: () => new Date(NOW),
         placeOrder: shop.place,
@@ -1403,7 +1419,6 @@ describe("a parcel's price question", () => {
     shops: WooShops,
     rates: (place: unknown) => Promise<RatesRead>,
     asked: Record<string, unknown> = question,
-    quoteWithinMs?: number,
   ): Promise<unknown> => {
     // Stays null when the worker says nothing.
     let answer: unknown = null;
@@ -1434,6 +1449,7 @@ describe("a parcel's price question", () => {
           merchant: { id: "mer_1" },
         }),
       },
+      publisherFor: noCatalogueMutation,
       clientFor: () => gateway,
       now: () => new Date(NOW),
       inspectProduct: async () => theTote,
@@ -1441,7 +1457,6 @@ describe("a parcel's price question", () => {
         productId === "28"
           ? rates(where)
           : { ok: false, why: "another product", again: false, saidNo: true },
-      ...(quoteWithinMs === undefined ? {} : { quoteWithinMs }),
     });
     return answer;
   };
@@ -1533,6 +1548,7 @@ describe("a parcel's price question", () => {
           merchant: { id: "mer_1" },
         }),
       },
+      publisherFor: noCatalogueMutation,
       clientFor: () => gateway,
       now: () => new Date(NOW),
       inspectProduct: async () =>
@@ -1587,21 +1603,14 @@ describe("a parcel's price question", () => {
   });
 
   it("says nothing when the shop is slower than the price check allows", async () => {
-    // After five seconds the gateway reads the shop as silent. Saying "not
-    // available" would send the agent elsewhere; saying nothing tells it the
-    // price check went unanswered, which is true. On a WooCommerce card silence
-    // refuses the sale rather than selling at the listed price.
-    const started = Date.now();
-
-    const answer = await answering(
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    const answer = answering(
       memoryWooShops(),
       () => new Promise<RatesRead>(() => undefined),
       question,
-      50,
     );
-
-    expect(answer).toBeNull();
-    expect(Date.now() - started).toBeLessThan(2_000);
+    await vi.advanceTimersByTimeAsync(QUOTE_RESPONSE_MS);
+    expect(await answer).toBeNull();
   });
 
   it("offers no price from a cart that does not hold the one parcel the question is about", async () => {
@@ -2336,7 +2345,7 @@ describe("a parcel from a shop that calculates tax", () => {
       },
       new Date(NOW),
       filling,
-    );
+    ).then((result) => result?.answer ?? null);
 
   it("prices a parcel from a shop entering prices before tax at its cart's whole price for the place", async () => {
     const shop = parts(IN_SEATTLE);
@@ -2659,17 +2668,20 @@ describe("a parcel from a shop that calculates tax", () => {
             aShopSetTo({ ...inBerlin, woocommerce_tax_round_at_subtotal: round }),
           ),
       };
-      const answered = await quoteFromTheShop(
-        connection(),
-        {
-          merchant_item_id: merchantItemIdFor("https://shop.example.com", "11"),
-          price_id: `prc_download_${round}`,
-          purpose: "purchase",
-          expires_at: "2026-09-14T12:01:00.000Z",
-        },
-        new Date(NOW),
-        filling,
-      );
+      const answered =
+        (
+          await quoteFromTheShop(
+            connection(),
+            {
+              merchant_item_id: merchantItemIdFor("https://shop.example.com", "11"),
+              price_id: `prc_download_${round}`,
+              purpose: "purchase",
+              expires_at: "2026-09-14T12:01:00.000Z",
+            },
+            new Date(NOW),
+            filling,
+          )
+        )?.answer ?? null;
 
       expect(answered, round).toMatchObject(answer);
     }
@@ -2753,7 +2765,8 @@ describe("a parcel from a shop that calculates tax", () => {
         ...(place === null ? {} : { ship_to: place }),
       };
 
-      const answer = await quoteFromTheShop(connection(), question, new Date(NOW), filling);
+      const answer =
+        (await quoteFromTheShop(connection(), question, new Date(NOW), filling))?.answer ?? null;
       expect(answer, what).toMatchObject({ available: true });
       settings = after;
       const price = answer?.available === true ? answer.price.amount : "";
@@ -3055,12 +3068,15 @@ describe("a parcel the whole way through, against a real gateway", () => {
         through: "woocommerce",
         // The harness hands the question over as the envelope carried it.
         onQuote: async (question) => {
-          const answer = await quoteFromTheShop(
-            connected,
-            QuoteRequestSchema.parse(question),
-            new Date(harnessed.now()),
-            parts,
-          );
+          const answer =
+            (
+              await quoteFromTheShop(
+                connected,
+                QuoteRequestSchema.parse(question),
+                new Date(harnessed.now()),
+                parts,
+              )
+            )?.answer ?? null;
           if (answer === null) throw new Error("the shop answered and the worker said nothing");
           return answer;
         },
@@ -3204,12 +3220,15 @@ describe("a parcel the whole way through, against a real gateway", () => {
       {
         through: "woocommerce",
         onQuote: async (question) => {
-          const answer = await quoteFromTheShop(
-            connected,
-            QuoteRequestSchema.parse(question),
-            new Date(harnessed.now()),
-            parts,
-          );
+          const answer =
+            (
+              await quoteFromTheShop(
+                connected,
+                QuoteRequestSchema.parse(question),
+                new Date(harnessed.now()),
+                parts,
+              )
+            )?.answer ?? null;
           if (answer === null) throw new Error("the shop answered and the worker said nothing");
           return answer;
         },
@@ -3287,6 +3306,7 @@ describe("the worker that keeps every connected shop served", () => {
           merchant: { id: "mer_1" },
         }),
       },
+      publisherFor: noCatalogueMutation,
       clientFor: () => gateway.client as never,
       waitSeconds: 0,
       betweenTurnsMs: 5,
@@ -3324,6 +3344,7 @@ describe("the worker that keeps every connected shop served", () => {
           merchant: { id: "mer_1" },
         }),
       },
+      publisherFor: noCatalogueMutation,
       clientFor: () => gateway.client as never,
       waitSeconds: 0,
       betweenTurnsMs: 5,
@@ -3371,6 +3392,7 @@ describe("the worker that keeps every connected shop served", () => {
           merchant: { id: "mer_1" },
         }),
       },
+      publisherFor: noCatalogueMutation,
       clientFor: () => countingGateway().client as never,
       waitSeconds: 0,
       betweenTurnsMs: 5,
@@ -3587,6 +3609,7 @@ describe("what the worker writes in the merchant's log when something fails", ()
           merchant: { id: "mer_1" },
         }),
       },
+      publisherFor: noCatalogueMutation,
       clientFor: () => ({}) as never,
       waitSeconds: 0,
       betweenTurnsMs: 5,
@@ -3639,6 +3662,7 @@ describe("what the worker writes in the merchant's log when something fails", ()
           merchant: { id: "mer_1" },
         }),
       },
+      publisherFor: noCatalogueMutation,
       clientFor: () => gateway,
     };
 
@@ -3863,6 +3887,7 @@ describe("bounded work within one connected shop", () => {
           merchant: { id: application.merchant.id },
         }),
       },
+      publisherFor: noCatalogueMutation,
       clientFor: (acting: { merchantId: string; email: string }) =>
         gatewayFor(application.gateway, acting),
       betweenTurnsMs: 2,
@@ -3884,6 +3909,7 @@ describe("bounded work within one connected shop", () => {
   });
 
   it("takes on a paid inclusive-tax parcel while free quote carts remain in cleanup", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
     const release = Promise.withResolvers<void>();
     const sessions = new Map<string, boolean>();
     const freeTokens = new Set<string>();
@@ -4023,7 +4049,6 @@ describe("bounded work within one connected shop", () => {
     const worker = startWooWorker({
       shops,
       now: () => new Date(),
-      quoteWithinMs: 30,
       betweenTurnsMs: 2,
       waitSeconds: 0,
       identity: {
@@ -4034,6 +4059,7 @@ describe("bounded work within one connected shop", () => {
           merchant: { id: "mer_1" },
         }),
       },
+      publisherFor: noCatalogueMutation,
       clientFor: () => client as never,
       inspectProduct: async () => ({
         ok: true,
@@ -4053,11 +4079,12 @@ describe("bounded work within one connected shop", () => {
       }),
     });
     try {
-      const result = await Promise.race([
-        accepted.promise.then(() => true),
-        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 1_000)),
-      ]);
-      expect(result).toBe(true);
+      let finished = false;
+      accepted.promise.then(() => {
+        finished = true;
+      });
+      await vi.advanceTimersByTimeAsync(QUOTE_RESPONSE_MS);
+      expect(finished).toBe(true);
       expect(removing).toBe(8);
       expect(await shops.knownOrder(paid.id)).toEqual({
         kind: "placed_parcel",
@@ -4066,7 +4093,9 @@ describe("bounded work within one connected shop", () => {
       });
     } finally {
       release.resolve();
-      await worker.stop();
+      const stopping = worker.stop();
+      await vi.runAllTimersAsync();
+      await stopping;
       request.mockRestore();
     }
   });
@@ -4125,6 +4154,7 @@ describe("bounded work within one connected shop", () => {
           merchant: { id: "mer_1" },
         }),
       },
+      publisherFor: noCatalogueMutation,
       clientFor: () => gateway as never,
       betweenTurnsMs: 5,
       waitSeconds: 0,
@@ -4147,6 +4177,7 @@ describe("bounded work within one connected shop", () => {
   });
 
   it("waits for a timed-out quote's cart cleanup before shutdown completes", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
     const removing = Promise.withResolvers<void>();
     const finishRemoval = Promise.withResolvers<void>();
     const emptied = Promise.withResolvers<void>();
@@ -4229,10 +4260,10 @@ describe("bounded work within one connected shop", () => {
           merchant: { id: "mer_1" },
         }),
       },
+      publisherFor: noCatalogueMutation,
       clientFor: () => gateway as never,
       betweenTurnsMs: 5,
       waitSeconds: 0,
-      quoteWithinMs: 1,
       inspectProduct: async () =>
         showing({
           kind: "parcel",
@@ -4245,12 +4276,12 @@ describe("bounded work within one connected shop", () => {
     let stopping: Promise<void> | undefined;
     try {
       await removing.promise;
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      await vi.advanceTimersByTimeAsync(QUOTE_RESPONSE_MS);
       let stopped = false;
       stopping = worker.stop().then(() => {
         stopped = true;
       });
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      await vi.advanceTimersByTimeAsync(20);
       expect(stopped).toBe(false);
       expect(held).toBe(true);
     } finally {
@@ -4507,6 +4538,7 @@ describe("a shop whose guest carts are short", () => {
           merchant: { id: "mer_1" },
         }),
       },
+      publisherFor: noCatalogueMutation,
       clientFor: () => client as never,
       betweenTurnsMs: 2,
       waitSeconds: 0,
@@ -4776,5 +4808,491 @@ describe("a paid order that carries no quoted price", () => {
     expect(cartsAsked).toBe(0);
     expect(shop.placed).toEqual([]);
     expect(await shops.knownOrder(order.id)).toMatchObject({ kind: "precreate_refused" });
+  });
+});
+
+describe("a direct shop refusal during an unpaid purchase", () => {
+  let h: Harness;
+  let server: Server;
+  let origin: string;
+  let response: { status: number; body?: Record<string, unknown> };
+  let rawStatus: number;
+  let currency: string;
+  let connected: WooConnection;
+  let shops: WooShops;
+  let itemId: string;
+  let owner: { id: string; email: string; confirmed: boolean; merchant: { id: string } };
+  const document = () => ({
+    id: 11,
+    name: "Agentify guide.txt",
+    description: "A downloadable guide.",
+    type: "simple",
+    status: "publish",
+    purchasable: true,
+    stock_status: "instock",
+    manage_stock: false,
+    sold_individually: false,
+    virtual: true,
+    downloadable: true,
+    download_limit: -1,
+    download_expiry: -1,
+    price: "25.00",
+    tax_status: "taxable",
+    downloads: [{ id: "dl_guide", name: "Guide", file: origin + "/protected/guide.txt" }],
+  });
+  const settings: Readonly<Record<string, string>> = {
+    woocommerce_currency: "USD",
+    woocommerce_price_num_decimals: "2",
+    woocommerce_calc_taxes: "no",
+    woocommerce_ship_to_countries: "",
+    woocommerce_ship_to_destination: "shipping",
+    woocommerce_file_download_method: "force",
+    woocommerce_downloads_require_login: "no",
+    woocommerce_downloads_grant_access_after_payment: "yes",
+    woocommerce_downloads_redirect_fallback_allowed: "no",
+  };
+  beforeEach(async () => {
+    response = { status: 200 };
+    rawStatus = 403;
+    currency = "USD";
+    server = createServer((request, reply) => {
+      const path = new URL(request.url ?? "/", "http://localhost").pathname;
+      const setting = path.split("/").at(-1) ?? "";
+      const raw = path === "/protected/guide.txt";
+      const status = raw ? rawStatus : path.includes("/settings/") ? 200 : response.status;
+      reply.writeHead(status, { "content-type": "application/json", "X-WP-Total": "1" });
+      const product = response.body ?? document();
+      reply.end(
+        JSON.stringify(
+          raw
+            ? {}
+            : path.includes("/settings/")
+              ? {
+                  id: setting,
+                  value: setting === "woocommerce_currency" ? currency : settings[setting],
+                }
+              : path.endsWith("/products")
+                ? [product]
+                : product,
+        ),
+      );
+    });
+    server.listen(0, "127.0.0.1");
+    await new Promise<void>((resolve) => server.once("listening", resolve));
+    origin = "http://127.0.0.1:" + (server.address() as AddressInfo).port;
+    h = await harness({ QUOTE_RESPONSE_MS: "300" });
+    shops = memoryWooShops();
+    connected = { ...connection(), shopUrl: origin, currency: { code: "USD", decimals: 2 } };
+    await shops.connect(connected);
+    owner = {
+      id: connected.accountId,
+      email: MERCHANT_EMAIL,
+      confirmed: true,
+      merchant: { id: h.merchant.id },
+    };
+    await h.gateway.sellThrough(h.merchant.id, "woocommerce");
+    const { cards } = cardsFromTheShop([aProduct()], origin);
+    const published = await h.gateway.publishCard(h.merchant.id, cards[0]?.card, "woocommerce");
+    if (!published.ok) throw new Error("The shop card was not published");
+    itemId = published.id;
+    await h.gateway.poll(h.merchant.id, 0, { through: "woocommerce" });
+  });
+  afterEach(async () => {
+    await h?.stop();
+    server?.closeAllConnections();
+    await new Promise<void>((resolve) => server?.close(() => resolve()));
+  });
+  const work = (overrides: Partial<WorkingParts> = {}) =>
+    turnOnce(connected, {
+      shops,
+      identity: { byId: async () => owner },
+      clientFor: (acting) => gatewayFor(h.gateway, acting),
+      publisherFor: (acting) => shopPublisherFor(h.gateway, acting, shops),
+      now: () => new Date(h.now()),
+      waitSeconds: 1,
+      inspectProduct: (keys, item) => inspectProductInTheShop(keys, item, fetch),
+      ...overrides,
+    });
+  const sync = async () => {
+    await shops.jobs.request({
+      kind: "publish",
+      merchantId: h.merchant.id,
+      accountId: owner.id,
+      connectionRevision: connected.revision,
+      shopUrl: origin,
+      currency: { code: "USD", decimals: 2 },
+      rate: null,
+    });
+    const job = await shops.jobs.claim();
+    if (!job) throw new Error("No publication accepted");
+    await workShopJob(job, {
+      shops,
+      identity: { byId: async () => owner },
+      clientFor: (acting) => gatewayFor(h.gateway, acting),
+      publisherFor: (acting) => shopPublisherFor(h.gateway, acting, shops),
+      catalogue: (keys) => connectedCatalogue(keys, fetch),
+      surfaceMode: "sandbox",
+      guestCart: async () => null,
+    });
+  };
+  it.each(["purchase", "sync"] as const)(
+    "%s explains whether the shop stopped selling a product or changed its conditions",
+    async (path) => {
+      for (const [change, message] of [
+        [{ status: "draft" }, "Off sale: your shop stopped selling it"],
+        [{ type: "variable" }, "Off sale: it changed in your shop, and Agentify can't sell it now"],
+      ] as const) {
+        response = { status: 200, body: { ...document(), ...change } };
+        if (path === "purchase") {
+          const purchase = h.gateway.beginPurchase(itemId, {});
+          await work();
+          expect(await purchase).toMatchObject({ step: "not_selling" });
+        } else await sync();
+        const answer = await gatewayFor(
+          h.gateway,
+          { merchantId: h.merchant.id, email: owner.email },
+          undefined,
+          shops.cardPauses,
+        ).cards();
+        if (!answer.ok) throw new Error("The Products page could not read its cards.");
+        expect(
+          cardsView(answer.document, origin).listing.rows.find((row) => row.id === itemId)?.state
+            .text,
+        ).toBe(message);
+        if (path === "purchase") {
+          response = { status: 200 };
+          await sync();
+        }
+      }
+    },
+  );
+  it("withdraws a directly deleted product and a later real sync restores the same card", async () => {
+    response = { status: 404, body: { code: "woocommerce_rest_product_invalid_id" } };
+    const purchase = h.gateway.beginPurchase(itemId, {});
+    await work();
+    expect(await purchase).toMatchObject({ step: "not_selling" });
+    expect(await h.store.cardById(itemId)).toMatchObject({
+      paused: true,
+    });
+    expect((await h.gateway.catalog()).items.map((one) => one.id)).not.toContain(itemId);
+    response = { status: 200 };
+    await sync();
+    expect(await h.store.cardById(itemId)).toMatchObject({
+      paused: false,
+    });
+    expect((await h.gateway.catalog()).items.map((one) => one.id)).toContain(itemId);
+  });
+  it.each([
+    ["unpublished", { status: "draft" }, 200, 403, "stopped_selling"],
+    ["not offered", { purchasable: false }, 200, 403, "stopped_selling"],
+    ["unsupported variation", { type: "variable" }, 200, 403, "changed"],
+    ["stock tracking", { manage_stock: true }, 200, 403, "changed"],
+    ["limited download", { download_limit: 1 }, 200, 403, "changed"],
+    ["public file", {}, 200, 200, "changed"],
+    ["public range", {}, 200, 206, "changed"],
+    [
+      "temporarily out of stock",
+      { stock_status: "outofstock", purchasable: false },
+      200,
+      403,
+      false,
+    ],
+    ["generic product 404", { code: "rest_no_route" }, 404, 403, false],
+    ["revoked access", { code: "woocommerce_rest_cannot_view" }, 401, 403, false],
+    ["wrong product identity", { id: 99 }, 200, 403, false],
+    ["malformed price", { price: "unreadable" }, 200, 403, false],
+    ["missing raw file", {}, 200, 404, false],
+    ["raw redirect", {}, 200, 302, false],
+    ["raw accepted", {}, 200, 202, false],
+    ["raw empty", {}, 200, 204, false],
+  ] as const)(
+    "persists only the direct product verdict: %s",
+    async (_name, change, status, raw, withdraw) => {
+      response = { status, body: { ...document(), ...change } };
+      rawStatus = raw;
+      const purchase = h.gateway.beginPurchase(itemId, {});
+      await work();
+      const outcome = await purchase;
+      expect(outcome.step).toBe(
+        withdraw || _name === "temporarily out of stock" ? "not_selling" : "seller_busy",
+      );
+      expect(await h.store.cardById(itemId)).toMatchObject({
+        paused: !!withdraw,
+      });
+      expect((await h.gateway.catalog()).items.some((one) => one.id === itemId)).toBe(!withdraw);
+      expect((await shops.cardPauses.list(h.merchant.id))[itemId]?.reason ?? null).toBe(
+        withdraw || null,
+      );
+    },
+  );
+  it.each([
+    ["id", { id: "", name: "Guide" }],
+    ["name", { id: "dl_guide", name: " " }],
+  ] as const)(
+    "takes a card off sale as changed whose download has an empty %s, since a purchase delivers the shop's download",
+    async (_, download) => {
+      response = {
+        status: 200,
+        body: {
+          ...document(),
+          downloads: [{ ...download, file: `${origin}/protected/guide.txt` }],
+        },
+      };
+      const purchase = h.gateway.beginPurchase(itemId, {});
+      await work();
+      expect((await purchase).step).toBe("not_selling");
+      expect(await h.store.cardById(itemId)).toMatchObject({ paused: true });
+      expect((await shops.cardPauses.list(h.merchant.id))[itemId]?.reason).toBe("changed");
+    },
+  );
+  it("does not pause a product merely because no conversion rate is set", async () => {
+    currency = "EUR";
+    const purchase = h.gateway.beginPurchase(itemId, {});
+    await work();
+    expect(await purchase).toMatchObject({ step: "not_selling" });
+    expect(await h.store.cardById(itemId)).toMatchObject({
+      paused: false,
+    });
+  });
+  it.each(["renewed", "other origin", "another merchant", "API selected"] as const)(
+    "a held old inspection cannot pause after %s",
+    async (changed) => {
+      response = { status: 404, body: { code: "woocommerce_rest_product_invalid_id" } };
+      const started = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      const purchase = h.gateway.beginPurchase(itemId, {});
+      const turned = work({
+        inspectProduct: async (keys, item) => {
+          const read = await inspectProductInTheShop(keys, item, fetch);
+          started.resolve();
+          await release.promise;
+          return read;
+        },
+      });
+      await started.promise;
+      if (changed === "renewed") await shops.connect({ ...connected, revision: "grant-2" });
+      if (changed === "other origin")
+        await shops.connect({ ...connected, shopUrl: "https://other.example" });
+      if (changed === "another merchant")
+        owner = { ...owner, merchant: { id: (await h.addMerchant()).id } };
+      if (changed === "API selected") await h.gateway.sellThrough(h.merchant.id, "api");
+      release.resolve();
+      await turned;
+      expect(await purchase).toMatchObject({ step: "not_selling" });
+      expect(await h.store.cardById(itemId)).toMatchObject({
+        paused: false,
+      });
+    },
+  );
+  it("a timed-out inspection never pauses later when its real shop answer arrives", async () => {
+    response = { status: 404, body: { code: "woocommerce_rest_product_invalid_id" } };
+    const release = Promise.withResolvers<void>();
+    const finished = Promise.withResolvers<void>();
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    const purchase = h.gateway.beginPurchase(itemId, {});
+    const turning = work({
+      inspectProduct: async (keys, item) => {
+        await release.promise;
+        const read = await inspectProductInTheShop(keys, item, fetch);
+        finished.resolve();
+        return read;
+      },
+    });
+    await vi.advanceTimersByTimeAsync(QUOTE_RESPONSE_MS);
+    await turning;
+    expect(await purchase).toMatchObject({ step: "seller_busy" });
+    vi.useRealTimers();
+    release.resolve();
+    await finished.promise;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(await h.store.cardById(itemId)).toMatchObject({
+      paused: false,
+    });
+  });
+  it("still tells the buyer unavailable when the owned pause cannot be confirmed", async () => {
+    response = { status: 404, body: { code: "woocommerce_rest_product_invalid_id" } };
+    const purchase = h.gateway.beginPurchase(itemId, {});
+    const lines = await loggedWhile(() =>
+      work({
+        publisherFor: (acting) => ({
+          ...shopPublisherFor(h.gateway, acting, shops),
+          pause: async () => {
+            throw new Error("cs_private should never be logged");
+          },
+        }),
+      }),
+    );
+    expect(await purchase).toMatchObject({ step: "not_selling" });
+    expect(await h.store.cardById(itemId)).toMatchObject({
+      paused: false,
+    });
+    expect(JSON.stringify(lines)).not.toContain("cs_private");
+  });
+  it("keeps a timed-out rate read inside the original price deadline without claiming unavailable", async () => {
+    currency = "EUR";
+    const inspected = await inspectProductInTheShop(
+      connected,
+      merchantItemIdFor(origin, "11"),
+      fetch,
+    );
+    const releaseInspection = Promise.withResolvers<void>();
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    const entered = Promise.withResolvers<void>();
+    const purchase = h.gateway.beginPurchase(itemId, {});
+    let finished = false;
+    const turning = work({
+      inspectProduct: async () => {
+        await releaseInspection.promise;
+        return inspected;
+      },
+      shops: {
+        ...shops,
+        currentRate: () => {
+          entered.resolve();
+          return new Promise(() => {});
+        },
+      },
+    }).then(() => {
+      finished = true;
+    });
+    await vi.advanceTimersByTimeAsync(8_000);
+    releaseInspection.resolve();
+    await entered.promise;
+    await vi.advanceTimersByTimeAsync(QUOTE_RESPONSE_MS - 8_000);
+    expect(finished).toBe(true);
+    await turning;
+    expect(await purchase).toMatchObject({ step: "seller_busy" });
+    expect(await h.store.cardById(itemId)).toMatchObject({
+      paused: false,
+    });
+  });
+
+  const address = {
+    name: "Nuanu Reception",
+    line_one: "Jl. Raya Kediri, Beraban",
+    city: "Tabanan",
+    state: "BA",
+    postal_code: "82121",
+    country: "ID",
+    phone_number: "+62 000 0000 0000",
+  };
+  const parcel = async () => {
+    const { cards } = cardsFromTheShop(
+      [
+        aProduct({
+          id: 28,
+          virtual: false,
+          downloadable: false,
+          downloads: [],
+        }),
+      ],
+      origin,
+    );
+    const made = await h.gateway.publishCard(h.merchant.id, cards[0]?.card, "woocommerce");
+    if (!made.ok) throw new Error("Parcel was not published");
+    response = {
+      status: 200,
+      body: { ...document(), id: 28, virtual: false, downloadable: false, downloads: [] },
+    };
+    return made.id;
+  };
+  it("withdraws a directly deleted parcel even while its concurrent cart never answers", async () => {
+    const id = await parcel();
+    response = { status: 404, body: { code: "woocommerce_rest_product_invalid_id" } };
+    const purchase = h.gateway.beginPurchase(id, {}, address);
+    await work({ shippingRates: () => new Promise(() => {}) });
+    expect(await purchase).toMatchObject({ step: "not_selling" });
+    expect(await h.store.cardById(id)).toMatchObject({
+      paused: true,
+    });
+  });
+  it.each(["restriction", "no rate", "another currency"] as const)(
+    "a buyer-specific cart %s never pauses an eligible parcel",
+    async (refusal) => {
+      const id = await parcel();
+      const cart = aCartHoldingTheTote(1, refusal === "restriction" ? [A_CART_ERROR] : []);
+      const request: WooRequest = async (url, init) => {
+        const reply = await cart(url, init);
+        const body = await reply.json();
+        if (refusal === "no rate") for (const pack of body.shipping_rates) pack.shipping_rates = [];
+        if (refusal === "another currency")
+          for (const pack of body.shipping_rates)
+            for (const rate of pack.shipping_rates) rate.currency_code = "EUR";
+        return Response.json(body, { status: reply.status, headers: reply.headers });
+      };
+      const purchase = h.gateway.beginPurchase(id, {}, address);
+      await work({
+        shippingRates: (keys, product, where) =>
+          shippingRatesInTheShop(keys.shopUrl, product, where, request),
+      });
+      expect(await purchase).toMatchObject({ step: "not_selling" });
+      expect(await h.store.cardById(id)).toMatchObject({
+        paused: false,
+      });
+    },
+  );
+
+  it("seller ownership wins a delayed withdrawal and a subsequent sync keeps that pause", async () => {
+    response = { status: 404, body: { code: "woocommerce_rest_product_invalid_id" } };
+    const atCards = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const purchase = h.gateway.beginPurchase(itemId, {});
+    const turning = work({
+      publisherFor: (acting) => {
+        const publisher = shopPublisherFor(h.gateway, acting, shops);
+        return {
+          ...publisher,
+          cards: async () => {
+            const cards = await publisher.cards();
+            atCards.resolve();
+            await release.promise;
+            return cards;
+          },
+        };
+      },
+    });
+    await atCards.promise;
+    expect(await purchase).toMatchObject({ step: "not_selling" });
+    await h.gateway.setCardPaused(h.merchant.id, itemId, true, {
+      kind: "signed_in",
+      email: MERCHANT_EMAIL,
+    });
+    release.resolve();
+    await turning;
+    expect(await h.store.cardById(itemId)).toMatchObject({
+      paused: true,
+    });
+    response = { status: 200 };
+    await sync();
+    expect(await h.store.cardById(itemId)).toMatchObject({
+      paused: true,
+    });
+    expect((await h.gateway.catalog()).items.map((one) => one.id)).not.toContain(itemId);
+  });
+  it("a withdrawal changes neither another merchant's same product nor an SDK card", async () => {
+    const other = await h.addMerchant();
+    await h.gateway.sellThrough(other.id, "woocommerce");
+    const stored = await h.store.cardById(itemId);
+    if (!stored) throw new Error("Missing published card");
+    const otherCard = await h.gateway.publishCard(other.id, stored.card, "woocommerce");
+    await h.gateway.sellThrough(h.merchant.id, "api");
+    const sdk = await h.gateway.publishCard(h.merchant.id, {
+      ...stored.card,
+      merchant_item_id: "sdk-control",
+    });
+    await h.gateway.sellThrough(h.merchant.id, "woocommerce");
+    await h.gateway.poll(h.merchant.id, 0, { through: "woocommerce" });
+    if (!otherCard.ok || !sdk.ok) throw new Error("Control cards were not published");
+    response = { status: 404, body: { code: "woocommerce_rest_product_invalid_id" } };
+    const purchase = h.gateway.beginPurchase(itemId, {});
+    await work();
+    expect(await purchase).toMatchObject({ step: "not_selling" });
+    expect(await h.store.cardById(itemId)).toMatchObject({
+      paused: true,
+    });
+    for (const id of [otherCard.id, sdk.id])
+      expect(await h.store.cardById(id)).toMatchObject({
+        paused: false,
+      });
   });
 });

@@ -1,0 +1,217 @@
+.start {
+  container-type: inline-size;
+  padding-block: var(--space-section);
+}
+.start h2,
+.code h2 {
+  font-size: var(--text-heading);
+  margin-bottom: var(--gap-heading);
+}
+.choices {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(200px, 1fr));
+  gap: var(--space-card);
+  margin-top: var(--space-section);
+}
+.choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  min-width: 0;
+  padding: var(--space-card);
+  border: var(--hairline) solid var(--line-strong);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  color: var(--fg);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+.choice:hover {
+  border-color: var(--accent);
+}
+.choice:disabled {
+  cursor: wait;
+}
+.mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--platform-logo-size);
+  height: var(--platform-logo-size);
+  margin-bottom: var(--space-block);
+  flex-shrink: 0;
+}
+.mark svg {
+  display: block;
+  width: var(--platform-icon-size);
+  height: var(--platform-icon-size);
+  color: var(--fg-2);
+}
+.mark img {
+  display: block;
+  width: var(--platform-logo-size);
+  height: var(--platform-logo-size);
+}
+
+.choice strong {
+  display: block;
+  margin-bottom: var(--space-tight);
+  font-size: var(--text-body);
+  font-weight: 500;
+}
+.choice span span {
+  display: block;
+  color: var(--fg-2);
+  font-size: var(--text-small);
+}
+.practice {
+  margin-top: var(--space-card);
+  font-size: var(--text-small);
+}
+.code {
+  overflow-wrap: anywhere;
+  max-width: 40rem;
+  padding: var(--panel-inset);
+  margin-block: var(--space-card);
+}
+.code > p + p {
+  margin-top: var(--gap-paragraph);
+}
+.code > p:not(.back) + h2 {
+  margin-top: var(--space-card);
+}
+.code > :global(.step-actions) {
+  margin-top: var(--gap-actions);
+}
+.steps {
+  padding-left: var(--space-card);
+}
+.steps li {
+  padding-left: var(--space-tight);
+  margin-block: var(--space-section);
+}
+.steps h3 {
+  font-size: var(--text-heading);
+  margin-bottom: var(--gap-heading);
+}
+.steps :global(.issue) {
+  padding-block: 0;
+}
+.steps p + p,
+.steps .command + p {
+  margin-top: var(--gap-paragraph);
+}
+.steps li:last-child {
+  margin-bottom: 0;
+}
+.command {
+  display: flex;
+  align-items: center;
+  gap: var(--space-control);
+  background: var(--raised);
+  padding: var(--space-control);
+  border-radius: var(--radius-control);
+}
+.command code {
+  overflow-wrap: anywhere;
+  flex: 1;
+}
+.packageName {
+  white-space: nowrap;
+}
+.command button {
+  flex-shrink: 0;
+}
+.back {
+  margin: var(--space-card) 0;
+  font-size: var(--text-small);
+}
+
+.origin {
+  overflow-wrap: anywhere;
+}
+@container (max-width: 648px) {
+  .choices {
+    grid-template-columns: 1fr;
+    gap: var(--space-block);
+  }
+  .choice {
+    display: flex;
+    flex-direction: row;
+    gap: var(--space-card);
+    align-items: flex-start;
+  }
+  .mark {
+    margin-bottom: 0;
+  }
+}
+@media (max-width: 480px) {
+  .command {
+    flex-wrap: wrap;
+  }
+  .command code {
+    flex-basis: 100%;
+  }
+}
+
+.wooMark {
+  object-fit: contain;
+  object-position: center;
+}
+
+.choice[data-selected="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.connection {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-tight) var(--space-control);
+  margin: 0 0 var(--gap-paragraph);
+  color: var(--fg-2);
+}
+.connection > span:last-child {
+  font-size: var(--text-small);
+  color: var(--muted);
+}
+.codeState {
+  margin-block: var(--space-card);
+}
+
+.account {
+  display: grid;
+  gap: var(--space-card);
+  margin-block: var(--space-card);
+  overflow-wrap: anywhere;
+}
+.account .profile {
+  width: 100%;
+  max-width: none;
+}
+.profile > * {
+  max-width: 100%;
+}
+.profile > p {
+  max-width: calc(40rem - 2 * var(--space-card));
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-small);
+}
+.profile > :global(.field) {
+  width: 100%;
+  max-width: calc(40rem - 2 * var(--space-card));
+}
+.walletAction {
+  display: contents;
+}
+.walletAction > p:last-child {
+  order: 1;
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-small);
+}

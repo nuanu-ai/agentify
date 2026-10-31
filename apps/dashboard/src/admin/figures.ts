@@ -128,7 +128,8 @@ const durationWritten = (ms: number): string => {
   return `${withUnit(Math.floor(hours / 24), "d")} ${withUnit(hours % 24, "h")}`;
 };
 
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const plural = (n: number, one: string, many = `${one}s`) =>
+  `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
 
 const usd = (amount: string) => withUnit(amount, "USD");
 
@@ -196,6 +197,8 @@ interface NeedsYouItem {
   readonly why: string;
   readonly owner: string | null;
   readonly created: MomentView;
+  readonly overdue?: boolean;
+  readonly requested?: MomentView;
 }
 
 /**
@@ -562,21 +565,28 @@ const needsYouOf = (
 ): { items: readonly NeedsYouItem[]; of: number } => ({
   of: waiting.of,
   items: waiting.merchants.map((merchant) => {
-    const products =
-      merchant.cardsPublished === 0
-        ? "No product is published yet."
-        : `${plural(merchant.cardsPublished, "product")} ${merchant.cardsPublished === 1 ? "waits" : "wait"} off sale until you admit.`;
-    const integration =
-      merchant.integration === "woocommerce"
-        ? "Sells through a WooCommerce shop."
-        : merchant.lastContact === null
-          ? "Worker never connected."
-          : `Last connected ${durationWritten(at - merchant.lastContact)} ago.`;
+    const evidence = merchant.request.evidence;
+    const count = (n: number) => n.toLocaleString("en-US");
+    const connection =
+      evidence === null
+        ? "Connection and product check not known for this request"
+        : evidence.integration === "api"
+          ? `Code connected ${durationWritten(Math.max(0, at - evidence.connectedAt))} ago`
+          : `${count(evidence.ready)} of ${evidence.total === null ? `${count(evidence.read)} checked` : count(evidence.total)} products ready${evidence.complete ? "" : " (check incomplete)"}`;
     return {
       merchantId: merchant.merchantId,
       name: merchant.serviceName,
-      site: merchant.sellerSite === null ? null : new URL(merchant.sellerSite).host,
-      why: `Only admission is missing. ${products} ${integration}`,
+      site:
+        evidence?.integration === "woocommerce"
+          ? evidence.host
+          : evidence?.integration === "api"
+            ? "Own code"
+            : merchant.sellerSite === null
+              ? null
+              : new URL(merchant.sellerSite).host,
+      why: `${connection}${merchant.hasWallet ? "" : " · No payout wallet yet"}`,
+      overdue: merchant.request.reminderDueAt <= at,
+      requested: momentOf(merchant.request.requestedAt),
       owner: owners?.get(merchant.merchantId) ?? null,
       created: momentOf(merchant.createdAt),
     };
@@ -742,22 +752,22 @@ export function overviewViewOf(reads: OverviewReads): OverviewView {
   const tiles: TileView[] = [
     {
       label: "Merchants selling",
-      figure: merchants === null ? null : String(merchants.selling),
-      ...(merchants === null ? {} : { of: `of ${merchants.total}` }),
+      figure: merchants === null ? null : merchants.selling.toLocaleString("en-US"),
+      ...(merchants === null ? {} : { of: `of ${merchants.total.toLocaleString("en-US")}` }),
       aside:
         merchants === null
           ? "With a product on sale now"
           : live
-            ? `${merchants.admitted} admitted · ${merchants.waitingForAdmission} waiting for admission`
+            ? `${merchants.admitted.toLocaleString("en-US")} admitted · ${merchants.waitingForAdmission.toLocaleString("en-US")} waiting for admission`
             : "With a product on sale now",
     },
     {
       label: "Orders · 7\u00a0days",
-      figure: orders === null ? null : String(orders.count),
+      figure: orders === null ? null : orders.count.toLocaleString("en-US"),
       aside:
         orders === null
           ? "Orders made in the last seven days"
-          : `${orders.delivered} delivered · ${orders.paymentUnknown} unknown · ${orders.count - orders.delivered - orders.paymentUnknown} other.`,
+          : `${orders.delivered.toLocaleString("en-US")} delivered · ${orders.paymentUnknown.toLocaleString("en-US")} unknown · ${(orders.count - orders.delivered - orders.paymentUnknown).toLocaleString("en-US")} other.`,
     },
     {
       label: "Settled · 7\u00a0days",
@@ -815,7 +825,7 @@ export function overviewViewOf(reads: OverviewReads): OverviewView {
             kind: "read",
             value: {
               lines: journal.lines,
-              cut: `${journal.lines.length} of ${plural(journal.total, "action")} here`,
+              cut: `${journal.lines.length.toLocaleString("en-US")} of ${plural(journal.total, "action")} here`,
             },
           },
   };
@@ -921,7 +931,7 @@ export function moneyViewOf(reads: MoneyReads): MoneyView {
               money.undated.count === 0
                 ? ""
                 : period === "all"
-                  ? `, ${money.undated.count} of them with no moment of payment recorded`
+                  ? `, ${money.undated.count.toLocaleString("en-US")} of them with no moment of payment recorded`
                   : `; ${plural(money.undated.count, "sale")} with no moment of payment recorded ${money.undated.count === 1 ? "is" : "are"} counted in all time only`
             }`,
     },
@@ -948,7 +958,7 @@ export function moneyViewOf(reads: MoneyReads): MoneyView {
           : money.noDelivery.count === 0
             ? "None"
             : `${plural(money.noDelivery.count, "order")}: ${money.noDeliveryByState
-                .map((each) => `${each.count} ${stateWords(each.state)}`)
+                .map((each) => `${each.count.toLocaleString("en-US")} ${stateWords(each.state)}`)
                 .join(", ")}`,
     },
     {
@@ -1018,7 +1028,7 @@ export function moneyViewOf(reads: MoneyReads): MoneyView {
                 earlier: !row.inForce,
               })),
               cut: [
-                `${splits.rows.length} of ${plural(splits.of, "split")} shown`,
+                `${splits.rows.length.toLocaleString("en-US")} of ${plural(splits.of, "split")} shown`,
                 ...(splits.empty === 0 ? [] : [`${splits.empty} hold nothing settled`]),
                 ...(splits.waiting === 0
                   ? []

@@ -10,8 +10,9 @@ import { defineConfig } from "vite";
  * routes use becomes a chunk of its own that a route module imports, and a
  * click then fetches the route module first and only then discovers the chunk:
  * a second round trip on the way to the page. As one chunk, which the frame is
- * drawn from, every page has loaded it before any click. The operator's
- * workspace keeps its components out of it, its frame in the shared package
+ * drawn from, every page has loaded it before any click. React's DOM runtime
+ * is required on every hydrated page, so it shares that chunk too. The
+ * operator's workspace keeps its components out of it, its frame in the shared package
  * among them: its pages are sent with no script, and a merchant's page would
  * only carry them.
  */
@@ -30,7 +31,32 @@ export default defineConfig({
       external: ["brotli-wasm"],
       output: {
         manualChunks(id) {
-          return /\/packages\/ui\/(?!src\/workspace)|\/app\/components\/(?!admin)/.test(id)
+          // The catalogue shares progress observation, not the detailed product groups.
+          if (/\/app\/screens\/shop-job(?:-result)?\.[jt]sx?$/.test(id)) return "shop-job-detail";
+          if (/\/app\/screens\/shop-job-(?:outcome|progress|observer)\.[jt]sx?$/.test(id))
+            return "shop-job";
+          // Code entry and lists share copying, without importing each other's controls.
+          if (id.endsWith("/app/display/clipboard.tsx")) return "clipboard";
+          if (id.endsWith("/app/screens/listing.tsx")) return "listing";
+          if (/\/app\/screens\/(?:products-catalog|shop-job-summary)\.[jt]sx?$/.test(id))
+            return "products-catalog";
+          // The shared observation chunk owns its CSS names.
+          if (id.endsWith("/app/screens/shop-job.module.css")) return "shop-job";
+          if (
+            /\/app\/(screens\/onboarding-account|wallet\/(?:address-button|address|echo))\.[jt]sx?$/.test(
+              id,
+            )
+          )
+            return "onboarding-account";
+          // Code entry shares this class map, so it cannot belong to the wallet form's chunk.
+          if (id.endsWith("/app/screens/onboarding.module.css")) return "onboarding-style";
+          if (/\/app\/screens\/(?:woocommerce|woo-connected)\.[jt]sx?$/.test(id))
+            return "woocommerce";
+          if (/\/app\/display\/(?:list|panel-head)\.[jt]sx?$/.test(id)) return "components";
+          if (/\/app\/dialogs\/(?:test-welcome|locked-dialog)\.[jt]sx?$/.test(id))
+            return "account-notes";
+          return /\/packages\/ui\/(?!src\/workspace)|\/app\/components\/(?!admin)/.test(id) ||
+            /\/node_modules\/react-dom\//.test(id)
             ? "components"
             : undefined;
         },

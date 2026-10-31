@@ -190,6 +190,34 @@
       "when": 1793174400000,
       "tag": "0026_woo_cart_resources",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1793371457825,
+      "tag": "0027_onboarding_choices",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1793379863954,
+      "tag": "0028_shop_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1793395023520,
+      "tag": "0029_live_sales_mail",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1793396090437,
+      "tag": "0030_live_publication",
+      "breakpoints": true
     }
   ]
 }

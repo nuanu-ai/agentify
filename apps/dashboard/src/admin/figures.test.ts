@@ -98,12 +98,15 @@ async function served(
   }> = {},
 ): Promise<Served> {
   const channel = CHANNELS[options.channel ?? "test"];
-  const harnessed = await harness({
-    ...channel,
-    ...(options.channel === "live"
-      ? { CDP_API_KEY_ID: "key-id", CDP_API_KEY_SECRET: A_SECRET }
-      : {}),
-  });
+  const harnessed = await harness(
+    {
+      ...channel,
+      ...(options.channel === "live"
+        ? { CDP_API_KEY_ID: "key-id", CDP_API_KEY_SECRET: A_SECRET }
+        : {}),
+    },
+    { liveSalesNotices: { stage: () => () => undefined } },
+  );
   const config = loadConfig({
     DATABASE_URL: "postgres://nobody@nowhere:5432/unused",
     AUTH_SECRET: TEST_AUTH_SECRET,
@@ -195,18 +198,30 @@ describe("the overview", () => {
     expect(view.chart.kind).toBe("read");
   });
 
-  it("names a merchant with a seller name and a wallet who waits for admission on the live channel", async () => {
-    // The harness admits its merchant on the live channel; withdrawn, it waits again.
+  it("lists a pending request and leaves a withdrawal without a new request outside Needs you", async () => {
     const { harnessed, pages } = await served({ channel: "live" });
 
     const admitted = viewOf<OverviewView>(
       await pages.overview(operatorAt(harnessed), new URLSearchParams()),
     ).needsYou.admission;
     await harnessed.store.withdrawLiveApproval(harnessed.merchant.id);
+    const withdrawn = viewOf<OverviewView>(
+      await pages.overview(operatorAt(harnessed), new URLSearchParams()),
+    ).needsYou.admission;
+    const pending = await harnessed.store.requestLiveSales(
+      {
+        merchantId: harnessed.merchant.id,
+        accountId: PERSON.id,
+        sellerName: "Freeland",
+        evidence: { integration: "api", connectedAt: harnessed.now() },
+      },
+      harnessed.now(),
+    );
+    expect(pending.kind).toBe("requested");
     const waiting = viewOf<OverviewView>(
       await pages.overview(operatorAt(harnessed), new URLSearchParams()),
     ).needsYou.admission;
-
+    expect(withdrawn?.kind === "read" && withdrawn.value.of).toBe(0);
     expect(admitted?.kind === "read" && admitted.value.of).toBe(0);
     expect(
       waiting?.kind === "read" && waiting.value.items.map((item) => item.merchantId),

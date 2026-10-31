@@ -20,9 +20,9 @@ import { IN_THE_JOURNAL } from "../../../src/admin/words.js";
 import { ActionForm, InPlace, opensOn } from "../../components/admin/action-form.js";
 import { PressAnswer } from "../../components/admin/press-answer.js";
 import { CouldNotBeRead } from "../../components/admin/unknown.js";
-import { ListEmpty } from "../../components/list.js";
-import { CutNote, ListTools, NothingHere } from "../../components/listing.js";
 import { Moment } from "../../components/moment.js";
+import { ListEmpty } from "../../display/list.js";
+import { CutNote, ListTools, NothingHere } from "../listing.js";
 import styles from "./accounts.module.css";
 import { JournalList, Whole } from "./journal.js";
 
@@ -64,7 +64,7 @@ function Row({ row }: Readonly<{ row: AccountRowView }>) {
         <Merchant merchant={row.merchant} />
       </div>
       <div className="cell cell-fact num">
-        {row.openSessions}
+        {row.openSessions.toLocaleString("en-US")}
         <span className="said-on-narrow">
           {row.openSessions === 1 ? " open session" : " open sessions"}
         </span>
@@ -84,7 +84,7 @@ function Row({ row }: Readonly<{ row: AccountRowView }>) {
 }
 
 const plural = (count: number, one: string, many: string): string =>
-  `${count} ${count === 1 ? one : many}`;
+  `${count.toLocaleString("en-US")} ${count === 1 ? one : many}`;
 
 export function AccountsScreen({ view }: Readonly<{ view: AccountsListView }>) {
   const { listing } = view;
@@ -288,7 +288,7 @@ export function AccountScreen({ view }: Readonly<{ view: AccountPageView }>) {
               <Fact label="Merchant">
                 <Merchant merchant={account.merchant} />
               </Fact>
-              <Fact label="Open sessions">{account.openSessions}</Fact>
+              <Fact label="Open sessions">{account.openSessions.toLocaleString("en-US")}</Fact>
               <Fact label="Newest session">
                 {account.newestSession === null ? (
                   "None open"
@@ -399,9 +399,9 @@ export function AccountScreen({ view }: Readonly<{ view: AccountPageView }>) {
               <JournalList lines={view.history.lines} label="This account's history" />
               {view.history.total > view.history.lines.length ? (
                 <p className="cut">
-                  <span>{`The newest ${view.history.lines.length} of ${view.history.total} rows.`}</span>
+                  <span>{`The newest ${view.history.lines.length.toLocaleString("en-US")} of ${view.history.total.toLocaleString("en-US")} rows.`}</span>
                   <Link to={`/admin/journal?q=${encodeURIComponent(account.id)}`}>
-                    All {view.history.total} in the journal
+                    All {view.history.total.toLocaleString("en-US")} in the journal
                   </Link>
                 </p>
               ) : null}

@@ -1,9 +1,9 @@
 /**
  * The dashboard's identity, registration and WooCommerce tables. They share a
  * database with the gateway's, so the names are prefixed with their owner. The
- * ad reports read the gateway's `cards` by name and write nothing there; only
- * forgetting an account in the test channel's workspace writes a gateway
- * table. Migration
+ * ad reports read the gateway's `cards` by name. The connector writes an
+ * ordinary card pause with its own ownership record; forgetting an account
+ * also removes gateway rows. Migration
  * bookkeeping is kept in its own table, for the reason `src/database.ts` gives.
  */
 
@@ -18,6 +18,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type { WooCartResourceState } from "./woo-cart-resources.js";
 
@@ -67,10 +68,16 @@ export const accounts = pgTable(
      * name, whoever acted.
      */
     analyticsOptOut: boolean("analytics_opt_out").notNull().default(false),
+    onboardingPlatform: text("onboarding_platform"),
+    testAcknowledged: boolean("test_acknowledged").notNull().default(false),
   },
   // An empty identifier is neither a merchant nor none, and the code reading a
   // row refuses it rather than guessing.
   (table) => [
+    check(
+      "dashboard_accounts_onboarding_platform",
+      sql`${table.onboardingPlatform} is null or ${table.onboardingPlatform} in ('woocommerce', 'api', 'other')`,
+    ),
     check(
       "dashboard_accounts_merchant_named",
       sql`${table.merchantId} is null or ${table.merchantId} <> ''`,
@@ -462,4 +469,134 @@ export const wooOrders = pgTable(
     placedAt: timestamp("placed_at", { withTimezone: true, mode: "date" }),
   },
   (table) => [index("dashboard_woo_orders_account_idx").on(table.accountId)],
+);
+
+/** The only unfinished shop task for a merchant; its result is dashboard-owned. */
+export const shopJobs = pgTable(
+  "dashboard_shop_jobs",
+  {
+    id: text("id").primaryKey(),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    merchantId: text("merchant_id").notNull(),
+    kind: text("kind").notNull(),
+    status: text("status").notNull(),
+    data: jsonb("data").$type<import("./shop-jobs.js").ShopJob>().notNull(),
+  },
+  (table) => [
+    uniqueIndex("dashboard_shop_jobs_active")
+      .on(table.merchantId)
+      .where(sql.raw("status in ('queued', 'running')")),
+  ],
+);
+export const shopJobProducts = pgTable(
+  "dashboard_shop_job_products",
+  {
+    jobId: text("job_id")
+      .notNull()
+      .references(() => shopJobs.id, { onDelete: "cascade" }),
+    productId: text("product_id").notNull(),
+    data: jsonb("data").$type<import("./shop-jobs.js").JobProduct>().notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.jobId, table.productId] })],
+);
+
+/** Private recipient intents; erasing either named account erases their mail material. */
+export const liveSalesMail = pgTable(
+  "dashboard_live_sales_mail",
+  {
+    id: text("id").primaryKey(),
+    requestId: text("request_id").notNull(),
+    merchantId: text("merchant_id").notNull(),
+    recipientAccountId: text("recipient_account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    requesterAccountId: text("requester_account_id").references(() => accounts.id, {
+      onDelete: "cascade",
+    }),
+    kind: text("kind")
+      .$type<import("./live-sales-events.js").LiveSalesMailEvent["kind"]>()
+      .notNull(),
+    event: jsonb("event").$type<import("./live-sales-events.js").LiveSalesMailEvent>().notNull(),
+    message: jsonb("message").$type<import("./mail.js").Message>(),
+    state: text("state")
+      .$type<"pending" | "accepted" | "suppressed" | "given_up">()
+      .notNull()
+      .default("pending"),
+    suppression: text("suppression"),
+    attempts: integer("attempts").notNull().default(0),
+    lastOutcome: text("last_outcome").$type<import("./mail.js").Handover>(),
+    createdAt: moment("created_at"),
+    nextAttemptAt: moment("next_attempt_at"),
+    preparedAt: timestamp("prepared_at", { withTimezone: true, mode: "date" }),
+    preparedFrom: text("prepared_from"),
+    preparedProvider: text("prepared_provider"),
+    lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true, mode: "date" }),
+    settledAt: timestamp("settled_at", { withTimezone: true, mode: "date" }),
+  },
+  (table) => [
+    uniqueIndex("dashboard_live_sales_mail_recipient_event").on(
+      table.requestId,
+      table.kind,
+      table.recipientAccountId,
+    ),
+    index("dashboard_live_sales_mail_due")
+      .on(table.nextAttemptAt)
+      .where(sql`${table.state} = 'pending'`),
+    index("dashboard_live_sales_mail_requester").on(table.requesterAccountId),
+    index("dashboard_live_sales_mail_recipient").on(table.recipientAccountId),
+    check(
+      "dashboard_live_sales_mail_kind",
+      sql`${table.kind} in ('requested', 'declined', 'reminder', 'admitted', 'published', 'withdrawn')`,
+    ),
+    check(
+      "dashboard_live_sales_mail_state",
+      sql`${table.state} in ('pending', 'accepted', 'suppressed', 'given_up')`,
+    ),
+    check(
+      "dashboard_live_sales_mail_outcome",
+      sql`${table.lastOutcome} is null or ${table.lastOutcome} in ('accepted', 'refused', 'held', 'unknown')`,
+    ),
+    check("dashboard_live_sales_mail_attempts", sql`${table.attempts} >= 0`),
+  ],
+);
+
+/** A saved admission/first-wallet trigger survives an active catalogue check. */
+export const livePublications = pgTable(
+  "dashboard_live_publications",
+  {
+    id: text("id").primaryKey(),
+    merchantId: text("merchant_id").notNull(),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    event: jsonb("event").$type<import("@agentify/gateway/live-sales").LiveSalesChange>().notNull(),
+    jobId: text("job_id"),
+    state: text("state").$type<"pending" | "completed">().notNull().default("pending"),
+    createdAt: moment("created_at"),
+  },
+  (table) => [
+    index("dashboard_live_publications_pending")
+      .on(table.createdAt)
+      .where(sql`${table.state} = 'pending'`),
+    check("dashboard_live_publications_state", sql`${table.state} in ('pending', 'completed')`),
+  ],
+);
+
+export const wooCardPauses = pgTable(
+  "dashboard_woo_card_pauses",
+  {
+    merchantId: text("merchant_id").notNull(),
+    itemId: text("item_id").notNull(),
+    reason: text("reason").$type<"stopped_selling" | "changed">().notNull(),
+    pausedAt: timestamp("paused_at", { withTimezone: true, mode: "date" }).notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.merchantId, table.itemId] }),
+    check(
+      "dashboard_woo_card_pause_reason",
+      sql`${table.reason} in ('stopped_selling', 'changed')`,
+    ),
+  ],
 );

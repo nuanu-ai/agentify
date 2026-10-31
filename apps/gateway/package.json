@@ -14,7 +14,8 @@
     "./testing": "./src/testing/harness.ts",
     "./testing/database": "./src/testing/database.ts",
     "./config": "./src/config.ts",
-    "./start": "./src/start.ts"
+    "./start": "./src/start.ts",
+    "./live-sales": "./src/live-sales.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",

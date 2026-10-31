@@ -7,12 +7,14 @@
  * a document here.
  */
 
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactElement } from "react";
+import { renderToString } from "react-dom/server";
 import { createRoutesStub } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
 import { keysView, newKeyView } from "../../src/keys.js";
-import { KeysScreen, NewKeyScreen } from "./keys.js";
+import { KeysScreen } from "./keys.js";
+import { NewKeyScreen } from "./new-key.js";
 
 const PERSON = "owner@example.com";
 const SECRET = "csk_test_the-secret-shown-once";
@@ -68,7 +70,7 @@ describe("the copy button beside a new key", () => {
     shown();
 
     await act(async () => {
-      fireEvent.click(screen.getByText("Copy key"));
+      fireEvent.click(screen.getByRole("button", { name: "Copy" }));
     });
 
     expect(held).toBe(SECRET);
@@ -80,10 +82,32 @@ describe("the copy button beside a new key", () => {
     shown();
 
     await act(async () => {
-      fireEvent.click(screen.getByText("Copy key"));
+      fireEvent.click(screen.getByRole("button", { name: "Copy" }));
     });
 
-    expect(screen.getByRole("status").textContent).toMatch(/could not copy.*select.*key/i);
-    expect(screen.getByText(SECRET)).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toMatch(/couldn.t copy.*select.*key/i);
+    expect(screen.getByDisplayValue(SECRET)).toBeTruthy();
   });
+});
+
+describe("finishing key issuance without the page's script", () => {
+  it.each([
+    { doneTo: undefined, destination: "/keys" },
+    { doneTo: "/products", destination: "/products" },
+  ])(
+    "returns to $destination while the secret remains available to copy",
+    ({ doneTo, destination }) => {
+      const page = document.createElement("div");
+      page.innerHTML = renderToString(
+        routed(() => <NewKeyScreen view={newKeyView("a worker", SECRET)} doneTo={doneTo} />),
+      );
+
+      expect(within(page).getByText(SECRET)).toBeTruthy();
+      expect(
+        within(page)
+          .getByRole("link", { name: /done|back to your api keys/i })
+          .getAttribute("href"),
+      ).toBe(destination);
+    },
+  );
 });

@@ -37,6 +37,7 @@ const SESSIONS_MAX = 200;
  * shop, and a copy travels by email.
  */
 const LEFT_OUT = [
+  "Shop work keeps the latest check and the latest publication with their observed product results. A stopped job does not describe products it could not read.",
   "Sign-in secrets: the session token, any password, and Google's tokens. Each would let whoever holds this file sign in as you.",
   "Your API keys and your WooCommerce shop's consumer key and secret. Agentify keeps only a fingerprint of an API key, and a shop key would give write access to your shop.",
   "Other people: colleagues who sign in to the same merchant, the buyers of your orders (what they typed, their addresses and payments, the key that opens their order) and the operator who acted on your account, who is named only as an operator.",
@@ -229,7 +230,7 @@ export const postgresPersonRecords = (pool: Pool): PersonRecords => ({
 interface CopySources {
   readonly people: PersonRecords;
   readonly store: Store;
-  readonly wooShops: Pick<WooShops, "connectionOf">;
+  readonly wooShops: Pick<WooShops, "connectionOf" | "jobs" | "cardPauses">;
 }
 
 /** The newest `max` of `rows`, and how many there are. */
@@ -283,15 +284,18 @@ async function merchantCopyOf(sources: CopySources, merchantId: string, accountI
   const { store } = sources;
   const merchant = await store.merchantById(merchantId);
   if (merchant === null) return null;
-  const [keys, polledAt, cards, orders, networks, shop, journal] = await Promise.all([
-    store.keysOf(merchantId),
-    store.pollRecorded(merchantId),
-    store.cards(merchantId),
-    store.orders(merchantId),
-    store.networksWithPayoutSplits(),
-    sources.wooShops.connectionOf(accountId),
-    journalOf(store, { merchant: merchantId }),
-  ]);
+  const [keys, polledAt, cards, orders, networks, shop, journal, jobs, connectorPauses] =
+    await Promise.all([
+      store.keysOf(merchantId),
+      store.pollRecorded(merchantId),
+      store.cards(merchantId),
+      store.orders(merchantId),
+      store.networksWithPayoutSplits(),
+      sources.wooShops.connectionOf(accountId),
+      journalOf(store, { merchant: merchantId }),
+      sources.wooShops.jobs.snapshots(merchantId),
+      sources.wooShops.cardPauses.list(merchantId),
+    ]);
   const splits = (await Promise.all(networks.map((network) => store.payoutSplitsOn(network))))
     .flat()
     .filter((split) => split.merchantId === merchantId);
@@ -329,6 +333,8 @@ async function merchantCopyOf(sources: CopySources, merchantId: string, accountI
         id: card.id,
         published_at: instant(card.asOf),
         paused: card.paused,
+        integration_paused_at: instant(connectorPauses[card.id]?.at ?? null),
+        integration_pause_reason: connectorPauses[card.id]?.reason ?? null,
         integration: card.integration,
         card: card.card,
       })),
@@ -352,6 +358,37 @@ async function merchantCopyOf(sources: CopySources, merchantId: string, accountI
             connected_at: iso(shop.connectedAt),
             currency: shop.currency?.code ?? null,
           },
+    shop_jobs: jobs.map(({ job, rows }) => ({
+      id: job.id,
+      kind: job.kind,
+      shop_url: job.shopUrl,
+      status: job.status,
+      started_at: job.startedAt,
+      ended_at: job.endedAt,
+      read: job.read,
+      total: job.total,
+      reason: job.stopCode,
+      explanation: job.why,
+      currency:
+        job.currency === null ? null : { code: job.currency.code, decimals: job.currency.decimals },
+      exchange_rate:
+        job.rate === null
+          ? null
+          : {
+              version: job.rate.version,
+              currency: job.rate.currency,
+              rate: job.rate.rate,
+              set_at: job.rate.setAt,
+            },
+      products: rows.map((row) => ({
+        id: row.id,
+        title: row.title,
+        group: row.group,
+        reason: row.reason,
+        explanation: row.why,
+        published: row.published,
+      })),
+    })),
     operator_journal: journal,
   };
 }
@@ -426,5 +463,7 @@ export const copierFor =
       ...copyMessage(request.email, filename, document, privacyUrl),
       idempotencyKey: `data-copy/${request.request}`,
     });
-    return { status: handed };
+    // The scanner's answer has three words; a provider that takes nothing from
+    // the account did not take this copy, which there is a refusal.
+    return { status: handed === "held" ? "refused" : handed };
   };

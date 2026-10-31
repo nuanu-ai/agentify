@@ -12,10 +12,10 @@ import type { ReactNode } from "react";
 import { Form, Link } from "react-router";
 import type { JournalFrom, JournalLineView, JournalView } from "../../../src/admin/accounts.js";
 import { COULD_NOT_BE_READ } from "../../../src/admin/words.js";
-import { shortened } from "../../components/copy.js";
-import { ListEmpty } from "../../components/list.js";
-import { Pager } from "../../components/listing.js";
 import { Moment } from "../../components/moment.js";
+import { shortened } from "../../display/copy.js";
+import { ListEmpty } from "../../display/list.js";
+import { Pager } from "../listing.js";
 import styles from "./accounts.module.css";
 
 /** An identifier shown short, opening to its whole value, ready to select. */
@@ -68,6 +68,12 @@ function What({ line, onItsPage }: Readonly<{ line: JournalLineView; onItsPage: 
         <>Admitted {merchant === null ? null : <>{merchant} </>}to live sales</>
       ) : (
         <>Asked to admit {merchant === null ? null : <>{merchant} </>}to live sales</>
+      );
+    case "decline":
+      return done ? (
+        <>Declined the live-sales request{merchant === null ? null : <> of {merchant}</>}</>
+      ) : (
+        <>Asked to decline the live-sales request{merchant === null ? null : <> of {merchant}</>}</>
       );
     case "withdraw":
       return done ? (
@@ -235,7 +241,7 @@ export function JournalScreen({ view }: Readonly<{ view: JournalView }>) {
                     <span className="sr-only">{COULD_NOT_BE_READ}</span>
                   </span>
                 ) : (
-                  <b>{one.count}</b>
+                  <b>{one.count.toLocaleString("en-US")}</b>
                 )}
               </>
             );
@@ -283,7 +289,7 @@ export function JournalScreen({ view }: Readonly<{ view: JournalView }>) {
           <Pager
             range={
               <>
-                {`Showing ${view.newer + 1}–${view.newer + view.lines.length} of ${view.total}, newest first · read `}
+                {`Showing ${(view.newer + 1).toLocaleString("en-US")}–${(view.newer + view.lines.length).toLocaleString("en-US")} of ${view.total.toLocaleString("en-US")}, newest first · read `}
                 <Moment at={view.readAt} />
               </>
             }

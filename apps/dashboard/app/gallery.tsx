@@ -1,3 +1,7 @@
+import { coinbaseRateOf, coinbaseRates } from "@agentify/recorded";
+import { onboardingAccountView } from "../src/onboarding.js";
+import { presentShopJob } from "../src/shop-job-presentation.js";
+import type { ShopJobState } from "../src/shop-job-view.js";
 /**
  * The dashboard's screens in the states a person can meet them in, for the
  * gallery (`pnpm gallery`). Each state is drawn through the dashboard's own
@@ -46,7 +50,11 @@ import { NOT_FROM_HERE } from "../src/form-post.js";
 import { type Answer, lateAnswer, type PayoutSplits } from "../src/gateway.js";
 import { integrationsView } from "../src/integrations-view.js";
 import { keysView, newKeyView } from "../src/keys.js";
+import { liveSalesAdmissionStates } from "../src/live-sales-admission-states.js";
+import type { RequestMailEvent } from "../src/live-sales-events.js";
+import { liveSalesMessage } from "../src/live-sales-message.js";
 import { inViewersZone } from "../src/moments.js";
+import { nextStepOf } from "../src/next-step.js";
 import {
   askViewOf,
   cancelledByTyping,
@@ -65,23 +73,25 @@ import {
 } from "../src/payout-wallet.js";
 import {
   NAME_CANNOT_BE_TAKEN_AWAY,
-  NAME_NEEDED,
   NAME_RULE,
   SITE_CANNOT_BE_TAKEN_AWAY,
   whatIsWrongWithTheName,
   whatIsWrongWithTheSite,
 } from "../src/seller-name.js";
-import { type Settings, settingsView } from "../src/settings-view.js";
+import { type Settings, settingsView, walletEntryView } from "../src/settings-view.js";
+import { ONBOARDING_CASES } from "../src/testing/onboarding-cases.js";
+import { WOO_SITE_CASES } from "../src/testing/woo-site-cases.js";
 import type { Viewer } from "../src/viewer.js";
 import {
   CLOSURE_NOTES,
   cardsView,
   type FrameView,
+  momentView,
   ordersView,
   receiptsView,
 } from "../src/views.js";
 import { cardsFromTheShop, type StoreProduct } from "../src/woo-catalog.js";
-import { whatIsWrongWithTheShopUrl } from "../src/woo-connect.js";
+import { noReferenceFor, whatIsWrongWithTheShopUrl } from "../src/woo-connect.js";
 import { gapOf } from "../src/woo-money.js";
 import { findingsOf, rateFarSays } from "../src/woo-pages.js";
 import { CREATE_UNKNOWN } from "../src/woo-recovery.js";
@@ -97,13 +107,12 @@ import {
   type ShopAnswer,
   type ShopRead,
   type ShopState,
-  wooImportView,
   wooShopView,
 } from "../src/woo-views.js";
-import { money, SITE_IN_SETTINGS } from "../src/words.js";
+import { money } from "../src/words.js";
 import { ADMIN_STATES, frameIn } from "./admin-gallery/index.js";
 import type { Chrome, Gated, Trouble } from "./answer.js";
-import { shortened } from "./components/copy.js";
+import { shortened } from "./display/copy.js";
 import routes from "./routes.js";
 
 // --- the route tree, drawn ---------------------------------------------------
@@ -558,12 +567,35 @@ const WAITING = PayoutWalletSchema.parse({
 
 const shopRead = (state: ShopState, more: Partial<ShopRead> = {}): ShopRead => ({
   state,
+  sellerSite: SHOP,
   testMoney: true,
   through: "woocommerce",
   ...more,
 });
 
-const shopOn = (read: ShopRead, answer: ShopAnswer = {}) => wooShopView(read, answer);
+const shopOn = (read: ShopRead, answer: ShopAnswer = {}): ReturnType<typeof wooShopView> => {
+  const view = wooShopView(read, answer);
+  if (view.connection?.access !== "read_write" || view.connection.onCode) return view;
+  const rate = view.connection.rate;
+  return {
+    ...view,
+    job: presentShopJob({
+      ...JOB_RESULT,
+      shopHost: view.connection.shop,
+      ...(rate === null ? {} : { currency: rate.currency }),
+      ...(rate?.current === null
+        ? {
+            status: "stopped" as const,
+            stopCode: "rate_required" as const,
+            read: 0,
+            total: null,
+            ready: 0,
+            groups: [],
+          }
+        : {}),
+    }),
+  };
+};
 
 const CONNECTED: ShopState = {
   kind: "connected",
@@ -577,9 +609,9 @@ const CONNECTED: ShopState = {
 const IN_RUPIAH = { code: "IDR", decimals: 0 } as const;
 const COINBASE_RUPIAH = {
   ok: true,
-  rate: "18035.292596",
+  rate: coinbaseRateOf("IDR"),
   source: "Coinbase",
-  readAt: new Date("2026-10-21T14:52:48Z"),
+  readAt: coinbaseRates.readAt,
 } as const;
 
 const WAITING_FOR_KEYS: ShopState = { kind: "waiting", shopUrl: SHOP, startedMinutesAgo: 3 };
@@ -1056,56 +1088,6 @@ const SETTING_UP: GalleryState[] = [
       pressed: { "routes/merchant": { unavailable: true } },
     },
   ),
-  {
-    ...at(
-      {
-        id: "dashboard-choose-name",
-        screen: "Choosing the seller name",
-        when: "A new merchant's dashboard has just been opened.",
-        cause:
-          "The merchant has no seller name yet; this is the last step of setting up, and the button waits for a name to be typed.",
-      },
-      {
-        path: "/choose-name",
-        mode: "live",
-        loaded: { "routes/choose-name": { typed: "", rule: NAME_RULE } },
-      },
-    ),
-    scene: { shows: "Choose a seller name" },
-  },
-  at(
-    {
-      id: "dashboard-choose-name-needed",
-      screen: "Choosing the seller name",
-      when: "A new merchant's browser, which runs no script, sends the name form with the box empty.",
-      cause:
-        "Where the script runs the button waits for a name; here the server refuses the empty one and the page offers to choose later.",
-    },
-    {
-      path: "/choose-name",
-      mode: "live",
-      loaded: { "routes/choose-name": { typed: "", rule: NAME_RULE } },
-      pressed: { "routes/choose-name": { typed: "", problem: NAME_NEEDED, rule: NAME_RULE } },
-    },
-  ),
-  ((typed) =>
-    at(
-      {
-        id: "dashboard-choose-name-refused",
-        screen: "Choosing the seller name",
-        when: "A new merchant types a name with a character outside plain ASCII, such as a long dash.",
-        cause:
-          "The catalogue's rule takes printable ASCII only, so the name is given back to correct.",
-      },
-      {
-        path: "/choose-name",
-        mode: "live",
-        loaded: { "routes/choose-name": { typed: "", rule: NAME_RULE } },
-        pressed: {
-          "routes/choose-name": { typed, problem: whatIsWrongWithTheName(typed), rule: null },
-        },
-      },
-    ))("Freeland — eSIM & VPN"),
 ];
 
 const cards = (
@@ -1123,7 +1105,7 @@ const cards = (
 
 /** The cards at an address that asks for a search, a segment or a page. */
 const cardsAt = (path: string, list: ReturnType<typeof cardsOf>, mode: SurfaceMode = "live") =>
-  cardsView(list, ORIGIN[mode], false, undefined, new URL(path, ORIGIN[mode]).searchParams);
+  cardsView(list, ORIGIN[mode], undefined, new URL(path, ORIGIN[mode]).searchParams);
 
 /**
  * A data plan per country and size, as an eSIM seller lists them: a catalogue
@@ -1394,7 +1376,7 @@ const CARDS: GalleryState[] = [
         "The menu holds what the header's row leaves out, the door into the operator's workspace with it.",
     }),
     scene: {
-      steps: [{ shows: "Products", does: openTheMenu }],
+      steps: [{ shows: PRODUCTS.number.title, does: openTheMenu }],
       shows: "Admin",
     },
   },
@@ -1421,7 +1403,7 @@ const CARDS: GalleryState[] = [
       "live",
     ),
     scene: {
-      steps: [{ shows: "Products", does: openTheMenu }],
+      steps: [{ shows: PRODUCTS.number.title, does: openTheMenu }],
       shows: "Sign out",
     },
   },
@@ -1437,7 +1419,7 @@ const CARDS: GalleryState[] = [
       "live",
     ),
     scene: {
-      steps: [{ shows: WHO, does: openTheAccount }],
+      steps: [{ shows: PRODUCTS.number.title, does: openTheAccount }],
       shows: "Sign out",
     },
   },
@@ -1461,7 +1443,13 @@ const CARDS: GalleryState[] = [
       cause:
         "The gateway leaves their products out of the catalogue and refuses new purchases of them until their integration polls again, so the banner says since when it has not connected.",
     },
-    cardsView(CATALOGUE, ORIGIN.live),
+    cardsView(
+      cardsOf(
+        "open",
+        ON_SALE.map((product) => ({ product, selling: "paused" })),
+      ),
+      ORIGIN.live,
+    ),
     "live",
     {
       account: bannerOf(seenBy("live"), { outOfTouch: { since: "2026-10-12T14:02:07Z" } }),
@@ -1576,50 +1564,6 @@ const CARDS: GalleryState[] = [
     cardsAt("/products?show=off-sale", CATALOGUE),
     "live",
     { path: "/products?show=off-sale" },
-  ),
-  cards(
-    {
-      id: "dashboard-cards-none",
-      screen: "Products",
-      when: "A merchant opens Products before their code has published anything.",
-      cause: "The gateway lists no cards, and everything publishing needs is set.",
-    },
-    cardsView(cardsOf("open", []), ORIGIN.live),
-    "live",
-  ),
-  cards(
-    {
-      id: "dashboard-cards-first-on-live",
-      screen: "Products",
-      when: "A merchant who has just signed up on the live site opens the dashboard for the first time.",
-      cause:
-        "No cards, no payout wallet and no approval yet, so the banner names both and leads to the test channel's dashboard, where the first sale is made.",
-    },
-    cardsView(cardsOf("open", []), ORIGIN.live),
-    "live",
-    { account: bannerOf(seenBy("live", { liveApproval: false, payout: { wallet: null } })) },
-  ),
-  cards(
-    {
-      id: "dashboard-cards-none-without-name",
-      screen: "Products",
-      when: "A new merchant skipped choosing a seller name and opens Products.",
-      cause:
-        "The merchant has no seller name, so every card their code publishes would be refused.",
-    },
-    cardsView(cardsOf("open", []), ORIGIN.live),
-    "live",
-    { account: bannerOf(seenBy("live", { sellerName: null })) },
-  ),
-  cards(
-    {
-      id: "dashboard-cards-none-with-woocommerce",
-      screen: "Products",
-      when: "A merchant on the test site opens Products before publishing anything.",
-      cause: "No cards, and this dashboard offers the WooCommerce connector beside the SDK.",
-    },
-    cardsView(cardsOf("open", []), ORIGIN.test, true),
-    "test",
   ),
   cards(
     {
@@ -1740,7 +1684,7 @@ const CARDS: GalleryState[] = [
         "The merchant sells through the shop, which holds nothing against the account, so no banner is drawn; the cards their code published are off sale until they switch back, so they are left out of the list and counted under it.",
     },
     ((shop) =>
-      cardsView(shop, ORIGIN.test, true, {
+      cardsView(shop, ORIGIN.test, {
         through: "woocommerce",
         offSale: CATALOGUE.cards.map((entry) => entry.id),
       }))(
@@ -1768,23 +1712,9 @@ const CARDS: GalleryState[] = [
       cause:
         "The code sells, so the cards the shop published are off sale; they are left out of the list and counted under it.",
     },
-    cardsView(cardsOf("open", ON_SALE), ORIGIN.test, true, {
+    cardsView(cardsOf("open", ON_SALE), ORIGIN.test, {
       through: "api",
       offSale: [idOf("itm", "number")],
-    }),
-    "test",
-  ),
-  cards(
-    {
-      id: "dashboard-cards-shop-before-import",
-      screen: "Products",
-      when: "A merchant whose code had published products connected their WooCommerce shop and has not imported from it yet.",
-      cause:
-        "The shop's keys arrived, so the merchant sells through it, and it has published nothing; the code's cards are off sale and counted under the empty list.",
-    },
-    cardsView(CATALOGUE, ORIGIN.test, true, {
-      through: "woocommerce",
-      offSale: CATALOGUE.cards.map((entry) => entry.id),
     }),
     "test",
   ),
@@ -2601,7 +2531,7 @@ const shop = (
 const shopPress = (
   told: Told,
   press: "connect" | "import" | "rate" | "switch" | "disconnect",
-  view: ReturnType<typeof wooShopView> | ReturnType<typeof wooImportView>,
+  view: ReturnType<typeof wooShopView>,
   account: ShopAccount = {},
 ) =>
   at(told, {
@@ -2611,7 +2541,499 @@ const shopPress = (
     pressed: { [`routes/woocommerce-${press}`]: view },
   });
 
+/** The same anonymized WooCommerce examples used by the product-result gallery. */
+const JOB_READY = [
+  "Coffee beans, one kilogram",
+  "Ubud Cooking Class Recipe Book: 40 Balinese Dishes from Market to Table (PDF)",
+];
+const JOB_RESULT: ShopJobState = {
+  id: "shop-job-gallery",
+  shopHost: "shop.example.com",
+  revision: 12,
+  kind: "check",
+  status: "completed",
+  read: 6,
+  total: 6,
+  ready: 2,
+  published: 0,
+  excluded: 0,
+  publicationUnknown: null,
+  currency: "USD",
+  when: momentView("2026-10-30T12:09:00Z"),
+  why: null,
+  stopCode: null,
+  current: true,
+  groups: [
+    {
+      group: "ready",
+      title: "Ready",
+      count: 2,
+      reasons: [
+        {
+          why: "",
+          code: "ready",
+          count: 2,
+          rows: JOB_READY.map((title) => ({ id: imported(title).id, title, why: "" })),
+          more: null,
+        },
+      ],
+    },
+    {
+      group: "fix",
+      title: "To fix in your shop",
+      count: 1,
+      reasons: [
+        {
+          why: refusedByTheDoor(
+            "Handwoven Endek Table Runner, Klungkung Weave, Ceremonial Red and Gold, 35 × 200 cm",
+          ).problems.join(" "),
+          code: "card",
+          count: 1,
+          rows: [
+            {
+              id: "17",
+              title:
+                "Handwoven Endek Table Runner, Klungkung Weave, Ceremonial Red and Gold, 35 × 200 cm",
+              why: "",
+            },
+          ],
+          more: null,
+        },
+      ],
+    },
+    {
+      group: "not_selling",
+      title: "Not for sale in your shop",
+      count: 1,
+      reasons: [
+        {
+          why: "",
+          code: "withdrawn",
+          count: 1,
+          rows: [
+            {
+              id: "15",
+              title:
+                "Batik Sarong, Hand-Stamped Cap Technique, Indigo on Cream Rayon (115 × 180 cm)",
+              why: "Not published in your shop.",
+            },
+          ],
+          more: null,
+        },
+      ],
+    },
+    {
+      group: "unsupported",
+      title: "Not supported yet",
+      count: 2,
+      reasons: [
+        {
+          why: "Has options such as size or colour",
+          code: "variants",
+          count: 1,
+          rows: [{ id: "13", title: "Monthly membership", why: "" }],
+          more: null,
+        },
+        {
+          why: "Uses stock tracking or sells one at a time",
+          code: "stock_tracking",
+          count: 1,
+          rows: [{ id: "14", title: "Canvas tote bag", why: "" }],
+          more: null,
+        },
+      ],
+    },
+  ],
+};
+const JOB_UNANSWERED: ShopJobState["groups"][number] = {
+  group: "unanswered",
+  title: "No answer from your shop",
+  count: 1,
+  reasons: [
+    {
+      why: "",
+      code: "shop_check",
+      count: 1,
+      rows: [
+        {
+          id: "11",
+          title: "Coffee & Brunch Gift Card",
+          why: "Your shop did not answer this product's check.",
+        },
+      ],
+      more: null,
+    },
+  ],
+};
+const JOB_PUBLISHED: ShopJobState = {
+  ...JOB_RESULT,
+  kind: "publish",
+  published: 1,
+  excluded: 1,
+  groups: JOB_RESULT.groups.map((group) =>
+    group.group === "ready"
+      ? {
+          ...group,
+          title: "On sale",
+          count: 1,
+          reasons: group.reasons.map((reason) => ({
+            ...reason,
+            count: 1,
+            rows: reason.rows.slice(0, 1),
+          })),
+        }
+      : group,
+  ),
+};
+const JOB_STATES: readonly [string, string, Partial<ShopJobState>][] = [
+  [
+    "running",
+    "The server is checking products while the merchant may leave.",
+    { status: "running", read: 1234, total: 1990, groups: [] },
+  ],
+  [
+    "running-total-unknown",
+    "The shop has not supplied a total while the check runs.",
+    { status: "running", read: 2, total: null, groups: [] },
+  ],
+  ["checked", "The stored check has ready, fixable, unavailable and unsupported products.", {}],
+  [
+    "unanswered",
+    "Every product was listed but one product check has no answer.",
+    {
+      status: "completed",
+      stopCode: null,
+      read: 7,
+      total: 7,
+      groups: [...JOB_RESULT.groups, JOB_UNANSWERED],
+    },
+  ],
+  ["empty", "A complete read confirms an empty shop.", { read: 0, total: 0, ready: 0, groups: [] }],
+  [
+    "stopped",
+    "A stopped read retains known rows and distinguishes the unknown remainder.",
+    { status: "stopped", stopCode: "interrupted", total: 20 },
+  ],
+  [
+    "rate",
+    "Protected settings found a non-dollar currency and the first rate is needed.",
+    {
+      status: "stopped",
+      stopCode: "rate_required",
+      currency: "IDR",
+      read: 0,
+      total: null,
+      ready: 0,
+      groups: [],
+    },
+  ],
+  [
+    "reconnect",
+    "The shop revoked granted access.",
+    { status: "stopped", stopCode: "reconnect", read: 0, total: null, ready: 0, groups: [] },
+  ],
+  [
+    "publishing",
+    "A publication runs independently of the browser.",
+    { kind: "publish", status: "running", read: 3, published: 1, ready: 1, groups: [] },
+  ],
+  [
+    "published",
+    "A publication keeps seller-paused products outside its on-sale count.",
+    JOB_PUBLISHED,
+  ],
+  [
+    "publication-stopped",
+    "A partial publication retains its result and offers synchronization.",
+    {
+      ...JOB_PUBLISHED,
+      status: "stopped",
+      stopCode: "interrupted",
+      read: 3,
+      ready: 1,
+      excluded: 0,
+      groups: JOB_PUBLISHED.groups.filter((group) => group.group !== "unsupported"),
+    },
+  ],
+  [
+    "publication-unknown",
+    "The shop qualified a product, but Agentify's publication reply was lost.",
+    {
+      kind: "publish",
+      status: "stopped",
+      stopCode: "unknown",
+      read: 1,
+      total: 6,
+      ready: 1,
+      published: 0,
+      excluded: 0,
+      publicationUnknown: JOB_READY[0] ?? null,
+      groups: [],
+    },
+  ],
+  [
+    "publication-unread",
+    "A shop that did not answer added no products; earlier products may still sell.",
+    {
+      kind: "publish",
+      status: "stopped",
+      stopCode: "unread",
+      read: 0,
+      total: null,
+      ready: 0,
+      published: 0,
+      excluded: 0,
+      groups: [],
+    },
+  ],
+  [
+    "publication-unread-first",
+    "A first publication could not read the shop and Products confirms no products are on sale.",
+    {
+      kind: "publish",
+      status: "stopped",
+      stopCode: "unread",
+      read: 0,
+      total: null,
+      ready: 0,
+      published: 0,
+      excluded: 0,
+      groups: [],
+    },
+  ],
+  [
+    "earlier-result",
+    "The stored result belongs to an earlier connection or rate.",
+    { current: false },
+  ],
+];
+
 const WOOCOMMERCE: GalleryState[] = [
+  ...(["check", "publish"] as const).map((kind): GalleryState => {
+    const initial = ONBOARDING_CASES.find((one) => one.row === 14);
+    if (!initial) throw new Error("Missing connected shop situation.");
+    const facts = { ...initial.facts, liveApproved: true, payoutWallet: true };
+    const job = presentShopJob({
+      ...JOB_RESULT,
+      kind,
+      status: "running",
+      read: 3,
+      total: 100,
+      published: 0,
+      groups: [],
+    });
+    return at(
+      {
+        id: `dashboard-live-automatic-${kind}`,
+        screen: "Products",
+        when:
+          kind === "check"
+            ? "Approval is waiting behind a product check."
+            : "Approval or the first payout wallet started automatic publication.",
+        cause:
+          "The durable publication intent keeps the next step pending; the shop job supplies progress.",
+      },
+      {
+        path: "/products",
+        mode: "live",
+        loaded: {
+          "routes/merchant-only": {
+            account: [],
+            onboarding: {
+              mode: "live",
+              step: nextStepOf(facts),
+              keys: keysView([]),
+              contact: null,
+              origin: ORIGIN.live,
+              unread: false,
+              publicationPending: true,
+              account: onboardingAccountView(nextStepOf(facts), {
+                mode: "live",
+                sellerName: "Freeland",
+                savedWallet: PAID_INTO,
+                nameRule: NAME_RULE,
+                wallet: null,
+                email: WHO,
+                request: null,
+                decision: null,
+              }),
+            },
+          },
+          "routes/products": {
+            ...cardsView(cardsOf("open", []), ORIGIN.live, {
+              through: "woocommerce",
+              offSale: [],
+            }),
+            shop: { ...shopOn(shopRead(CONNECTED)), job },
+          },
+        },
+      },
+    );
+  }),
+  ...JOB_STATES.map(([id, when, result]) => {
+    const job = presentShopJob({ ...JOB_RESULT, ...result });
+    const told = {
+      id: `dashboard-shop-job-${id}`,
+      screen: job.kind === "publish" && job.status === "completed" ? "WooCommerce" : "Products",
+      when,
+      cause: "The persisted shop job is the source of its progress and result.",
+    };
+    if (job.kind === "publish" && job.status === "completed")
+      return shop(told, { ...shopOn(shopRead(CONNECTED)), job });
+    const onSaleCards =
+      id === "publication-unread-first"
+        ? []
+        : JOB_READY.slice(0, 1).map((title) => ({
+            id: idOf("itm", title),
+            as_of: "2026-10-30T12:09:00Z",
+            card: imported(title).card,
+            selling: "open" as const,
+            paused: false,
+          }));
+    const catalogue =
+      job.kind === "publish"
+        ? MerchantCardListSchema.parse({ selling: "open", cards: onSaleCards })
+        : cardsOf("open", []);
+    const connected = ONBOARDING_CASES.find((one) => one.row === 14);
+    if (!connected) throw new Error("The onboarding situations lack the connected shop.");
+    const facts = {
+      ...connected.facts,
+      mode: "test" as const,
+      payoutWallet: true,
+      liveApproved: true,
+      testAcknowledged: true,
+      cards: catalogue.cards.length,
+    };
+    const state = at(told, {
+      path: "/products",
+      mode: "test",
+      loaded: {
+        "routes/merchant-only": {
+          account: [],
+          onboarding: {
+            mode: "test",
+            step: nextStepOf(facts),
+            keys: keysView([]),
+            contact: null,
+            origin: ORIGIN.test,
+            unread: false,
+          },
+        },
+        "routes/products": {
+          ...cardsView(catalogue, ORIGIN.test, { through: "woocommerce", offSale: [] }),
+          shop: { ...shopOn(shopRead(CONNECTED)), job },
+        },
+      },
+    });
+    return id === "publication-unread-first" || id === "publication-unread"
+      ? {
+          ...state,
+          scene: {
+            shows: "Sync with your shop",
+            answers: { "GET /shop-job": { status: 200, body: job } },
+          },
+        }
+      : state;
+  }),
+
+  ...([null, "stopped_selling", "changed"] as const).map((withdrawn) => {
+    const catalogue = MerchantCardListSchema.parse({
+      selling: "open",
+      cards: JOB_READY.map((title, index) => ({
+        id: idOf("itm", title),
+        as_of: "2026-10-30T12:09:00Z",
+        card: imported(title).card,
+        selling: withdrawn !== null && index === 0 ? "paused" : "open",
+        paused: withdrawn !== null && index === 0,
+      })),
+    });
+    return cards(
+      {
+        id:
+          withdrawn === "changed"
+            ? "dashboard-shop-product-changed"
+            : withdrawn
+              ? "dashboard-shop-product-withdrawn"
+              : "dashboard-shop-products-fix-one",
+        screen: "Products",
+        when: withdrawn
+          ? withdrawn === "changed"
+            ? "A published product changed to conditions Agentify cannot sell."
+            : "A shop stopped selling one previously published product."
+          : "Published products sell and one more product needs a fix in the shop.",
+        cause: withdrawn
+          ? "A complete synchronization stored a connector-owned pause, which only a later synchronization can resume."
+          : "The stored publication result has one fixable product; the other result groups are on WooCommerce in Integrations.",
+      },
+      {
+        ...cardsView(
+          {
+            ...catalogue,
+            ...(withdrawn
+              ? {
+                  integrationPauses: {
+                    [idOf("itm", "Coffee beans, one kilogram")]: {
+                      at: Date.parse("2026-10-30T12:09:00Z"),
+                      reason: withdrawn,
+                    },
+                  },
+                }
+              : {}),
+          },
+          ORIGIN.test,
+          { through: "woocommerce", offSale: [] },
+        ),
+        ...(withdrawn
+          ? {}
+          : {
+              shop: {
+                ...shopOn(shopRead(CONNECTED)),
+                job: presentShopJob({
+                  ...JOB_RESULT,
+                  kind: "publish" as const,
+                  published: 2,
+                  groups: JOB_RESULT.groups.map((group) =>
+                    group.group === "ready" ? { ...group, title: "On sale" } : group,
+                  ),
+                }),
+              },
+            }),
+      },
+      "test",
+    );
+  }),
+
+  ...WOO_SITE_CASES.map((one) =>
+    shop(
+      {
+        id: `dashboard-woocommerce-site-${one.id}`,
+        screen: "WooCommerce",
+        when: one.when,
+        cause: one.cause,
+      },
+      shopOn(
+        shopRead(
+          { ...CONNECTED, shop: { ...CONNECTED.shop, shopUrl: "https://shop.example.com" } },
+          { sellerSite: one.after },
+        ),
+        { cameBack: true },
+      ),
+    ),
+  ),
+  shop(
+    {
+      id: "dashboard-woocommerce-site-port",
+      screen: "WooCommerce",
+      when: "A merchant connects a shop on a port without a seller site.",
+      cause: "The connection is valid, but a seller site must be an https domain without a port.",
+    },
+    shopOn(
+      shopRead(
+        { ...CONNECTED, shop: { ...CONNECTED.shop, shopUrl: "https://shop.example.com:8443" } },
+        { sellerSite: null },
+      ),
+    ),
+  ),
   shop(
     {
       id: "dashboard-woocommerce",
@@ -2680,9 +3102,12 @@ const WOOCOMMERCE: GalleryState[] = [
       id: "dashboard-woocommerce-connected",
       screen: "WooCommerce",
       when: "A merchant approves access in their shop and is sent back here.",
-      cause: "The shop's server posted its keys, and the browser came back from the shop.",
+      cause: "Access was saved and the server's automatic product check has started.",
     },
-    shopOn(shopRead(CONNECTED, { codeProducts: 0, unset: [] }), { cameBack: true }),
+    {
+      ...shopOn(shopRead(CONNECTED, { codeProducts: 0, unset: [] }), { cameBack: true }),
+      job: presentShopJob({ ...JOB_RESULT, status: "running", read: 2, groups: [] }),
+    },
     { path: "/woocommerce?from=shop" },
   ),
   shop(
@@ -2822,67 +3247,6 @@ const WOOCOMMERCE: GalleryState[] = [
       problem: PRICES_RUNNING,
       typed: SHOP,
     }),
-  ),
-  shopPress(
-    {
-      id: "dashboard-woocommerce-import",
-      screen: "WooCommerce import",
-      when: "A merchant presses Import products.",
-      cause:
-        "The shop's catalogue was read, and each product was published, refused or left in the shop.",
-    },
-    "import",
-    wooImportView(
-      SHOP,
-      [
-        {
-          id: imported("Coffee & Brunch Gift Card").id,
-          title: "Coffee & Brunch Gift Card",
-          published: idOf("itm", "gift card"),
-        },
-        {
-          id: imported("Coffee beans, one kilogram").id,
-          title: "Coffee beans, one kilogram",
-          problems: [SITE_IN_SETTINGS],
-        },
-        {
-          id: imported(
-            "Ubud Cooking Class Recipe Book: 40 Balinese Dishes from Market to Table (PDF)",
-          ).id,
-          title: "Ubud Cooking Class Recipe Book: 40 Balinese Dishes from Market to Table (PDF)",
-          published: idOf("itm", "recipe book"),
-        },
-        refusedByTheDoor(
-          "Handwoven Endek Table Runner, Klungkung Weave, Ceremonial Red and Gold, 35 × 200 cm",
-        ),
-      ],
-      IMPORTED.skipped,
-    ),
-  ),
-  shopPress(
-    {
-      id: "dashboard-woocommerce-import-interrupted",
-      screen: "WooCommerce import",
-      when: "A merchant presses Import while Agentify is failing to answer.",
-      cause: "The first product got no verdict, so the import stopped and the rest were not sent.",
-    },
-    "import",
-    wooImportView(
-      SHOP,
-      [
-        {
-          id: imported("Coffee beans, one kilogram").id,
-          title: "Coffee beans, one kilogram",
-          failed: true,
-        },
-        {
-          id: imported("Coffee & Brunch Gift Card").id,
-          title: "Coffee & Brunch Gift Card",
-          notAttempted: true,
-        },
-      ],
-      IMPORTED.skipped,
-    ),
   ),
   shopPress(
     {
@@ -3245,7 +3609,30 @@ const pressIn = (page: Document, words: string, before: (page: Document) => void
   button.click();
 };
 
+const copyIssuedKey = (page: Document) => {
+  clipboardGranted(page);
+  const button = [...(page.querySelector("dialog")?.querySelectorAll("button") ?? [])].find(
+    (one) => one.textContent?.trim() === "Copy",
+  );
+  if (button === undefined) throw new Error("the new-key dialog has no Copy button");
+  button.click();
+};
+
 const KEYS: GalleryState[] = [
+  at(
+    {
+      id: "dashboard-keys-issued-without-script",
+      screen: "The new key",
+      when: "A key was issued in a browser without script",
+      cause: "The one-time secret is delivered in the issuing response.",
+    },
+    {
+      path: "/keys",
+      mode: "live",
+      loaded: { "routes/keys": null },
+      pressed: { "routes/keys": newKeyView("The order worker on our server", SECRET) },
+    },
+  ),
   keys(
     {
       id: "dashboard-keys-none",
@@ -3345,20 +3732,23 @@ const KEYS: GalleryState[] = [
       },
     },
   ),
-  at(
-    {
-      id: "dashboard-keys-issued",
-      screen: "The new key",
-      when: "A merchant presses Create key.",
-      cause: "The gateway issued the key, and this answer is the only time its secret is shown.",
-    },
-    {
-      path: "/keys",
-      mode: "live",
-      loaded: { "routes/keys": null },
-      pressed: { "routes/keys": newKeyView("The order worker on our server", SECRET) },
-    },
-  ),
+  {
+    ...at(
+      {
+        id: "dashboard-keys-issued",
+        screen: "The new key",
+        when: "A merchant presses Create key.",
+        cause: "The gateway issued the key, and this answer is the only time its secret is shown.",
+      },
+      {
+        path: "/keys",
+        mode: "live",
+        loaded: { "routes/keys": null },
+        pressed: { "routes/keys": newKeyView("The order worker on our server", SECRET) },
+      },
+    ),
+    scene: { shows: "Copy your new key" },
+  },
   {
     ...at(
       {
@@ -3376,7 +3766,7 @@ const KEYS: GalleryState[] = [
       },
     ),
     scene: {
-      steps: [{ shows: "Copy key", does: (page) => pressIn(page, "Copy key", clipboardGranted) }],
+      steps: [{ shows: "Copy your new key", does: (page) => copyIssuedKey(page) }],
       shows: "Copied.",
     },
   },
@@ -3985,6 +4375,472 @@ const ADMIN: GalleryState[] = ADMIN_STATES.map(
     ),
 );
 
+const ONBOARDING: GalleryState[] = ONBOARDING_CASES.map(({ row, when, facts }) => {
+  const step = nextStepOf(facts);
+  const keys = keysView(
+    facts.keys === 0
+      ? []
+      : [
+          {
+            id: "key_gallery_onboarding",
+            label: "Order worker",
+            created_at: "2026-10-30T08:00:00Z",
+            last_used_at: null,
+            disabled_at: null,
+          },
+        ],
+  );
+  const onboarding = {
+    mode: facts.mode,
+    step,
+    keys,
+    contact: facts.contact === null ? null : momentView(facts.contact),
+    origin: ORIGIN[facts.mode],
+    unread: facts.unread,
+    account: onboardingAccountView(step, {
+      mode: facts.mode,
+      sellerName: facts.sellerName ? "Freeland" : "",
+      savedWallet: facts.payoutWallet ? PAID_INTO : null,
+      nameRule: NAME_RULE,
+      wallet:
+        facts.payoutWallet && step.account !== "test-profile"
+          ? null
+          : walletEntryView(
+              facts.mode,
+              { commissionAllocation: 1, totalAllocation: 1000 },
+              facts.mode === "test" ? 84532 : 8453,
+            ),
+      email: WHO,
+      request: facts.request === "pending" ? { at: momentView("2026-10-30T12:20:00Z") } : null,
+      decision:
+        facts.request === "declined" || facts.withdrawn
+          ? {
+              at: momentView("2026-10-31T09:40:00Z"),
+              note: "Choose a seller name that belongs to your business.\nUse the name buyers know.",
+            }
+          : null,
+    }),
+  };
+  const notes = accountOf(
+    seenBy(facts.mode, {
+      sellerName: facts.sellerName ? "Freeland" : null,
+      payout: { wallet: facts.payoutWallet ? PAID_INTO : null },
+      liveApproval: facts.liveApproved,
+    }),
+    {
+      selling: facts.selling,
+      ...(facts.withdrawn
+        ? {
+            withdrawn: {
+              at: "2026-10-30T08:00:00Z",
+              note: "Choose a seller name that belongs to your business.",
+            },
+          }
+        : {}),
+    },
+  )
+    .filter((note) => note.reason === step.reason)
+    .slice(0, 1);
+  let view = cardsView(
+    facts.cards > 0
+      ? facts.withdrawn
+        ? cardsOf(
+            "open",
+            ON_SALE.map((product) => ({ product, selling: "paused" as const })),
+          )
+        : CATALOGUE
+      : cardsOf("open", []),
+    ORIGIN[facts.mode],
+  );
+  if (step.page === "shop") {
+    const state: ShopState =
+      facts.shop === "connected" || facts.shop === "read-only"
+        ? {
+            kind: "connected",
+            shop: {
+              shopUrl: SHOP,
+              permissions: facts.shop === "read-only" ? "read" : "read_write",
+              connectedAt: new Date("2026-10-30T08:00:00Z"),
+            },
+          }
+        : facts.shop === "waiting"
+          ? { kind: "waiting", shopUrl: SHOP, startedMinutesAgo: 2 }
+          : facts.shop === "unanswered"
+            ? { kind: "unanswered", shopUrl: SHOP }
+            : { kind: "none" };
+    view = {
+      ...view,
+      shop: shopOn(
+        shopRead(state, {
+          testMoney: facts.mode !== "live",
+          through: facts.through,
+          ...(row === 13
+            ? { rate: { currency: IN_RUPIAH, current: null, reference: COINBASE_RUPIAH } }
+            : {}),
+        }),
+        row === 7
+          ? {
+              typed: SHOP,
+              preview: {
+                kind: "read",
+                sample: { currency: "USD", decimals: 2 },
+                estimate: {
+                  read: 100,
+                  total: 1240,
+                  ready: 72,
+                  options: 21,
+                  stock: 4,
+                  unavailable: 3,
+                },
+              },
+            }
+          : row === 8
+            ? { typed: SHOP, preview: { kind: "unread" } }
+            : {},
+      ),
+    };
+  }
+  const state = at(
+    {
+      id: `dashboard-onboarding-${row}`,
+      screen: "Products",
+      when,
+      cause: `Accepted onboarding situation ${row}.`,
+    },
+    {
+      path: "/products",
+      mode: facts.mode,
+      loaded: { "routes/merchant-only": { account: notes, onboarding }, "routes/products": view },
+    },
+  );
+  if (step.acknowledgeTest && view.shop?.connection?.access !== "read_write")
+    return { ...state, scene: { shows: "This is the test environment" } };
+  if (view.shop?.connection?.access === "read_write")
+    return {
+      ...state,
+      scene: {
+        shows: "Products",
+        answers: { "GET /shop-job": { status: 200, body: view.shop.job } },
+      },
+    };
+  if (
+    onboarding.account.form?.wallet &&
+    onboarding.account.wallet?.coinbase !== null &&
+    onboarding.account.wallet?.coinbase !== undefined &&
+    "chain" in onboarding.account.wallet.coinbase
+  )
+    return { ...state, scene: { shows: onboarding.account.form.wallet.createWallet } };
+  return state;
+});
+
+const ACCOUNT_FAILURES: GalleryState[] = [
+  {
+    id: "name-refused",
+    row: 22,
+    sellerName: "Freeland — eSIM & VPN",
+    nameProblem: whatIsWrongWithTheName("Freeland — eSIM & VPN") ?? "",
+    problem: null,
+  },
+  {
+    id: "request-unconfirmed",
+    row: 22,
+    sellerName: "Freeland",
+    problem: "We couldn't confirm your request. Check again before asking.",
+  },
+  {
+    id: "profile-wallet-unconfirmed",
+    row: 24,
+    sellerName: "Freeland",
+    problem:
+      "Your seller name was saved. We couldn't confirm your wallet. Check Settings before saving again.",
+  },
+].map(({ id, row, ...press }) => {
+  const situation = ONBOARDING_CASES.find((one) => one.row === row);
+  if (!situation) throw new Error("missing account situation");
+  const facts = situation.facts;
+  const onboarding = {
+    mode: facts.mode,
+    step: nextStepOf(facts),
+    keys: keysView([WORKER]),
+    contact: momentView("2026-10-30T08:00:00Z"),
+    origin: ORIGIN[facts.mode],
+    unread: false,
+    account: onboardingAccountView(nextStepOf(facts), {
+      mode: facts.mode,
+      sellerName: "Freeland",
+      savedWallet: null,
+      nameRule: NAME_RULE,
+      wallet: walletEntryView(
+        facts.mode,
+        { commissionAllocation: 1, totalAllocation: 1000 },
+        facts.mode === "test" ? 84532 : 8453,
+      ),
+      email: WHO,
+      request: null,
+      decision: null,
+    }),
+  };
+  return at(
+    {
+      id: `dashboard-account-${id}`,
+      screen: "Products",
+      when: "A seller's setup press needs another attempt.",
+      cause: "The saved facts and the form's own result remain separate.",
+    },
+    {
+      path: "/products",
+      mode: facts.mode,
+      loaded: {
+        "routes/merchant-only": { account: [], onboarding },
+        "routes/products": cardsView(cardsOf("open", []), ORIGIN[facts.mode]),
+      },
+      pressed: { "routes/products": { screen: "onboarding", wallet: "", ...press } },
+    },
+  );
+});
+
+const SHOP_ESTIMATES: GalleryState[] = [
+  { id: "complete", read: 3, total: 3, ready: 1, options: 1, stock: 1, unavailable: 0 },
+  { id: "zero-ready", read: 2, total: 2, ready: 0, options: 1, stock: 1, unavailable: 0 },
+  { id: "partial-zero", read: 100, total: 1240, ready: 0, options: 60, stock: 37, unavailable: 3 },
+  { id: "empty", read: 0, total: 0, ready: 0, options: 0, stock: 0, unavailable: 0 },
+  { id: "total-unknown", read: 100, total: null, ready: 72, options: 21, stock: 4, unavailable: 3 },
+].map(({ id, ...estimate }) =>
+  shopPress(
+    {
+      id: `dashboard-shop-estimate-${id}`,
+      screen: "WooCommerce",
+      when: "A merchant checks their public catalogue before approving access.",
+      cause: "A single public first page supplies an estimate; missing totals remain unknown.",
+    },
+    "connect",
+    shopOn(shopRead({ kind: "none" }, { through: "api", codeProducts: 0, testMoney: false }), {
+      typed: SHOP,
+      preview: { kind: "read", estimate, sample: { currency: "USD", decimals: 2 } },
+    }),
+    { mode: "live" },
+  ),
+);
+SHOP_ESTIMATES.push(
+  ...[
+    {
+      id: "limit",
+      problem:
+        "shop.example.com lists 2,001 products. Agentify reads up to 2,000 in one go, so it can't bring this shop over yet.",
+    },
+    { id: "irt", problem: noReferenceFor("IRT") },
+  ].map(({ id, problem }) =>
+    shopPress(
+      {
+        id: `dashboard-shop-check-${id}`,
+        screen: "WooCommerce",
+        when: "A merchant checks a shop that cannot connect yet.",
+        cause: "The check refuses before asking the shop for access.",
+      },
+      "connect",
+      shopOn(shopRead({ kind: "none" }, { through: "api", codeProducts: 0, testMoney: false }), {
+        typed: SHOP,
+        problem,
+      }),
+      { mode: "live" },
+    ),
+  ),
+);
+
+const codeCase = ONBOARDING_CASES.find((one) => one.row === 20);
+if (codeCase === undefined) throw new Error("the onboarding situations have no code setup");
+const CODE_KEYS: GalleryState[] = [false, true].map((copied) => ({
+  ...at(
+    {
+      id: `dashboard-products-key-${copied ? "copied" : "issued"}`,
+      screen: "Products",
+      when: copied ? "The new API key was copied" : "A key was issued from code setup",
+      cause: "The same protected key disclosure is used on Products and API keys.",
+    },
+    {
+      path: "/products",
+      mode: "live",
+      loaded: {
+        "routes/products": cardsView(cardsOf("open", []), ORIGIN.live),
+        "routes/merchant-only": {
+          account: [],
+          onboarding: {
+            mode: "live",
+            step: nextStepOf({ ...codeCase.facts, keys: 1 }),
+            keys: keysView([WORKER]),
+            contact: null,
+            origin: ORIGIN.live,
+            unread: false,
+          },
+        },
+      },
+      pressed: { "routes/products": newKeyView("The order worker on our server", SECRET) },
+    },
+  ),
+  scene: copied
+    ? { steps: [{ shows: "Copy your new key", does: copyIssuedKey }], shows: "Copied." }
+    : { shows: "Copy your new key" },
+}));
+
+const CODE_CONNECTIONS: GalleryState[] = (
+  [
+    {
+      id: "profile",
+      mode: "live",
+      wallet: false,
+      approved: false,
+      when: "Code connected before a payout wallet was added",
+    },
+    {
+      id: "approval",
+      mode: "live",
+      wallet: true,
+      approved: false,
+      when: "Code and profile are ready for the current email approval step",
+    },
+    {
+      id: "ready",
+      mode: "live",
+      wallet: true,
+      approved: true,
+      when: "An approved merchant has connected code but no product yet",
+    },
+    {
+      id: "test-wallet",
+      mode: "test",
+      wallet: false,
+      approved: false,
+      when: "Code connected on test before a test wallet was added",
+    },
+  ] as const
+).map((one) => {
+  const contact = "2026-10-30T09:00:00Z";
+  const facts = {
+    ...codeCase.facts,
+    mode: one.mode,
+    keys: 1,
+    contact,
+    contactAlive: true,
+    payoutWallet: one.wallet,
+    sellerName: one.id === "ready" ? true : codeCase.facts.sellerName,
+    liveApproved: one.approved,
+    testAcknowledged: true,
+  };
+  const step = nextStepOf(facts);
+  const state = at(
+    {
+      id: `dashboard-code-connected-${one.id}`,
+      screen: "Products",
+      when: one.when,
+      cause: "The existing publication rule selects the remaining profile or approval step.",
+    },
+    {
+      path: "/products",
+      mode: one.mode,
+      loaded: {
+        "routes/products": cardsView(cardsOf("open", []), ORIGIN[one.mode]),
+        "routes/merchant-only": {
+          account: [],
+          onboarding: {
+            mode: one.mode,
+            step,
+            keys: keysView([WORKER]),
+            contact: momentView(contact),
+            origin: ORIGIN[one.mode],
+            unread: false,
+            account: onboardingAccountView(step, {
+              mode: one.mode,
+              sellerName: "Freeland",
+              savedWallet: one.wallet ? PAID_INTO : null,
+              nameRule: NAME_RULE,
+              wallet:
+                !one.wallet || step.account === "test-profile"
+                  ? walletEntryView(
+                      one.mode,
+                      { commissionAllocation: 1, totalAllocation: 1000 },
+                      one.mode === "test" ? 84532 : 8453,
+                    )
+                  : null,
+              email: WHO,
+              request: null,
+              decision: null,
+            }),
+          },
+        },
+      },
+    },
+  );
+  return {
+    ...state,
+    scene: { shows: one.mode === "test" ? "Create a Coinbase Wallet" : "Your code connected" },
+  };
+});
+
+const REQUEST_MAIL = (["requested", "declined", "reminder"] as const).map((kind): GalleryState => {
+  const event: RequestMailEvent = {
+    kind,
+    sellerName: "Freeland",
+    hasWallet: false,
+    request: {
+      id: "lrq_gallery",
+      merchantId: "mch_freeland",
+      accountId: "acc_gallery",
+      requestedAt: Date.parse("2026-10-30T12:20:00Z"),
+      evidence: {
+        integration: "woocommerce",
+        host: "shop.example.com",
+        checkedAt: Date.parse("2026-10-30T12:09:00Z"),
+        ready: 72,
+        read: 100,
+        total: 100,
+        complete: true,
+      },
+      state: kind === "declined" ? "declined" : "pending",
+      decline:
+        kind !== "declined"
+          ? null
+          : {
+              sequence: 42,
+              at: Date.parse("2026-10-31T09:40:00Z"),
+              actor: { kind: "account", id: "acc_operator" },
+              action: "decline",
+              subject: { kind: "merchant", id: "mch_freeland" },
+              reason:
+                "Choose a seller name that belongs to your business.\nUse the name buyers know.",
+              outcome: { kind: "done" },
+            },
+      reminderDueAt: Date.parse("2026-11-03T12:20:00Z"),
+      reminderCreatedAt: null,
+    },
+  };
+  const message = liveSalesMessage({
+    to: WHO,
+    event,
+    requesterEmail: WHO,
+    baseUrl: `${ORIGIN.live}/dashboard`,
+    idempotencyKey: "gallery-only",
+  });
+  return {
+    id: `dashboard-live-request-mail-${kind}`,
+    screen: "Live-sales email",
+    address: "Email",
+    when:
+      kind === "requested"
+        ? "A merchant asks for live sales."
+        : kind === "declined"
+          ? "An operator declines the request with a note."
+          : "The request remains pending after two working days.",
+    cause: "The durable mail owner renders the exact HTML sent to the recipient.",
+    draw: () => (
+      <article>
+        <h2>Subject: {message.subject}</h2>
+        {/* biome-ignore lint/security/noDangerouslySetInnerHtml: the shipped mail renderer escapes all text; the gallery must show its actual HTML. */}
+        <div dangerouslySetInnerHTML={{ __html: message.html }} />
+      </article>
+    ),
+  };
+});
+
 export const gallery: GallerySurface = {
   id: "dashboard",
   name: "Seller dashboard",
@@ -3992,6 +4848,28 @@ export const gallery: GallerySurface = {
   states: [
     ...SIGNING_IN,
     ...SETTING_UP,
+    ...ONBOARDING,
+    ...REQUEST_MAIL,
+    ...liveSalesAdmissionStates.map(
+      (message): GalleryState => ({
+        id: `dashboard-live-sales-mail-${message.id}`,
+        screen: "Live-sales email",
+        address: "Email",
+        when: message.title,
+        cause: "The delivery renderer supplies the exact subject and HTML sent to the merchant.",
+        draw: () => (
+          <article>
+            <h2>Subject: {message.subject}</h2>
+            {/* biome-ignore lint/security/noDangerouslySetInnerHtml: the delivery renderer escapes all text; the gallery shows its actual HTML. */}
+            <div dangerouslySetInnerHTML={{ __html: message.html }} />
+          </article>
+        ),
+      }),
+    ),
+    ...ACCOUNT_FAILURES,
+    ...SHOP_ESTIMATES,
+    ...CODE_KEYS,
+    ...CODE_CONNECTIONS,
     ...CARDS,
     ...ORDERS,
     ...RECEIPTS,

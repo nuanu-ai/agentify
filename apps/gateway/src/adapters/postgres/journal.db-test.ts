@@ -58,7 +58,9 @@ if (databaseUrl === null) {
   await migrating.end();
 
   const { db, pool } = connect(databaseUrl, { max: 4 });
-  const store = PostgresStore.over(db, "eip155:84532", countedIds());
+  const store = PostgresStore.over(db, "eip155:84532", countedIds(), undefined, {
+    within: async () => {},
+  });
 
   /** A row as it would be written past the application, straight in SQL. */
   const raw = (columns: Record<string, string | null>) => {

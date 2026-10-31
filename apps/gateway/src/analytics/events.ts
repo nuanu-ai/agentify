@@ -1,5 +1,5 @@
 /**
- * The product analytics contract `commerce-v1`: the ten events Agentify's
+ * The product analytics contract `commerce-v1`: the eleven events Agentify's
  * server records about the cabinet, setup, publishing and orders, with every
  * field each one carries and the values a field may take. Nothing else leaves:
  * no name, address, wallet, key, free text or content of a card or an order.
@@ -155,12 +155,82 @@ type SetupIntegration = (typeof SETUP_INTEGRATIONS)[number];
 
 /**
  * A4: the outcome of one setup step. Only a payout wallet's change waits
- * (`pending`), only an import is `partial` and counts products, and live sales
- * are granted by the operator alone.
+ * (`pending`). Imports and terminal shop checks can be `partial`; observed
+ * check counts cover only products read. The operator grants or declines live sales.
  */
 export type SetupResult = Envelope<"agc_setup_result"> & {
   readonly refs?: Who;
 } & (
+    | {
+        readonly actor: "human";
+        readonly source: "dashboard";
+        readonly refs: { readonly merchant: string; readonly person: string };
+        readonly fields: {
+          readonly step: "platform_answer";
+          readonly platform: "woocommerce" | "code" | "other";
+          readonly integration: SetupIntegration;
+        } & Settled<"completed">;
+      }
+    | {
+        readonly actor: "human";
+        readonly source: "dashboard";
+        readonly refs: Who & { readonly person: string };
+        readonly fields: {
+          readonly step: "woo_connect";
+          readonly integration: "woocommerce";
+        } & Settled<"completed">;
+      }
+    | {
+        readonly actor: "human";
+        readonly source: "dashboard";
+        readonly refs: Who & { readonly person: string };
+        readonly fields: {
+          readonly step: "woo_preflight";
+          readonly integration: "woocommerce";
+        } & (
+          | {
+              readonly outcome: "completed";
+              readonly reason_code?: never;
+              readonly observed_ready_count: number;
+              readonly observed_read_count: number;
+            }
+          | {
+              readonly outcome: Failed;
+              readonly reason_code: ReasonCode;
+            }
+        );
+      }
+    | {
+        readonly actor: "system";
+        readonly source: "woocommerce";
+        readonly refs: { readonly merchant: string; readonly person: string };
+        readonly fields: {
+          readonly step: "woo_check";
+          readonly integration: "woocommerce";
+          readonly observed_ready_count: number;
+          readonly observed_read_count: number;
+        } & Settled<"completed" | "partial">;
+      }
+    | {
+        readonly actor: "human";
+        readonly source: "dashboard";
+        readonly refs: { readonly merchant: string; readonly person: string };
+        readonly fields: {
+          readonly step: "live_request";
+          readonly integration: SetupIntegration;
+          readonly outcome: "completed";
+        };
+      }
+    | {
+        readonly actor: "operator";
+        readonly source: "dashboard";
+        readonly refs: Who & { readonly merchant: string };
+        readonly fields: {
+          readonly step: "live_decline";
+          readonly integration: SetupIntegration;
+          readonly outcome: "completed";
+        };
+      }
     | {
         readonly actor: "operator";
         readonly fields: {
@@ -236,6 +306,14 @@ export type UiBlocked = Envelope<"agc_ui_blocked"> & {
   };
 };
 
+/** A8: an authenticated person followed the practice link to documentation. */
+export type PracticeOpened = Envelope<"agc_practice_opened"> & {
+  readonly actor: "human";
+  readonly source: "dashboard";
+  readonly refs: { readonly merchant: string; readonly person: string };
+  readonly fields: Readonly<Record<string, never>>;
+};
+
 /** B1: a new order recorded. */
 export type OrderCreated = Envelope<"agc_order_created"> & {
   readonly refs: Who & { readonly order: string; readonly item?: string };
@@ -290,6 +368,7 @@ export type AnalyticsEvent =
   | CardPublishResult
   | SellingChanged
   | UiBlocked
+  | PracticeOpened
   | OrderCreated
   | PaymentResult
   | OrderOutcomeChanged;
@@ -304,6 +383,7 @@ type Rule = readonly string[] | "boolean" | "count" | "amount" | "currency";
 /** One shape an event can take. Every field it names is required. */
 interface Shape {
   readonly actor?: ActorType;
+  readonly source?: Source;
   readonly fields: Readonly<Record<string, Rule>>;
   readonly needs?: readonly ReferenceKind[];
   readonly may?: readonly ReferenceKind[];
@@ -344,6 +424,7 @@ const settled = (
     ]),
   ]);
 
+const OBSERVED_COUNTS = { observed_ready_count: "count", observed_read_count: "count" } as const;
 const COUNTS = { imported_count: "count", failed_count: "count", skipped_count: "count" } as const;
 const PAYMENT = { money_mode: MONEY_MODES, network: NETWORKS } as const;
 const PAYMENT_REFS = { needs: ["order", "attempt"] } as const;
@@ -365,6 +446,64 @@ const SHAPES: Readonly<Record<EventName, Chooser>> = {
   }),
   agc_merchant_created: () => ({ actor: "human", needs: ["merchant", "person"], fields: {} }),
   agc_setup_result: by("step", {
+    platform_answer: by(
+      "outcome",
+      settled(
+        ["completed"],
+        {
+          step: ["platform_answer"],
+          platform: ["woocommerce", "code", "other"],
+          integration: SETUP_INTEGRATIONS,
+        },
+        { actor: "human", source: "dashboard", needs: ["merchant", "person"] },
+      ),
+    ),
+    woo_connect: by(
+      "outcome",
+      settled(
+        ["completed"],
+        { step: ["woo_connect"], integration: ["woocommerce"] },
+        { actor: "human", source: "dashboard", needs: ["person"] },
+      ),
+    ),
+    woo_preflight: by("outcome", {
+      completed: {
+        actor: "human",
+        source: "dashboard",
+        needs: ["person"],
+        fields: {
+          step: ["woo_preflight"],
+          integration: ["woocommerce"],
+          outcome: ["completed"],
+          ...OBSERVED_COUNTS,
+        },
+      },
+      ...settled(
+        [],
+        { step: ["woo_preflight"], integration: ["woocommerce"] },
+        { actor: "human", source: "dashboard", needs: ["person"] },
+      ),
+    }),
+    woo_check: by(
+      "outcome",
+      settled(
+        ["completed", "partial"],
+        { step: ["woo_check"], integration: ["woocommerce"], ...OBSERVED_COUNTS },
+        { actor: "system", source: "woocommerce", needs: ["merchant", "person"] },
+      ),
+    ),
+    live_request: () => ({
+      actor: "human",
+      source: "dashboard",
+      needs: ["merchant", "person"],
+      fields: { step: ["live_request"], integration: SETUP_INTEGRATIONS, outcome: ["completed"] },
+    }),
+    live_decline: () => ({
+      actor: "operator",
+      source: "dashboard",
+      needs: ["merchant"],
+      fields: { step: ["live_decline"], integration: SETUP_INTEGRATIONS, outcome: ["completed"] },
+    }),
     live_approval: by(
       "outcome",
       settled(
@@ -413,6 +552,12 @@ const SHAPES: Readonly<Record<EventName, Chooser>> = {
       outcome: FAILED,
       reason_code: REASON_CODES,
     },
+  }),
+  agc_practice_opened: () => ({
+    actor: "human",
+    source: "dashboard",
+    needs: ["merchant", "person"],
+    fields: {},
   }),
   agc_order_created: () => ({
     needs: ["order"],
@@ -520,6 +665,10 @@ function problemOf(row: StoredEvent): string | null {
     return `actor_type must be ${shape.actor} for this ${row.name}`;
   }
 
+  if (shape.source !== undefined && row.source !== shape.source) {
+    return `source must be ${shape.source} for this ${row.name}`;
+  }
+
   for (const [key, rule] of Object.entries(shape.fields)) {
     if (!Object.hasOwn(fields, key)) {
       return key === "amount" || key === "currency"
@@ -533,6 +682,14 @@ function problemOf(row: StoredEvent): string | null {
     if (!Object.hasOwn(shape.fields, key)) {
       return `properties.${key} is not carried by this ${row.name}`;
     }
+  }
+
+  if (
+    typeof fields.observed_ready_count === "number" &&
+    typeof fields.observed_read_count === "number" &&
+    fields.observed_ready_count > fields.observed_read_count
+  ) {
+    return "properties.observed_ready_count cannot exceed properties.observed_read_count";
   }
 
   const needs = shape.needs ?? [];

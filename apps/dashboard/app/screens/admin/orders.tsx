@@ -25,11 +25,11 @@ import {
 } from "../../../src/admin/orders-view.js";
 import { useChrome } from "../../answer.js";
 import { CouldNotBeRead, OrderState } from "../../components/admin/unknown.js";
-import { shortened } from "../../components/copy.js";
-import { Cell, DayHeading, List, ListEmpty } from "../../components/list.js";
-import { Pager } from "../../components/listing.js";
 import { Moment } from "../../components/moment.js";
 import { Word } from "../../components/word.js";
+import { shortened } from "../../display/copy.js";
+import { Cell, DayHeading, List, ListEmpty } from "../../display/list.js";
+import { Pager } from "../listing.js";
 import styles from "./orders.module.css";
 
 /** An identifier shown short in the monospaced face, opening to its whole value. */
@@ -135,7 +135,7 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersListView }>) {
               {segment.count === null ? null : (
                 <>
                   {" "}
-                  <b>{segment.count}</b>
+                  <b>{segment.count.toLocaleString("en-US")}</b>
                 </>
               )}
             </>

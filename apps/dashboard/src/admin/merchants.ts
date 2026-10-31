@@ -1,3 +1,4 @@
+import { shopJobView } from "../shop-job-view.js";
 /**
  * The workspace's Merchants list and one merchant's page, and every action on
  * a merchant: admit to live sales, withdraw the admission with the note the
@@ -12,6 +13,8 @@
 import type { SurfaceMode } from "@agentify/core";
 import { grantLiveApproval, withdrawLiveApproval } from "@agentify/gateway";
 import type { JournalPress, JournalRow } from "@agentify/gateway/journal";
+import type { LiveSalesEvidence } from "@agentify/gateway/live-sales";
+import { declineLiveSales } from "@agentify/gateway/live-sales";
 import {
   MERCHANT_SEGMENTS,
   type MerchantList,
@@ -144,12 +147,12 @@ function listRowOf(row: MerchantRow, accounts: readonly NamedAccount[] | null): 
         finding === "no_seller_site" ? [] : [CHECK_WORDS[finding]],
       ),
     ),
-    cards: `${row.cards.onSale} of ${row.cards.published}`,
+    cards: `${row.cards.onSale.toLocaleString("en-US")} of ${row.cards.published.toLocaleString("en-US")}`,
     sales: settled.count === 0 ? null : dollars(settled.amount),
     orders:
       row.thirtyDays.orders === 0
         ? "No orders"
-        : `${row.thirtyDays.orders} ${row.thirtyDays.orders === 1 ? "order" : "orders"}`,
+        : `${row.thirtyDays.orders.toLocaleString("en-US")} ${row.thirtyDays.orders === 1 ? "order" : "orders"}`,
     lastSale: row.lastSaleAt === null ? null : at(row.lastSaleAt),
     state: stateOf(row.segment),
   };
@@ -203,6 +206,7 @@ export interface SellingDayView {
 }
 
 export interface MerchantView {
+  readonly shopJob?: import("../shop-job-view.js").ShopJobView | null;
   readonly mode: SurfaceMode;
   readonly readAt: MomentView;
   readonly id: string;
@@ -249,6 +253,13 @@ export interface MerchantView {
       admittedBy: string | null;
       /** Null where none stands, "unread" where whether one stands could not be read. */
       withdrawn: Readonly<{ at: MomentView; by: string; note: string | null }> | null | "unread";
+      request?: Readonly<{
+        id: string;
+        at: MomentView;
+        evidence: LiveSalesEvidence | null;
+        evidenceAt: MomentView | null;
+      }> | null;
+      decline?: ActionAnswer | null;
       admit: ActionAnswer | null;
       withdraw: ActionAnswer | null;
     }> | null;
@@ -293,6 +304,7 @@ const whoOf = (row: JournalRow, actors: ReadonlyMap<string, string> | null): str
 export interface Answers {
   readonly admit?: ActionAnswer;
   readonly withdraw?: ActionAnswer;
+  readonly decline?: ActionAnswer;
   readonly key?: Readonly<{ id: string; answer: ActionAnswer }>;
 }
 
@@ -313,20 +325,21 @@ export interface MerchantsRead {
 
 /**
  * A merchant's place in the list as an address writes it: whether they wait
- * for admission, their latest sale or -1 where they never sold, and when they
- * were made, then their identifier.
+ * for admission, the request's date or -1 where none stands, their latest sale
+ * or -1 where they never sold, and when they were made, then their identifier.
  */
-const KEYS = 3;
+const KEYS = 4;
 
 const markOf = (place: MerchantPlace): Mark => ({
-  key: [Number(place.waiting), place.lastSaleAt ?? -1, place.createdAt],
+  key: [Number(place.waiting), place.requestedAt ?? -1, place.lastSaleAt ?? -1, place.createdAt],
   id: place.id,
 });
 
 const placeOf = (mark: Mark): MerchantPlace => {
-  const [waiting = 0, lastSaleAt = -1, createdAt = 0] = mark.key;
+  const [waiting = 0, requestedAt = -1, lastSaleAt = -1, createdAt = 0] = mark.key;
   return {
     waiting: waiting === 1,
+    requestedAt: requestedAt < 0 ? null : requestedAt,
     lastSaleAt: lastSaleAt < 0 ? null : lastSaleAt,
     createdAt,
     id: mark.id,
@@ -339,6 +352,7 @@ const placesOf = (from: NonNullable<From>): NonNullable<MerchantListQuery["from"
 /** A place behind every merchant: the page nearest before it is the last. */
 const BEHIND_EVERY_MERCHANT: MerchantPlace = {
   waiting: false,
+  requestedAt: null,
   lastSaleAt: null,
   createdAt: -1,
   id: "",
@@ -520,11 +534,28 @@ export function merchantViewOf({
         keysCut:
           record.keys.rows.length === record.keys.total
             ? null
-            : `${record.keys.rows.length} of ${record.keys.total} keys shown, the newest first`,
+            : `${record.keys.rows.length.toLocaleString("en-US")} of ${record.keys.total.toLocaleString("en-US")} keys shown, the newest first`,
         shop,
       },
       admission: live
         ? {
+            request:
+              record.liveRequest?.state === "pending"
+                ? {
+                    id: record.liveRequest.id,
+                    at: at(record.liveRequest.requestedAt),
+                    evidence: record.liveRequest.evidence,
+                    evidenceAt:
+                      record.liveRequest.evidence === null
+                        ? null
+                        : at(
+                            record.liveRequest.evidence.integration === "api"
+                              ? record.liveRequest.evidence.connectedAt
+                              : record.liveRequest.evidence.checkedAt,
+                          ),
+                  }
+                : null,
+            decline: answers.decline ?? null,
             admittedAt: record.liveApprovedAt === null ? null : at(record.liveApprovedAt),
             admittedBy:
               admittedRow === undefined || record.liveApprovedAt === null
@@ -547,7 +578,7 @@ export function merchantViewOf({
           ? answers.key.answer
           : live
             ? null
-            : (answers.admit ?? answers.withdraw ?? null),
+            : (answers.admit ?? answers.withdraw ?? answers.decline ?? null),
     },
     selling: {
       onSale: record.cards.onSale,
@@ -569,7 +600,7 @@ export function merchantViewOf({
       cut:
         record.cards.rows.length === record.cards.total
           ? null
-          : `${record.cards.rows.length} of ${record.cards.total} products shown`,
+          : `${record.cards.rows.length.toLocaleString("en-US")} of ${record.cards.total.toLocaleString("en-US")} products shown`,
     },
     worth: {
       rows: record.worthALook.rows.map((order) => ({
@@ -584,7 +615,7 @@ export function merchantViewOf({
       cut:
         record.worthALook.rows.length === record.worthALook.total
           ? null
-          : `${record.worthALook.rows.length} of ${record.worthALook.total} shown, the newest first`,
+          : `${record.worthALook.rows.length.toLocaleString("en-US")} of ${record.worthALook.total.toLocaleString("en-US")} shown, the newest first`,
     },
     shopOrdersUnread: uncertainIds === "unread",
     history:
@@ -596,7 +627,7 @@ export function merchantViewOf({
             cut:
               history.rows.length === history.total
                 ? null
-                : `The newest ${history.rows.length} of ${history.total} rows.`,
+                : `The newest ${history.rows.length.toLocaleString("en-US")} of ${history.total.toLocaleString("en-US")} rows.`,
           },
   };
 }
@@ -605,11 +636,16 @@ export function merchantViewOf({
 export type MerchantIntent =
   | Readonly<{ kind: "admit" }>
   | Readonly<{ kind: "withdraw" }>
+  | Readonly<{ kind: "decline" }>
   | Readonly<{ kind: "disable_key"; keyId: string }>;
 
 export interface MerchantsPages {
   list(operator: Operator, query: URLSearchParams): Promise<Outcome<MerchantsView>>;
-  one(operator: Operator, merchantId: string): Promise<Outcome<MerchantView>>;
+  one(
+    operator: Operator,
+    merchantId: string,
+    query?: URLSearchParams,
+  ): Promise<Outcome<MerchantView>>;
   /** A press on a merchant's page, answered with the page in its new state. */
   press(
     operator: Operator,
@@ -637,6 +673,10 @@ export interface PressedUnread {
 /** A press on a merchant's page, in the Journal's verbs, done or only asked. */
 const PRESS_WORDS = {
   admit: { done: "Admitted to live sales", asked: "Asked to admit to live sales" },
+  decline: {
+    done: "Declined the live-sales request",
+    asked: "Asked to decline the live-sales request",
+  },
   withdraw: { done: "Withdrew the admission", asked: "Asked to withdraw the admission" },
   disable_key: { done: "Disabled the key", asked: "Asked to disable the key" },
 } as const;
@@ -648,7 +688,9 @@ const pressSaid = (action: keyof typeof PRESS_WORDS, answer: ActionAnswer): stri
     case "done":
       return `${words.done}.`;
     case "unchanged":
-      return `${words.asked}: it already stood so, and nothing changed.`;
+      return action === "decline"
+        ? `${words.asked}: that request is no longer pending, and nothing changed.`
+        : `${words.asked}: it already stood so, and nothing changed.`;
     case "refused":
       return answer.said;
     case "unknown":
@@ -785,6 +827,7 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
     merchantId: string,
     answers: Answers = {},
     status = 200,
+    query = new URLSearchParams(),
   ): Promise<Outcome<MerchantView>> {
     if (!IDENTIFIER.test(merchantId)) return missing;
     const { at: readAt, surface } = asked();
@@ -793,7 +836,32 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
     const stepUp = signedInFreshly(operator, new Date(readAt))
       ? null
       : stepUpViewOf(operator, `admin/merchants/${record.id}`, parts.pressing.googleEnabled);
-    return { kind: "view", view: await pageOf(record, answers, readAt, stepUp), status };
+    const job =
+      parts.shops === null ? null : await shopJobView(parts.shops, merchantId, query, "operator");
+    const shopJob =
+      job === null
+        ? null
+        : {
+            ...job,
+            groups: job.groups.map((group) => ({
+              ...group,
+              reasons: group.reasons.map((reason) => ({
+                ...reason,
+                more:
+                  reason.more === null
+                    ? null
+                    : { ...reason.more, href: `/admin/merchants/${merchantId}${reason.more.href}` },
+              })),
+            })),
+          };
+    return {
+      kind: "view",
+      view: {
+        ...(await pageOf(record, answers, readAt, stepUp)),
+        shopJob,
+      },
+      status,
+    };
   }
 
   /**
@@ -804,7 +872,7 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
   async function pageAfter(
     operator: Operator,
     merchantId: string,
-    action: "admit" | "withdraw" | "disable_key",
+    action: "admit" | "withdraw" | "decline" | "disable_key",
     answer: ActionAnswer,
     answers: Answers,
   ): Promise<Outcome<MerchantView | PressedUnread>> {
@@ -896,23 +964,48 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
       };
     },
 
-    one: (operator, merchantId) => page(operator, merchantId),
+    one: (operator, merchantId, query) => page(operator, merchantId, {}, 200, query),
 
     async press(operator, merchantId, intent, form) {
       if (!IDENTIFIER.test(merchantId)) return missing;
       const destination = `admin/merchants/${merchantId}` as const;
-      if (intent.kind === "admit" || intent.kind === "withdraw") {
+      if (intent.kind === "admit" || intent.kind === "withdraw" || intent.kind === "decline") {
         const answer = await pressed(
           {
             operator,
             form,
             action: intent.kind,
             subject: { kind: "merchant", id: merchantId },
-            needsReason: intent.kind === "withdraw",
+            needsReason: intent.kind !== "admit",
             destination,
           },
           parts.pressing,
-          admission(merchantId, intent.kind === "admit"),
+          intent.kind !== "decline"
+            ? admission(merchantId, intent.kind === "admit")
+            : async (journal) => {
+                if (mode !== "live")
+                  return {
+                    kind: "refused",
+                    code: "not_live_channel",
+                    said: REFUSED_WORDS.not_live_channel ?? "",
+                  };
+                const ids = form.getAll("request_id");
+                const requestId = ids.length === 1 && typeof ids[0] === "string" ? ids[0] : "";
+                if (!IDENTIFIER.test(requestId))
+                  return {
+                    kind: "refused",
+                    code: "invalid_request",
+                    said: "Open the current request before declining it. Nothing was changed.",
+                  };
+                const declined = await declineLiveSales(store, merchantId, requestId, journal);
+                return declined === null
+                  ? {
+                      kind: "refused",
+                      code: "no_such_merchant",
+                      said: REFUSED_WORDS.no_such_merchant ?? "",
+                    }
+                  : { kind: declined.changed ? "done" : "unchanged" };
+              },
         );
         return await pageAfter(operator, merchantId, intent.kind, answer, {
           [intent.kind]: answer,

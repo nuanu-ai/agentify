@@ -4,8 +4,9 @@ Date: 2026-10-23
 Status: accepted (the product owner, 2026-10-23: the admin takes over the
 terminal's administrative commands and is built from the design in
 [research 85](../research/85-operator-admin.md); 2026-10-24: the admission is
-the one lever over a merchant, and a withdrawal's note is the merchant's to
-read); the journal's mechanics are that design's proposal
+the approval controls live selling, and a withdrawal's note is the merchant's to
+read; 2026-10-30: a request may be declined with a mandatory merchant-readable
+note); the journal's mechanics are that design's proposal
 
 ## Context
 
@@ -21,40 +22,36 @@ whom and why becomes the only way to answer for it.
 
 One table, `operator_journal`, in the gateway's schema, holds a row for every
 administrative action and for every refused attempt at one made after the
-operator flag was checked; a request the flag refuses writes nothing, and nor
-does one naming a subject by something that cannot be an identifier, since the
-journal holds identifiers only. A row holds when it happened; who acted, as an
-account's identifier, or `terminal` for the documented statement that recovers a
-channel which lost every operator, or `configuration` for a channel's first
-operator; the action, from a closed list (admit, withdraw, disable a key, end
-sessions, grant the operator flag, remove it, forget an account on the test
-channel, first operator); its subject, as a merchant's, an account's or a key's
-identifier, a key with its merchant's; the reason the operator wrote, bounded
-like a merchant's closing message; and the outcome: done; unchanged, where an
-idempotent repeat found the change already made; or refused with the refusal's
-code. Accounts and merchants are named by identifier, never by an address or a
-name, so forgetting or erasing a person leaves their rows with an identifier
-that no longer resolves, which the admin reads as a deleted account. The screen
-that asks for a reason says that it is kept and must not name a buyer. A
-withdrawal's reason is also the note its merchant reads: the merchant's
-dashboard reads the newest withdrawal row of its own merchant while that
-withdrawal stands, and no other row, and the screen says so.
+operator flag was checked. A row holds when it happened; who acted, as an
+account's identifier, or `terminal` for the documented statement that recovers
+a channel which lost every operator, or `configuration` for a channel's first
+operator; the action, from a closed list (admit, decline a request, withdraw,
+disable a key, end sessions, grant the operator flag, remove it, forget an
+account on the test channel, first operator); its subject, as a merchant's, an
+account's or a key's identifier, a key with its merchant's; the reason the
+operator wrote, bounded like a merchant's closing message; and the outcome:
+done, unchanged where an idempotent repeat found the change already made, or
+refused with the refusal's code. Accounts and merchants are named by
+identifier, never by an address or a name, so forgetting or erasing a person
+leaves their rows with an identifier that no longer resolves. The reason of a
+withdrawal or of a declined request is also the note its merchant reads, in
+the dashboard and by email, and no other row of the journal reaches a merchant.
 
 The application only inserts rows. An action and its row commit in one database
 transaction: a gateway action takes the row into the store's transaction, as it
-takes an analytics event today; a dashboard action opens a transaction around
-its own change and the row. A refused attempt, which changes nothing, writes its
-row in a transaction of its own; where that write fails the attempt is refused
-all the same and the failure is logged. Whoever holds the database's own
-credentials can still change a row; nothing here claims otherwise.
+takes an analytics event; a dashboard action opens a transaction around its own
+change and the row. A decline commits with its row and its mail together.
+Whoever holds the database's own credentials can still change a row; nothing
+here claims otherwise. How refused attempts and the merchant's reading are
+handled is in [research note 95](../research/95-identity-and-admission.md).
 
 ## Consequences
 
 The admin shows the history of a merchant and of an account, and the journal as
 a whole, newest first. The table grows by administrative actions only, a
 handful a day, and keeps no personal data beyond what an operator writes in a
-reason. Withdrawal gets the transaction it lacked. No administrative command is
-left at the terminal; the recovery statement writes its own row.
+reason. No administrative command is left at the terminal; the recovery
+statement writes its own row.
 
 ## Alternatives rejected
 
