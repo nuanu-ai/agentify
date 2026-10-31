@@ -115,6 +115,10 @@ export function decisionMessage(parts: {
     paragraphs = ["Connect your shop or code before publishing products."];
     action = "Open your connections";
     link = `${baseUrl}/integrations`;
+  } else if (event.next === "products" && event.integration === "api") {
+    // Code that already published needs no step; whether its products sell is
+    // the catalogue's to say, not this email's.
+    paragraphs = [];
   } else if (event.next === "choose") {
     paragraphs = [
       "More than one person on your seller account has connected a shop, so we didn't choose one to publish from. Sync the shop you sell from on your Products page.",

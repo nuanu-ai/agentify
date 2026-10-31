@@ -113,11 +113,15 @@ export async function recordLiveSalesChange(
   }
   if (event.integration === "api") {
     const {
-      rows: [keys],
-    } = await tx.execute<{ connected: boolean }>(
-      sql`select exists(select 1 from merchant_keys where merchant_id=${event.merchantId} and disabled_at is null) as connected`,
+      rows: [code],
+    } = await tx.execute<{ connected: boolean; published: boolean }>(
+      sql`select exists(select 1 from merchant_keys where merchant_id=${event.merchantId} and disabled_at is null) as connected, exists(select 1 from cards where merchant_id=${event.merchantId} and integration='api') as published`,
     );
-    await insertNotices(tx, decision(event, keys?.connected ? "code" : "connect"), at);
+    await insertNotices(
+      tx,
+      decision(event, code?.published ? "products" : code?.connected ? "code" : "connect"),
+      at,
+    );
     return;
   }
   const connections = await tx

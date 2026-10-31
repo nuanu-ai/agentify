@@ -103,6 +103,12 @@ describe("the seller's admission publication email", () => {
     expect(message.body).not.toContain("No products were published");
     expect(message.body).toContain("When this publication finished");
   });
+  it("still asks a shop whose publication waits on its check to look at the shop and rate", () => {
+    const message = mail({ ...trigger, next: "products", publication: null });
+    expect(message.body).toContain(
+      "Check your connected shop and exchange rate before publishing products.",
+    );
+  });
   it("does not announce approval again when the first wallet starts publication", () => {
     const message = mail(publicationMailEvent({ ...trigger, kind: "first_wallet" }, job, rows));
     expect(message.subject).toMatch(/\b1\b/);

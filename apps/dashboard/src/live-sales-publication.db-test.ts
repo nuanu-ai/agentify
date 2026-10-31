@@ -671,6 +671,38 @@ if (databaseUrl === null) {
       await saveWallet(one.merchantId);
       expect(await rows("dashboard_live_publications")).toEqual([]);
     });
+    it("names no publishing step to a code merchant approved again with products already published", async () => {
+      const one = await seller({ integration: "api", connected: false });
+      await store.addKey(
+        {
+          id: `key_${randomUUID()}`,
+          merchantId: one.merchantId,
+          label: "Server",
+          digest: randomUUID(),
+        },
+        at,
+      );
+      await store.publishCard(
+        one.merchantId,
+        {
+          merchant_item_id: "room-101",
+          title: "A room for the night",
+          description: "One night in a room",
+          price: { amount: "80.00", currency: "USD" },
+          result: { access_code: { type: "string" } },
+          fulfillment: "sync",
+        },
+        at,
+      );
+      await approve(one.merchantId);
+      await store.withdrawLiveApproval(one.merchantId, press(one.merchantId, "withdraw"));
+      await approve(one.merchantId);
+      await dispatch();
+      const approval = sent.filter((message) => message.subject.includes("approved")).at(-1);
+      expect(approval?.body).toContain("Agentify approved Freeland for live sales.");
+      expect(approval?.body).toContain("Open your products:\nhttps://agentify.example/dashboard");
+      expect(approval?.body).not.toMatch(/publish|quickstart|exchange rate/i);
+    });
     it.each([
       { integration: "api", withWallet: false, key: false, next: "wallet" },
       { integration: "api", withWallet: true, key: false, next: "connect" },
