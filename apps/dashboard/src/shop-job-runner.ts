@@ -181,8 +181,20 @@ export async function workShopJob(
       gateway.liveApproval(),
       gateway.integration(),
     ]);
-    if (!seller.ok || !wallet.ok || !approval.ok || !integration.ok)
+    if (!seller.ok || !wallet.ok || !approval.ok || !integration.ok) {
+      const calls = { seller, payoutWallet: wallet, liveApproval: approval, integration };
+      const failed = Object.entries(calls).flatMap(([call, answer]) =>
+        answer.ok
+          ? []
+          : [
+              `${call} answered ${answer.status === 0 ? "nothing in time" : `${answer.status}${answer.code ? ` ${answer.code}` : ""}`}`,
+            ],
+      );
+      console.error(
+        `[dashboard] a publication stopped on Agentify's side; gateway calls failed: ${failed.join(", ")}`,
+      );
       return finish(stopped("internal", null));
+    }
     const door = readinessOf(
       {
         sellerName: seller.document.name,

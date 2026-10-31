@@ -1055,6 +1055,31 @@ describe("a stop before the shop was read", () => {
     ourSide(await told(s));
   });
 
+  it("an unreadable seller account leaves one log line naming the gateway call", async () => {
+    const s = await setup([currency, item(11), complete]);
+    const lines: string[] = [];
+    const log = vi.spyOn(console, "error").mockImplementation((...parts) => {
+      lines.push(parts.join(" "));
+    });
+    try {
+      await s.run("publish", {
+        clientFor: (who) => ({
+          ...gatewayFor(s.h.gateway, who),
+          payoutWallet: async () => ({
+            ok: false,
+            status: 503,
+            code: "unavailable",
+            why: `The wallet of ${s.person.email} could not be read.`,
+          }),
+        }),
+      });
+    } finally {
+      log.mockRestore();
+    }
+    expect(lines).toEqual([expect.stringMatching(/payoutWallet.*503 unavailable/)]);
+    expect(lines.join("\n")).not.toContain(s.person.email);
+  });
+
   it("a restart before the first product is told as Agentify's stop", async () => {
     const s = await setup([currency, item(11), complete]);
     await s.shops.noteCurrency(s.person.id, { code: "USD", decimals: 2 }, "grant-1");
