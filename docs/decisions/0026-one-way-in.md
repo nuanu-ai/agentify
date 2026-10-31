@@ -17,21 +17,31 @@ ownership. How the code keeps each rule below is in [research note 95](../resear
 ## Decision
 
 **1. Email links and Google authenticate the same person.** A link is hashed,
-single-use, short-lived and spent only by a same-origin press on its page;
-Google counts only for an address whose mailbox it controls. No refusal
-reveals whether an address has an account.
+single-use, short-lived and spent only by a same-origin press on its page, and
+that press creates the account of an address that has none; Google counts only
+for an address whose mailbox it controls. No refusal reveals whether an
+address has an account. Addresses are trimmed and lowercased and never merged
+by Gmail's dots, plus suffixes or domain aliases: deciding that two addresses
+are one person cannot be taken back.
 
 **2. The dashboard holds one identity and session for the whole site.** Better
 Auth runs inside it on our PostgreSQL with its HTTP routes unmounted; a session
-is a revocable row behind a cookie no sibling host can plant, every change is a
-same-origin POST, and no Google token is kept. The scanner signs nobody in, and
-identity it cannot read is said as unknown, never as signed out.
+is a revocable row behind one cookie that reaches every surface of the origin
+and that no sibling host can plant, every change is a same-origin POST, and no
+Google token is kept. The scanner signs nobody in and sees no token: it reaches
+the dashboard only over an internal route with a secret and no public port,
+and identity it cannot read is said as unknown, never as signed out.
 
-**3. Headers and sign-out belong to the whole site.** Settings can end every
-session, this browser's included; a form names the address it was drawn for.
+**3. Headers and sign-out belong to the whole site.** Shared caches keep no
+answer that carries an address. Settings can end every session, this
+browser's included; a form names the address it was drawn for.
 
 **4. Only an explicit dashboard request creates a merchant**, through the
-gateway in the shared process (ADR-0014); reading a report never does.
+gateway in the shared process (ADR-0014); reading a report never does. A
+sign-in asked for on the dashboard's sign-in page is itself the request (the
+product owner, 2026-10-26). A person signed in any other way without a
+merchant sees one control, and only its same-origin POST is the request; a
+failure leaves them signed in, in front of that control, to press again.
 
 **5. Live publication guards the shared catalogue.** `readinessOf` in core is
 used by every publication and selling path: a seller name everywhere, a payout
@@ -50,8 +60,13 @@ product owner, 2026-10-30). Admission goes through a person, the reply time
 the merchant is told is an expectation and not a promise, and an ordinary sale
 needs no staff. The product owner decided on 2026-10-23 that every
 administrative action at the terminal, the operator flag's included, moves
-into the workspace (`docs/research/85-operator-admin.md`); each needs a fresh
-sign-in and a reason and is journaled (ADR-0045).
+into the workspace (`docs/research/85-operator-admin.md`); each needs a
+sign-in within the last fifteen minutes and a reason, and is journaled
+(ADR-0045). Granting or removing the operator flag waits until a mail to every
+operator of the channel and to the account changed has been handed over. The
+last operator's flag cannot be removed nor their account forgotten. A channel
+takes its first operator from its configuration once, at that address's next
+sign-in while no account holds the flag, and never reads it again.
 
 **7. One gate protects dashboard pages;** its few exceptions read nothing
 private or check their own single-use proof first.

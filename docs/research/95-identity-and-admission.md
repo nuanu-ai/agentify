@@ -37,8 +37,7 @@ mailbox: `gmail.com`, `googlemail.com`, or a Workspace account whose token
 carries a hosted-domain claim. Every other address signs in by link. The
 Google issuer and subject are bound to the account with that exact address,
 and a subject already bound to an account whose address has since changed is
-refused. Addresses are trimmed and lowercased and never merged by Gmail's
-dots, plus suffixes or domain aliases. Google supplies no seller name and
+refused. Google supplies no seller name and
 carries no request for a scanner report; its single-use state may keep the ad
 click, as a link's token does.
 
@@ -59,9 +58,9 @@ stored, in a row or in a cookie.
 
 ## The scanner
 
-The scanner signs nobody in and never sees a token. It reaches the dashboard
-over an internal route with a secret and no public port, which sends links,
-reads sessions and deletes people who have no merchant; only the scanner's
+The scanner signs nobody in and never sees a token. The internal route it
+reaches the dashboard over sends links, reads sessions and deletes people who
+have no merchant; only the scanner's
 renewal header extends a session. When the scanner cannot read an identity it
 says it does not know, and never draws the visitor as signed out. The two
 share a database but not tables. A report opens for the linked lead of the
@@ -74,7 +73,7 @@ names no merchant. A sign-in and a deletion of one address are serialized.
 ## Headers, sign-out and forms
 
 The header names the signed-in address and offers sign-out from the account
-menu, and shared caches keep no answer that carries an address. Signing out
+menu. Signing out
 ends this browser's session. Settings can end every session of the account,
 this browser's among them, because a session copied from this browser carries
 the same token and keeping this one would keep the copy. Every dashboard form
@@ -116,18 +115,12 @@ workspace is drawn. The site's edge neither marks nor guards these paths. The
 workspace's forms pass the dashboard's origin and address checks as well, and
 an operator needs no merchant of their own.
 
-Every administrative action needs a session signed in within the last fifteen
-minutes, measured from the sign-in moment that a renewed session keeps. An
-older session is asked to sign in again, by link or by Google, and that
-browser returns to the page it pressed on, where the operator presses again.
-Nothing is queued for the sign-in to carry out, and the link this step sends
-is counted apart from the public form's. Granting or removing the flag waits
-until a mail to every operator of the channel and to the account changed has
-been handed to the mail provider. The last operator's flag cannot be removed
-and their account cannot be forgotten. A channel takes its first operator from
-its configuration once, at the configured address's next sign-in while no
-account holds the flag, and never reads that configuration again. A channel
-that has lost every operator is recovered on its host by the statement
+The fifteen minutes of a fresh sign-in are measured from the sign-in moment
+that a renewed session keeps. An older session is asked to sign in again, by
+link or by Google, and that browser returns to the page it pressed on, where
+the operator presses again. Nothing is queued for the sign-in to carry out,
+and the link this step sends is counted apart from the public form's. A
+channel that has lost every operator is recovered on its host by the statement
 `deploy/README.md` documents, which writes its journal row naming the
 terminal.
 
