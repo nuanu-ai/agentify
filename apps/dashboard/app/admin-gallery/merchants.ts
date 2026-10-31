@@ -481,6 +481,16 @@ const OPERATOR_SHOP_JOBS: readonly [string, string, Partial<ShopJobState>][] = [
       why: "Your shop refused access. Reconnect it, then check again.",
     },
   ],
+  [
+    "earlier-reconnect",
+    "An earlier connection refused access; the operator reads it beside the current shop connection.",
+    {
+      status: "stopped",
+      stopCode: "reconnect",
+      current: false,
+      why: "Your shop refused access. Reconnect it, then check again.",
+    },
+  ],
 ];
 
 const WAITING: MerchantRecord = {

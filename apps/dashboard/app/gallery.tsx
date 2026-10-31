@@ -1443,7 +1443,13 @@ const CARDS: GalleryState[] = [
       cause:
         "The gateway leaves their products out of the catalogue and refuses new purchases of them until their integration polls again, so the banner says since when it has not connected.",
     },
-    cardsView(CATALOGUE, ORIGIN.live),
+    cardsView(
+      cardsOf(
+        "open",
+        ON_SALE.map((product) => ({ product, selling: "paused" })),
+      ),
+      ORIGIN.live,
+    ),
     "live",
     {
       account: bannerOf(seenBy("live"), { outOfTouch: { since: "2026-10-12T14:02:07Z" } }),

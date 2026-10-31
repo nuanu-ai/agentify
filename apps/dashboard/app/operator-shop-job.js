@@ -1,4 +1,4 @@
-/** Observe the stored job; only its server-rendered result may replace what is on screen. */
+/** Observe the stored job; refresh its result and connection state without disturbing forms. */
 const observer = document.querySelector("[data-shop-job-observer]");
 if (observer) {
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -11,6 +11,7 @@ if (observer) {
   const page = observer.dataset.shopJobObserver + location.search;
   const endpoint = `${observer.dataset.shopJobObserver}/shop-job${location.search}`;
   const unread = observer.querySelector("[data-shop-job-unread]");
+  const connection = document.querySelector("[data-shop-job-connection]");
   let result = observer.querySelector("[data-shop-job-result]");
   let key = observer.dataset.shopJobKey;
   let markup = result.innerHTML;
@@ -41,17 +42,20 @@ if (observer) {
       if (nextKey !== key || zoneChanged) {
         // shortcut: active revisions reread the bounded operator page; use a narrow HTML projection if pilot load warrants it.
         const html = await (await fetchRead(page)).text();
-        const next = new DOMParser()
-          .parseFromString(html, "text/html")
-          .querySelector("[data-shop-job-observer]");
+        const nextPage = new DOMParser().parseFromString(html, "text/html");
+        const next = nextPage.querySelector("[data-shop-job-observer]");
         const nextResult = next?.querySelector("[data-shop-job-result]");
-        if (!nextResult || !next.dataset.shopJobKey) throw new Error("unread");
+        const nextConnection = nextPage.querySelector("[data-shop-job-connection]");
+        if (!nextResult || !next.dataset.shopJobKey || !connection || !nextConnection)
+          throw new Error("unread");
         if (!current()) return;
         if (nextResult.innerHTML !== markup) {
           result.replaceWith(nextResult);
           result = nextResult;
           markup = nextResult.innerHTML;
         }
+        if (connection.innerHTML !== nextConnection.innerHTML)
+          connection.innerHTML = nextConnection.innerHTML;
         key = next.dataset.shopJobKey;
         observer.dataset.shopJobKey = key;
         zoneChanged = false;

@@ -606,8 +606,15 @@ export function MerchantScreen({ view }: Readonly<{ view: MerchantView }>) {
           <section className="op-panel" aria-labelledby="integration-title">
             <div className="op-panel-head">
               <h2 id="integration-title">Integration</h2>
-              <span className={connected ? "badge badge-pass" : "badge badge-quiet"}>
-                {connected ? "Connected" : "Not connected"}
+              <span data-shop-job-connection>
+                <Word
+                  word={
+                    view.shopJob?.words.connectionState ?? {
+                      text: connected ? "Connected" : "Not connected",
+                      tone: connected ? "ok" : "quiet",
+                    }
+                  }
+                />
               </span>
             </div>
             <div className="op-panel-body">

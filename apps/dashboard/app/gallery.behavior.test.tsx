@@ -11,8 +11,10 @@
  */
 
 import { drawnInBrowser } from "@agentify/gallery/browser";
+import { within } from "@testing-library/react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { ONBOARDING_CASES } from "../src/testing/onboarding-cases.js";
 import { gallery } from "./gallery.js";
@@ -20,6 +22,39 @@ import { gallery } from "./gallery.js";
 const scenes = gallery.states.flatMap((state) =>
   state.scene === undefined ? [] : [[state.id, state, state.scene] as const],
 );
+
+describe("current selling and connection states in the gallery", () => {
+  it.each([
+    ["dashboard-cards-out-of-touch", "Off sale"],
+    ["dashboard-cards", "On sale"],
+  ])("shows the effective product state in %s", async (id, expected) => {
+    const state = gallery.states.find((one) => one.id === id);
+    if (!state) throw new Error(`the gallery has no state ${id}`);
+    const drawn = document.createElement("div");
+    drawn.innerHTML = await drawnInBrowser(state, { shows: "Products" }, { act, createRoot });
+    const products = within(drawn).getByRole("list", { name: "Products" });
+
+    expect(within(products).getAllByText(expected, { exact: true })).toHaveLength(3);
+    expect(drawn.querySelector('form[action*="selling=pause"]')).not.toBeNull();
+    expect(drawn.querySelectorAll('form[action*="?pause="]')).toHaveLength(3);
+  });
+
+  it.each([
+    ["reconnect", "Reconnect required"],
+    ["earlier-reconnect", "Connected"],
+    ["progress", "Connected"],
+  ])("shows the current shop connection beside the %s job", (job, expected) => {
+    const id = `dashboard-admin-merchant-shop-job-${job}`;
+    const state = gallery.states.find((one) => one.id === id);
+    if (!state) throw new Error(`the gallery has no state ${id}`);
+    const drawn = document.createElement("div");
+    drawn.innerHTML = renderToString(state.draw());
+    document.body.replaceChildren(drawn);
+    const integration = within(drawn).getByRole("region", { name: "Integration" });
+
+    expect(within(integration).getByText(expected, { exact: true })).toBeTruthy();
+  });
+});
 
 describe("the dashboard's gallery, in the browser", () => {
   it.each(["dashboard-cards-menu"])("draws the header's menu open in %s", async (id) => {
