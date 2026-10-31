@@ -49,7 +49,9 @@ import { NOT_FROM_HERE } from "../src/form-post.js";
 import { type Answer, lateAnswer, type PayoutSplits } from "../src/gateway.js";
 import { integrationsView } from "../src/integrations-view.js";
 import { keysView, newKeyView } from "../src/keys.js";
-import { type LiveSalesMailEvent, liveSalesMessage } from "../src/live-sales-mail.js";
+import { liveSalesAdmissionStates } from "../src/live-sales-admission-states.js";
+import type { RequestMailEvent } from "../src/live-sales-events.js";
+import { liveSalesMessage } from "../src/live-sales-message.js";
 import { inViewersZone } from "../src/moments.js";
 import { nextStepOf } from "../src/next-step.js";
 import {
@@ -2800,6 +2802,67 @@ const JOB_STATES: readonly [string, string, Partial<ShopJobState>][] = [
 ];
 
 const WOOCOMMERCE: GalleryState[] = [
+  ...(["check", "publish"] as const).map((kind): GalleryState => {
+    const initial = ONBOARDING_CASES.find((one) => one.row === 14);
+    if (!initial) throw new Error("Missing connected shop situation.");
+    const facts = { ...initial.facts, liveApproved: true, payoutWallet: true };
+    const job = presentShopJob({
+      ...JOB_RESULT,
+      kind,
+      status: "running",
+      read: 3,
+      total: 100,
+      published: 0,
+      groups: [],
+    });
+    return at(
+      {
+        id: `dashboard-live-automatic-${kind}`,
+        screen: "Products",
+        when:
+          kind === "check"
+            ? "Approval is waiting behind a product check."
+            : "Approval or the first payout wallet started automatic publication.",
+        cause:
+          "The durable publication intent keeps the next step pending; the shop job supplies progress.",
+      },
+      {
+        path: "/products",
+        mode: "live",
+        loaded: {
+          "routes/merchant-only": {
+            account: [],
+            onboarding: {
+              mode: "live",
+              step: nextStepOf(facts),
+              keys: keysView([]),
+              contact: null,
+              origin: ORIGIN.live,
+              unread: false,
+              publicationPending: true,
+              account: onboardingAccountView(nextStepOf(facts), {
+                mode: "live",
+                sellerName: "Freeland",
+                savedWallet: PAID_INTO,
+                nameRule: NAME_RULE,
+                wallet: null,
+                email: WHO,
+                request: null,
+                decision: null,
+              }),
+            },
+          },
+          "routes/products": {
+            ...cardsView(cardsOf("open", []), ORIGIN.live, {
+              through: "woocommerce",
+              offSale: [],
+            }),
+            shop: { ...shopOn(shopRead(CONNECTED)), job },
+          },
+        },
+      },
+    );
+  }),
   ...JOB_STATES.map(([id, when, result]) => {
     const job = presentShopJob({ ...JOB_RESULT, ...result });
     const told = {
@@ -2859,8 +2922,7 @@ const WOOCOMMERCE: GalleryState[] = [
       ? {
           ...state,
           scene: {
-            shows:
-              id === "publication-unread-first" ? "Publication stopped" : "Sync with your shop",
+            shows: "Sync with your shop",
             answers: { "GET /shop-job": { status: 200, body: job } },
           },
         }
@@ -4329,6 +4391,7 @@ const ONBOARDING: GalleryState[] = ONBOARDING_CASES.map(({ row, when, facts }) =
     origin: ORIGIN[facts.mode],
     unread: facts.unread,
     account: onboardingAccountView(step, {
+      mode: facts.mode,
       sellerName: facts.sellerName ? "Freeland" : "",
       savedWallet: facts.payoutWallet ? PAID_INTO : null,
       nameRule: NAME_RULE,
@@ -4488,6 +4551,7 @@ const ACCOUNT_FAILURES: GalleryState[] = [
     origin: ORIGIN[facts.mode],
     unread: false,
     account: onboardingAccountView(nextStepOf(facts), {
+      mode: facts.mode,
       sellerName: "Freeland",
       savedWallet: null,
       nameRule: NAME_RULE,
@@ -4674,9 +4738,9 @@ const CODE_CONNECTIONS: GalleryState[] = (
   );
 });
 
-const REQUEST_MAIL = ["requested", "declined", "reminder"].map((kind): GalleryState => {
-  const event: LiveSalesMailEvent = {
-    kind: kind as LiveSalesMailEvent["kind"],
+const REQUEST_MAIL = (["requested", "declined", "reminder"] as const).map((kind): GalleryState => {
+  const event: RequestMailEvent = {
+    kind,
     sellerName: "Freeland",
     hasWallet: false,
     request: {
@@ -4748,6 +4812,22 @@ export const gallery: GallerySurface = {
     ...SETTING_UP,
     ...ONBOARDING,
     ...REQUEST_MAIL,
+    ...liveSalesAdmissionStates.map(
+      (message): GalleryState => ({
+        id: `dashboard-live-sales-mail-${message.id}`,
+        screen: "Live-sales email",
+        address: "Email",
+        when: message.title,
+        cause: "The delivery renderer supplies the exact subject and HTML sent to the merchant.",
+        draw: () => (
+          <article>
+            <h2>Subject: {message.subject}</h2>
+            {/* biome-ignore lint/security/noDangerouslySetInnerHtml: the delivery renderer escapes all text; the gallery shows its actual HTML. */}
+            <div dangerouslySetInnerHTML={{ __html: message.html }} />
+          </article>
+        ),
+      }),
+    ),
     ...ACCOUNT_FAILURES,
     ...SHOP_ESTIMATES,
     ...CODE_KEYS,

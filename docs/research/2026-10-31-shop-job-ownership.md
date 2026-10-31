@@ -18,7 +18,9 @@ The runner checks its ownership before continuing work. A publication already in
 flight when ownership is lost can have an unknown outcome.
 
 Idle workers poll queued rows once a second. Recovery runs on startup and every
-thirty seconds after the preceding reconciliation finishes. It checks connections for a missing check or a newly saved rate. This pass also recovers abandoned jobs while the process stays up.
+thirty seconds after the preceding reconciliation finishes. It advances automatic
+publication intents before checking connections for a missing check or a newly
+saved rate. This pass also recovers abandoned jobs while the process stays up.
 Graceful shutdown waits for active walks while the gateway remains available,
 then releases the ownership connections and closes their pool.
 
@@ -28,7 +30,7 @@ that pass with one query selecting the shops that need work is tracked in
 
 This uses the existing queue table and PostgreSQL locking. Adding pg-boss here
 would require another queue representation and coordination with the transactions
-that save a connection or exchange rate. An expiring
+that save a connection, exchange rate or automatic publication intent. An expiring
 lease cannot distinguish a dead worker from one that is slow or suspended. A
 process-local mutex cannot exclude a second dashboard process. Session ownership
 avoids those additions without changing the SDK or merchant contracts.

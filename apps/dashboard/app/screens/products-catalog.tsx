@@ -40,13 +40,16 @@ export function ProductsCatalog({
       action={
         <AllSelling
           view={view}
-          secondary={account !== undefined && account.step.account !== "none"}
+          secondary={
+            account !== undefined && (account.publicationPending || account.step.account !== "none")
+          }
         />
       }
     >
-      {account === undefined || (account.step.account === "none" && !press?.problem) ? null : (
+      {account === undefined ||
+      (!account.publicationPending && account.step.account === "none" && !press?.problem) ? null : (
         <Suspense fallback={null}>
-          <OnboardingAccount view={account} {...(press === undefined ? {} : { press })} />
+          <OnboardingAccount view={account} job={shop?.job} press={press} />
         </Suspense>
       )}
       {shop?.connection?.access === "read_write" && !shop.connection.onCode ? (
@@ -61,6 +64,7 @@ export function ProductsCatalog({
             <ShopJobSummary
               initial={shop.job ?? null}
               noProducts={view.empty}
+              publication={account?.publicationPending ? account.account?.publication : undefined}
               endpoint={`${base}/shop-job`}
               summaryTo="/woocommerce"
               checkAction="/products?woo=check"

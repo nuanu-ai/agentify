@@ -107,6 +107,7 @@ export function shopPublisherFor(
 }
 export interface ShopWorkParts {
   readonly shops: WooShops;
+  readonly advancePublications?: () => Promise<void>;
   readonly identity: Pick<Identity, "byId">;
   readonly clientFor: (acting: Acting) => GatewayClient;
   readonly publisherFor: (acting: Acting) => ShopPublisher;
@@ -477,6 +478,7 @@ export function startShopJobs(parts: ShopWorkParts): {
       wakes.add(wake);
     });
   const reconcile = async () => {
+    await parts.advancePublications?.();
     await parts.shops.jobs.interrupted();
     // A renewed grant or first rate remains durable when enqueue met another active job.
     for (const connection of await parts.shops.connections()) {

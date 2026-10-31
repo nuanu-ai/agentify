@@ -368,6 +368,7 @@ export interface PageServices {
 }
 
 export interface PageParts {
+  readonly livePublicationPending?: (merchantId: string) => Promise<boolean>;
   readonly workspace?: WorkspaceDoor;
   readonly identity: DashboardIdentity;
   /**
@@ -1805,8 +1806,10 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       async frame(person) {
         const woo = parts.woo;
         const frameStarted = performance.now();
+        const publicationPending = parts.livePublicationPending;
+        const merchantId = person.merchant?.id;
         const gateway = gatewayAs(person, FRAME_WITHIN_MS);
-        const [standing, choices, shop, request, shopFacts] = await Promise.all([
+        const [standing, choices, shop, request, shopFacts, publication] = await Promise.all([
           readOf(() => gateway.standing()),
           readOf(async () => ({
             ok: true as const,
@@ -1830,6 +1833,14 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
                 ok: true as const,
                 document: await woo.onboardingFacts(person),
               })),
+          config.surfaceMode === "live" &&
+          merchantId !== undefined &&
+          publicationPending !== undefined
+            ? readOf(async () => ({
+                ok: true as const,
+                document: await publicationPending(merchantId),
+              }))
+            : Promise.resolve({ read: true as const, value: false }),
         ]);
         const remaining = Math.max(1, FRAME_WITHIN_MS - (performance.now() - frameStarted));
         const keys =
@@ -1842,6 +1853,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
           !keys.read ||
           !request.read ||
           !shopFacts.read ||
+          !publication.read ||
           shop.kind === "unread";
         const value = standing.read ? standing.value : null;
         const facts = {
@@ -1897,6 +1909,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         const onboarding: OnboardingView = {
           mode: config.surfaceMode,
           step,
+          publicationPending: publication.read && publication.value && value?.liveApproved === true,
           keys: keys.read ? keysView(keys.value) : null,
           contact: facts.contact === null ? null : momentView(facts.contact),
           origin: config.publicBaseUrl,
@@ -1905,6 +1918,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
             ? {}
             : {
                 account: onboardingAccountView(step, {
+                  mode: config.surfaceMode,
                   sellerName: value.sellerName ?? (prefill.read ? prefill.value : null) ?? "",
                   savedWallet: value.payoutWallet,
                   nameRule: NAME_RULE,

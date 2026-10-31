@@ -132,6 +132,7 @@ it("keeps asking for live sales as the one filled action while global and indivi
     origin: "https://agentify.ad",
     unread: false,
     account: onboardingAccountView(nextStepOf({ ...situation.facts, selling: "paused" }), {
+      mode: situation.facts.mode,
       sellerName: "Freeland",
       savedWallet: null,
       nameRule: NAME_RULE,

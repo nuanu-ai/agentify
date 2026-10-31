@@ -157,7 +157,7 @@ export async function harness(
     countedIds(),
     () => now,
     queue.envelopes(),
-    options.liveSalesNotices,
+    options.liveSalesNotices ?? { stage: () => () => {} },
   );
   const facilitator = new ScriptedFacilitator();
   const chain = paymentChainOn(config.payment.network, config.payment.rpcUrl);

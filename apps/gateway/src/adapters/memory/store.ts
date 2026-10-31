@@ -28,8 +28,9 @@ import {
   type LiveSalesAsk,
   type LiveSalesAsked,
   type LiveSalesDeclined,
-  type LiveSalesNotice,
+  type LiveSalesEffect,
   type LiveSalesRequest,
+  liveSalesChange,
   liveSalesReminderAt,
 } from "../../ports/live-sales.js";
 import { pageIn } from "../../ports/paging.js";
@@ -68,7 +69,7 @@ import { recordedOtherwise, splitsOfTheWrite } from "../registry.js";
 
 /** Stages an in-memory notice; the returned commit cannot fail. */
 export interface MemoryLiveSalesNotices {
-  stage(notice: LiveSalesNotice): () => void;
+  stage(notice: LiveSalesEffect): () => void;
 }
 const noLiveSalesNotices: MemoryLiveSalesNotices = {
   stage() {
@@ -280,6 +281,11 @@ export class MemoryStore implements Store {
       // Checked before anything moves, so a row the journal refuses leaves the
       // merchant as it was, as the rolled-back transaction does in Postgres.
       const entry = this.#checkedPress(journal, changed);
+      const commit = changed
+        ? this.#liveNotices.stage(
+            liveSalesChange("admitted", this.#ids("lsd"), this.#storedMerchantOf(row), at),
+          )
+        : undefined;
       row.liveApprovedAt ??= at;
       const request = this.#liveRequests.get(id);
       if (changed && request)
@@ -287,6 +293,7 @@ export class MemoryStore implements Store {
       const granted = { merchant: this.#storedMerchantOf(row), changed };
       if (changed) await this.#recordWith(analytics, granted, at);
       this.#append(entry);
+      commit?.();
       return granted;
     });
   }
@@ -302,8 +309,20 @@ export class MemoryStore implements Store {
       }
       const changed = row.liveApprovedAt !== null;
       const entry = this.#checkedPress(journal, changed);
+      const commit = changed
+        ? this.#liveNotices.stage(
+            liveSalesChange(
+              "withdrawn",
+              this.#ids("lsd"),
+              this.#storedMerchantOf(row),
+              journal?.at ?? this.#now(),
+              journal?.reason ?? null,
+            ),
+          )
+        : undefined;
       row.liveApprovedAt = null;
       this.#append(entry);
+      commit?.();
       return { merchant: this.#storedMerchantOf(row), changed };
     });
   }
@@ -425,29 +444,46 @@ export class MemoryStore implements Store {
     at: number,
     analytics?: AnalyticsOf<WalletWritten>,
   ): Promise<WalletWritten | "moved" | null> {
-    const splits = splitsOfTheWrite(id, this.#network, next);
-    const row = this.#merchants.get(id);
-    if (row === undefined) {
-      return null;
-    }
-    // Nothing may be awaited between the comparison and the writes, or this
-    // stops being the one transaction the database makes of the wallet and
-    // its splits; whatever would refuse refuses before either is written.
-    if (!sameWallet(row.payoutWallet, expected)) {
-      return "moved";
-    }
-    const fresh = toRecord(this.#splits, splits);
-    row.payoutWallet = {
-      address: next.address,
-      pending:
-        next.pending === null
-          ? null
-          : { address: next.pending.address, takesEffectAt: next.pending.takesEffectAt },
-    };
-    const recorded = this.#record(fresh, at);
-    const written = { merchant: this.#storedMerchantOf(row), recorded };
-    await this.#recordWith(analytics, written, at);
-    return written;
+    return this.#withMerchant(id, async () => {
+      const splits = splitsOfTheWrite(id, this.#network, next);
+      const row = this.#merchants.get(id);
+      if (row === undefined) {
+        return null;
+      }
+      // Nothing may be awaited between the comparison and the writes, or this
+      // stops being the one transaction the database makes of the wallet and
+      // its splits; whatever would refuse refuses before either is written.
+      if (!sameWallet(row.payoutWallet, expected)) {
+        return "moved";
+      }
+      const fresh = toRecord(this.#splits, splits);
+      const commit =
+        expected.address === null && next.address !== null && row.liveApprovedAt !== null
+          ? this.#liveNotices.stage(
+              liveSalesChange(
+                "first_wallet",
+                this.#ids("lsd"),
+                {
+                  ...this.#storedMerchantOf(row),
+                  payoutWallet: { address: next.address },
+                },
+                at,
+              ),
+            )
+          : undefined;
+      row.payoutWallet = {
+        address: next.address,
+        pending:
+          next.pending === null
+            ? null
+            : { address: next.pending.address, takesEffectAt: next.pending.takesEffectAt },
+      };
+      const recorded = this.#record(fresh, at);
+      const written = { merchant: this.#storedMerchantOf(row), recorded };
+      await this.#recordWith(analytics, written, at);
+      commit?.();
+      return written;
+    });
   }
 
   // --- the payout splits ----------------------------------------------------

@@ -69,6 +69,7 @@ export async function adminServed(
     channel?: keyof typeof CHANNELS;
     liveSalesNotices?: NonNullable<Parameters<typeof harness>[1]>["liveSalesNotices"];
     shops?: WooShops;
+    livePublicationPending?: (merchantId: string) => Promise<boolean>;
     workspace?: false;
     /** A decorator, for a test about an identity that fails; the rest goes to the real one. */
     identity?: (real: Identity) => Identity;
@@ -126,6 +127,9 @@ export async function adminServed(
     gateway: harnessed.gateway,
     identity: served,
     ...(options.shops === undefined ? {} : { wooShops: options.shops }),
+    ...(options.livePublicationPending === undefined
+      ? {}
+      : { livePublicationPending: options.livePublicationPending }),
     ...(options.workspace === false
       ? {}
       : {

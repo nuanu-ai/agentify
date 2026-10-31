@@ -76,7 +76,9 @@ if (databaseUrl === null) {
   // More connections than the races below run at once, so the database's
   // locks decide them rather than a wait for a connection.
   const { db, pool } = connect(databaseUrl, { max: 8 });
-  const store = PostgresStore.over(db, "eip155:84532", countedIds());
+  const store = PostgresStore.over(db, "eip155:84532", countedIds(), undefined, {
+    within: async () => {},
+  });
   const config = testConfig({
     PAYMENT_NETWORK: "eip155:84532",
     FACILITATOR_URL: "https://x402.org/facilitator",

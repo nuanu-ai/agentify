@@ -39,6 +39,7 @@ import { type ShopCalls, wooPagesFor } from "./woo-pages.js";
 import type { WooShops } from "./woo-shops.js";
 
 export interface DashboardParts {
+  readonly livePublicationPending?: (merchantId: string) => Promise<boolean>;
   /** The pages, built ahead of time in a deployment or compiled from source. */
   readonly pages: Pages;
   /**
@@ -279,6 +280,9 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     pagesHandler(
       parts.pages,
       pageServicesFor(config, {
+        ...(parts.livePublicationPending === undefined
+          ? {}
+          : { livePublicationPending: parts.livePublicationPending }),
         ...(parts.admin === undefined
           ? {}
           : { workspace: workspaceDoorOver(config, parts, parts.admin) }),

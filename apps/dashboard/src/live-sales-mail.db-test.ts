@@ -366,13 +366,16 @@ if (databaseUrl === null) {
       await store.grantLiveApproval(seller.merchantId, clock + 1);
       clock += 60_000;
       await turn();
+      await turn();
       expect((await rows()).filter((row) => row.kind === "reminder")).toMatchObject([
         { state: "suppressed", suppression: "request_answered" },
       ]);
-      const count = messages.length;
+      const count = messages.filter((message) => message.to === currentOperator.email).length;
       clock += 86400_000;
       await turn();
-      expect(messages).toHaveLength(count);
+      expect(messages.filter((message) => message.to === currentOperator.email)).toHaveLength(
+        count,
+      );
     });
 
     it("records that a reminder with no eligible operators was considered once", async () => {

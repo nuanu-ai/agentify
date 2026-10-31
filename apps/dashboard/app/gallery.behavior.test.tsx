@@ -84,7 +84,7 @@ describe("publication results reached from an empty Products list", () => {
       );
       const text = drawn.body.textContent ?? "";
 
-      expect(text).toContain(shouldSayNone ? "Check again" : "Sync with your shop");
+      expect(text).toContain("Sync with your shop");
       expect(text.includes(copy)).toBe(shouldSayNone);
     },
   );

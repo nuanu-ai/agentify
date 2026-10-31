@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import {
   type ActionFunctionArgs,
   createContext,
@@ -6,6 +6,7 @@ import {
   type ShouldRevalidateFunction,
   useActionData,
   useLoaderData,
+  useRevalidator,
   useRouteLoaderData,
   useSearchParams,
 } from "react-router";
@@ -106,6 +107,15 @@ export default function Products() {
     pressed && "screen" in pressed && pressed.screen === "onboarding" ? pressed : undefined;
   const frame = useRouteLoaderData<FrameView>("routes/merchant-only");
   const onboarding = frame?.onboarding;
+  const revalidator = useRevalidator();
+  useEffect(() => {
+    if (!onboarding?.publicationPending) return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible" && revalidator.state === "idle")
+        void revalidator.revalidate();
+    }, 5_000);
+    return () => clearInterval(timer);
+  }, [onboarding?.publicationPending, revalidator]);
   const empty = (view === null || view.empty) && onboarding !== undefined;
   const shop = pressed && "screen" in pressed && pressed.screen === "shop" ? pressed : view?.shop;
   const choosingShop =

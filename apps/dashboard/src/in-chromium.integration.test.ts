@@ -1078,6 +1078,15 @@ it.each([
     intent: "save-onboarding-profile",
     fields: ["seller_name", "payout_wallet", "checked_job"],
   },
+  {
+    state: "live publication waiting for job",
+    test: false,
+    shop: true,
+    pending: false,
+    publication: true,
+    intent: "",
+    fields: [] as string[],
+  },
 ])(
   "keeps the first account form usable within the initial script budget: $state",
   async (fixture) => {
@@ -1127,6 +1136,7 @@ it.each([
     await identity.acknowledgeTest(person.id);
     await identity.choosePlatform(person.id, fixture.shop ? "woocommerce" : "api");
     const shops = memoryWooShops();
+    let publicationPending = "publication" in fixture && fixture.publication === true;
     let checkedJob: string | undefined;
     if (fixture.shop) {
       await isolated.gateway.setSellerName(merchant, { seller_site: "https://woo.nuanu.ai" });
@@ -1166,6 +1176,18 @@ it.each([
       await shops.jobs.total(job.id, 1);
       await shops.jobs.finish(job.id, { status: "completed", stopCode: null, why: null });
     }
+    if (publicationPending) {
+      await isolated.gateway.setSellerName(merchant, { seller_name: "Their own shop" });
+      await isolated.gateway.setPayoutWallet(
+        merchant,
+        "0x0000000000000000000000000000000000000009",
+        {
+          kind: "signed_in",
+          email: person.email,
+        },
+      );
+      await isolated.store.grantLiveApproval(merchant, isolated.now());
+    }
     if (!fixture.shop) await isolated.addKey(merchant);
     await isolated.gateway.poll(merchant, 0, { through: fixture.shop ? "woocommerce" : "api" });
     if (fixture.pending) {
@@ -1189,6 +1211,7 @@ it.each([
       gateway: isolated.gateway,
       identity,
       wooShops: shops,
+      livePublicationPending: async () => publicationPending,
       now: () => new Date(isolated.now()),
       shop: {
         grantScreen: async () => {
@@ -1227,6 +1250,20 @@ it.each([
       if (response === null) throw new Error("the account page did not arrive");
       const html = await response.text();
       await withinScriptBudget(fixture.state, page, scripts);
+      if ("publication" in fixture && fixture.publication) {
+        const publish = page
+          .locator("main form")
+          .filter({ has: page.locator('input[name="checked_job"]') });
+        await page.locator('main [role="status"]').waitFor({ state: "visible" });
+        expect(await publish.count()).toBe(0);
+        publicationPending = false;
+        await publish.waitFor({ state: "visible", timeout: 12_000 });
+        expect(await publish.locator('input[name="checked_job"]').inputValue()).toBe(checkedJob);
+        expect(await publish.locator('button[type="submit"]').isEnabled()).toBe(true);
+        expect(errors).toEqual([]);
+        return;
+      }
+
       if ("walletChange" in fixture && fixture.walletChange) {
         expect(await page.getByRole("button", { name: "Cancel this change" }).isVisible()).toBe(
           true,

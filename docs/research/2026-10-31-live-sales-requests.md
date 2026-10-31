@@ -17,11 +17,20 @@ and integration evidence beside the current seller name and wallet. Declining
 requires a note, a fresh operator sign-in, a checked consequence and the exact
 request the page showed. A stale form cannot decline a newer request.
 
-Request, decline and reminder mail use the durable backend delivery owner.
-This slice does not publish shop products automatically at admission or send
-an approval result email. Those belong to the next slice. Its interim wallet
-copy therefore promises only that the merchant can save a wallet while
-waiting.
+Request, decline, reminder and decision mail use the durable delivery owner.
+Approval starts a connected shop's publication in the background when its
+seller profile and payout wallet are ready. Saving the first wallet after
+approval starts the same work. A current check finishes before publication;
+Products keeps the pending step and follows the stored job's progress. The
+merchant may leave the page and receives the result by email. A failed
+publication-state read remains unknown on the page.
+
+Decision mail gives one next step: add a wallet, finish Settings, connect an
+integration, attend to a shop check, or publish from code. Publication results
+retain their recorded date and confirmed count, including partial reads and
+unknown totals. Zero confirmed products describes that publication and does
+not establish that no earlier card exists or sells. Withdrawal mail retains
+the operator's complete note and offers the path to ask again.
 
 The test channel saves seller name and wallet in one form. A shop then offers
 publication of its checked products; connected code offers the publishing

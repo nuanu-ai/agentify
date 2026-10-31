@@ -1,13 +1,13 @@
 import { eq } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { JournalRow } from "../../ports/journal.js";
-import type { LiveSalesNotice, LiveSalesRequest } from "../../ports/live-sales.js";
+import type { LiveSalesEffect, LiveSalesRequest } from "../../ports/live-sales.js";
 import { journalRowOf } from "./journal.js";
 import { liveRequests, operatorJournal } from "./schema.js";
 
 export type LiveSalesTransaction = Parameters<Parameters<NodePgDatabase["transaction"]>[0]>[0];
 export interface PostgresLiveSalesNotices {
-  within(tx: LiveSalesTransaction, event: LiveSalesNotice): Promise<void>;
+  within(tx: LiveSalesTransaction, event: LiveSalesEffect): Promise<void>;
 }
 export const noLiveSalesNotices: PostgresLiveSalesNotices = {
   async within() {

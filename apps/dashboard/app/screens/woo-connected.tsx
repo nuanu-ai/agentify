@@ -119,16 +119,15 @@ export function Connected({
     <>
       <Status connection={connection} view={view} base={base} job={job} />
       {account.view !== undefined &&
-      (account.view.step.account !== "none" || account.press?.problem) &&
+      (account.view.publicationPending ||
+        account.view.step.account !== "none" ||
+        account.press?.problem) &&
       (job === null ||
         job.status === "queued" ||
         job.status === "running" ||
         !job.current ||
         job.stopCode === "reconnect") ? (
-        <OnboardingAccount
-          view={account.view}
-          {...(account.press === undefined ? {} : { press: account.press })}
-        />
+        <OnboardingAccount view={account.view} job={job} press={account.press} />
       ) : null}
       {connection.access !== "read_write" || site === null ? null : site.kind === "saved" ? (
         <p className={styles.site}>
@@ -158,7 +157,9 @@ export function Connected({
             endpoint={`${base}/shop-job`}
             // Products enters this onboarding branch only for an empty unfiltered catalogue.
             noProducts={onboarding}
-            checkAction={onboarding ? "/products?woo=check" : "/woocommerce/check"}
+            {...(account.view?.publicationPending
+              ? { notification: account.view.account?.publication.notification }
+              : { checkAction: onboarding ? "/products?woo=check" : "/woocommerce/check" })}
             reconnect={
               <Suspense fallback={null}>
                 <ReconnectShop connection={connection} />
@@ -173,15 +174,20 @@ export function Connected({
             }
             publish={(job) =>
               account.view !== undefined &&
-              (account.view.step.account !== "none" || account.press?.problem) ? (
+              (account.view.publicationPending ||
+                account.view.step.account !== "none" ||
+                account.press?.problem) ? (
                 <OnboardingAccount
                   view={account.view}
-                  {...(account.press === undefined ? {} : { press: account.press })}
-                  {...(job.kind === "check" && job.current && job.ready > 0 && !needsSite
-                    ? { publish: { checkedJob: job.id, label: job.words.publish } }
-                    : {})}
+                  job={job}
+                  press={account.press}
+                  publish={
+                    job.kind === "check" && job.current && job.ready > 0 && !needsSite
+                      ? { checkedJob: job.id, label: job.words.publish }
+                      : undefined
+                  }
                 />
-              ) : job.ready > 0 && !needsSite ? (
+              ) : (job.kind === "publish" || job.ready > 0) && !needsSite ? (
                 <>
                   <ShopForm action="/woocommerce/import">
                     {(pending) => (

@@ -50,6 +50,7 @@ import {
   type LiveSalesAsk,
   type LiveSalesAsked,
   type LiveSalesDeclined,
+  liveSalesChange,
   liveSalesReminderAt,
 } from "../../ports/live-sales.js";
 import type { Reminder } from "../../ports/queue.js";
@@ -333,6 +334,11 @@ export class PostgresStore implements Store {
           .set({ state: "admitted", declineSequence: null })
           .where(eq(liveRequests.merchantId, id));
       await journalWith(tx, journal, answer.changed);
+      if (answer.changed)
+        await this.#liveNotices.within(
+          tx,
+          liveSalesChange("admitted", this.#ids("lsd"), merchant, at),
+        );
       return answer;
     });
   }
@@ -355,6 +361,17 @@ export class PostgresStore implements Store {
       }
       const changed = withdrawn !== undefined;
       await journalWith(tx, journal, changed);
+      if (changed)
+        await this.#liveNotices.within(
+          tx,
+          liveSalesChange(
+            "withdrawn",
+            this.#ids("lsd"),
+            merchant,
+            journal?.at ?? Date.now(),
+            journal?.reason ?? null,
+          ),
+        );
       return { merchant, changed };
     });
   }
@@ -554,6 +571,11 @@ export class PostgresStore implements Store {
         throw new Error(`the wallet of ${id} was written and the merchant could not be read back`);
       }
       const written = { merchant, recorded };
+      if (expected.address === null && next.address !== null && merchant.liveApprovedAt !== null)
+        await this.#liveNotices.within(
+          tx,
+          liveSalesChange("first_wallet", this.#ids("lsd"), merchant, at),
+        );
       await recordWith(tx, analytics, written, new Date(at));
       return written;
     });

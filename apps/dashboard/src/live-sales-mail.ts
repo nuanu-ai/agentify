@@ -3,10 +3,8 @@
  * handover happens later, using a frozen message and stable key. A provider
  * timeout can still duplicate delivery after its one-day deduplication window.
  */
-import { createHash } from "node:crypto";
 import { failureNamed } from "@agentify/gateway/failure-named";
 import {
-  type LiveSalesNotice,
   type LiveSalesTransaction,
   liveRequestOf,
   liveRequests,
@@ -16,154 +14,19 @@ import { and, asc, eq, isNull, lte, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
 import type { DashboardConfig } from "./config.js";
-import { type Handover, isSandboxMail, type Message, type Postman, postmanFor } from "./mail.js";
-import { transactionalEmailHtml } from "./mail-template.js";
-import { momentInUtc } from "./moments.js";
+import { operatorMail } from "./live-sales-events.js";
+import { insertNotices } from "./live-sales-intents.js";
+import { recordLiveSalesChange } from "./live-sales-publication.js";
+import { type Handover, isSandboxMail, type Postman, postmanFor } from "./mail.js";
 import { accounts, liveSalesMail } from "./schema.js";
-
-export type LiveSalesMailEvent = Omit<LiveSalesNotice, "kind"> & {
-  readonly kind: LiveSalesNotice["kind"] | "reminder";
-};
 
 type MailConfig = Pick<
   DashboardConfig,
   "surfaceMode" | "publicBaseUrl" | "basePath" | "mailFrom" | "mailUrl"
 >;
 type Delivery = typeof liveSalesMail.$inferSelect;
-const date = (at: number): string => momentInUtc(new Date(at).toISOString());
-const number = (count: number): string => count.toLocaleString("en-US");
 
-/** Used by the durable sender and the gallery, with the same dated facts. */
-export function liveSalesMessage(parts: {
-  readonly to: string;
-  readonly event: LiveSalesMailEvent;
-  readonly requesterEmail: string | null;
-  readonly baseUrl: string;
-  readonly idempotencyKey: string;
-}): Message {
-  const { event, requesterEmail, baseUrl } = parts;
-  const { request, sellerName, kind } = event;
-  const operator = kind !== "declined";
-  const link = operator ? `${baseUrl}/admin/merchants/${request.merchantId}` : baseUrl;
-  let subject: string;
-  let lead: string;
-  let paragraphs: string[];
-  if (kind === "declined") {
-    const decline = request.decline;
-    if (decline?.reason == null) throw new Error("a decline email needs its recorded note");
-    subject = `Agentify didn't approve ${sellerName} for live sales`;
-    lead = `Agentify looked at your request for live sales on ${date(decline.at)} and didn't approve it.`;
-    paragraphs = [
-      `Note from Agentify:\n${decline.reason}`,
-      "Fix what the note asks, then ask again from your dashboard.",
-    ];
-  } else if (kind === "reminder") {
-    subject = `${sellerName} has waited two working days`;
-    lead = `${sellerName} asked for live sales on ${date(request.requestedAt)}, and nobody has answered.`;
-    paragraphs = ["Their screen says we usually reply within one or two working days."];
-  } else {
-    subject = `${sellerName} asked for live sales`;
-    lead =
-      request.accountId === null
-        ? `Agentify recorded ${sellerName}'s existing pending request on ${date(request.requestedAt)}.`
-        : `${sellerName}${requesterEmail === null ? "" : ` (${requesterEmail})`} asked on ${date(request.requestedAt)}.`;
-    const evidence = request.evidence;
-    if (evidence === null) {
-      paragraphs = ["We don't have a recorded catalog check or code connection for this request."];
-    } else if (evidence.integration === "api") {
-      paragraphs = [`Their code connected ${date(evidence.connectedAt)}.`];
-    } else {
-      paragraphs = evidence.complete
-        ? [
-            `${number(evidence.ready)} of ${number(evidence.total ?? evidence.read)} products in ${evidence.host} checked ready.`,
-          ]
-        : [
-            `${number(evidence.ready)} of the ${number(evidence.read)} products read from ${evidence.host} checked ready.`,
-            "We don't know about the rest yet.",
-          ];
-      paragraphs.push(`Checked ${date(evidence.checkedAt)}.`);
-    }
-    if (!event.hasWallet) paragraphs.push("No payout wallet yet.");
-  }
-  const action = operator ? `Open ${sellerName} in the admin` : "Ask again in your dashboard";
-  const reason = operator
-    ? "You get this email because you are an operator of Agentify's live channel."
-    : "You get this email because you asked Agentify for live sales.";
-  return {
-    to: parts.to,
-    subject,
-    body: ["Agentify", subject, lead, ...paragraphs, `${action}:\n${link}`, reason].join("\n\n"),
-    html: transactionalEmailHtml(
-      {
-        preview: lead,
-        eyebrow: "Live sales",
-        title: subject,
-        lead,
-        paragraphs,
-        action,
-        link,
-        reason,
-      },
-      { paragraphsBeforeAction: true },
-    ),
-    idempotencyKey: parts.idempotencyKey,
-  };
-}
-
-const noticeId = (event: LiveSalesMailEvent, accountId: string): string =>
-  `live-sales-${createHash("sha256").update(`${event.request.id}:${event.kind}:${accountId}`).digest("hex")}`;
-
-async function insertNotices(
-  tx: LiveSalesTransaction,
-  event: LiveSalesMailEvent,
-  at: Date,
-): Promise<void> {
-  const requesterId = event.request.accountId;
-  const [requester] =
-    requesterId === null
-      ? []
-      : await tx
-          .select({ id: accounts.id, merchantId: accounts.merchantId })
-          .from(accounts)
-          .where(eq(accounts.id, requesterId));
-  if (
-    event.kind === "requested" &&
-    requesterId !== null &&
-    requester?.merchantId !== event.request.merchantId
-  ) {
-    throw new Error("the requesting account no longer names this merchant");
-  }
-  const recipients = await tx
-    .select({ id: accounts.id })
-    .from(accounts)
-    .where(
-      event.kind === "declined"
-        ? eq(accounts.merchantId, event.request.merchantId)
-        : eq(accounts.operator, true),
-    );
-  if (recipients.length === 0) {
-    console.log(`[dashboard] live-sales ${event.kind}: no eligible recipient accounts`);
-    return;
-  }
-  await tx
-    .insert(liveSalesMail)
-    .values(
-      recipients.map(({ id }) => ({
-        id: noticeId(event, id),
-        requestId: event.request.id,
-        merchantId: event.request.merchantId,
-        recipientAccountId: id,
-        requesterAccountId:
-          requester?.merchantId === event.request.merchantId ? requester.id : null,
-        kind: event.kind,
-        event,
-        state: "pending" as const,
-        createdAt: at,
-        nextAttemptAt: at,
-      })),
-    )
-    .onConflictDoNothing();
-}
+import { liveSalesMessage } from "./live-sales-message.js";
 
 /** Every query uses the business write's transaction, including recipient lookup. */
 export function postgresLiveSalesNotices(
@@ -171,8 +34,11 @@ export function postgresLiveSalesNotices(
 ): PostgresLiveSalesNotices {
   return {
     async within(tx, event) {
-      if (config.surfaceMode !== "live")
+      if (config.surfaceMode !== "live") {
+        if (!("request" in event)) return;
         throw new Error("live-sales notices belong to the live channel");
+      }
+      if (!("request" in event)) return recordLiveSalesChange(tx, event);
       await insertNotices(
         tx,
         event,
@@ -233,6 +99,7 @@ async function eligible(
 ): Promise<
   | { readonly email: string }
   | "role_changed"
+  | "decision_changed"
   | "request_answered"
   | "address_changed"
   | "sender_changed"
@@ -244,9 +111,24 @@ async function eligible(
     .where(eq(accounts.id, row.recipientAccountId));
   if (
     !recipient ||
-    (row.kind === "declined" ? recipient.merchantId !== row.merchantId : !recipient.operator)
+    (!operatorMail(row.kind) ? recipient.merchantId !== row.merchantId : !recipient.operator)
   )
     return "role_changed";
+  if (!("request" in row.event)) {
+    const {
+      rows: [merchant],
+    } = await tx.execute<{ live_approved_at: Date | null }>(
+      sql`select live_approved_at from merchants where id=${row.merchantId}`,
+    );
+    const approvedAt =
+      merchant?.live_approved_at == null ? null : new Date(merchant.live_approved_at).getTime();
+    if (
+      row.event.kind === "withdrawn"
+        ? approvedAt !== null
+        : approvedAt === null || approvedAt !== row.event.approvalAt
+    )
+      return "decision_changed";
+  }
   if (row.kind === "reminder") {
     const [pending] = await tx
       .select({ id: liveRequests.id })

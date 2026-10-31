@@ -9,6 +9,8 @@ import {
   settledPress,
 } from "./journal.js";
 
+import type { StoredMerchant } from "./store.js";
+
 const instant = z.number().finite().nonnegative();
 const count = z.number().int().nonnegative();
 const LiveSalesEvidenceSchema = z.discriminatedUnion("integration", [
@@ -66,6 +68,42 @@ export interface LiveSalesNotice {
   readonly request: LiveSalesRequest;
   readonly sellerName: string;
   readonly hasWallet: boolean;
+}
+export interface LiveSalesChange {
+  readonly kind: "admitted" | "first_wallet" | "withdrawn";
+  readonly approvalAt: number | null;
+  readonly id: string;
+  readonly merchantId: string;
+  readonly at: number;
+  readonly sellerName: string | null;
+  readonly sellerSite: string | null;
+  readonly integration: StoredMerchant["integration"];
+  readonly hasWallet: boolean;
+  readonly reason: string | null;
+}
+export type LiveSalesEffect = LiveSalesNotice | LiveSalesChange;
+export function liveSalesChange(
+  kind: LiveSalesChange["kind"],
+  id: string,
+  merchant: Pick<
+    StoredMerchant,
+    "id" | "serviceName" | "sellerSite" | "integration" | "liveApprovedAt"
+  > & { readonly payoutWallet: { readonly address: string | null } },
+  at: number,
+  reason: string | null = null,
+): LiveSalesChange {
+  return {
+    kind,
+    id,
+    merchantId: merchant.id,
+    approvalAt: kind === "admitted" ? at : kind === "withdrawn" ? null : merchant.liveApprovedAt,
+    at,
+    sellerName: merchant.serviceName,
+    sellerSite: merchant.sellerSite,
+    integration: merchant.integration,
+    hasWallet: merchant.payoutWallet.address !== null,
+    reason,
+  };
 }
 /** Two Monday–Friday dates after the request, preserving its UTC clock time. */
 export function liveSalesReminderAt(at: number): number {

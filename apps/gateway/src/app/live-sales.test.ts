@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { MemoryStore } from "../adapters/memory/store.js";
 import type { JournalPress } from "../ports/journal.js";
-import type { LiveSalesAsk, LiveSalesNotice } from "../ports/live-sales.js";
+import type { LiveSalesAsk, LiveSalesEffect } from "../ports/live-sales.js";
+import { PAYOUT_SPLIT_NETWORKS, payoutSplitNetworkOf } from "../split/networks.js";
+import { payoutSplitFor } from "../split/parameters.js";
 import { countedIds } from "../testing/harness.js";
 import { declineLiveSales, requestLiveSales } from "./live-sales.js";
 
@@ -20,7 +22,7 @@ const press = (reason: string): JournalPress => ({
   reason,
 });
 async function setup(refuse = false) {
-  const notices: LiveSalesNotice[] = [];
+  const notices: LiveSalesEffect[] = [];
   const store = new MemoryStore("eip155:8453", countedIds(), () => at, undefined, {
     stage(notice) {
       if (refuse) throw new Error("notice unavailable");
@@ -32,6 +34,53 @@ async function setup(refuse = false) {
 }
 
 describe("a merchant's live-sales request", () => {
+  it("records one admission effect and refuses the admission if it cannot retain the effect", async () => {
+    const refused = await setup(true);
+    await expect(refused.store.grantLiveApproval(input.merchantId, at)).rejects.toThrow(
+      "notice unavailable",
+    );
+    expect((await refused.store.merchantById(input.merchantId))?.liveApprovedAt).toBeNull();
+    const { store, notices } = await setup();
+    const grants = await Promise.all(
+      Array.from({ length: 5 }, () => store.grantLiveApproval(input.merchantId, at)),
+    );
+    expect(grants.filter((grant) => grant?.changed)).toHaveLength(1);
+    expect(notices).toMatchObject([
+      { kind: "admitted", merchantId: input.merchantId, hasWallet: false, sellerName: null },
+    ]);
+    const note = "Fix your seller name.\nUse the name customers know.";
+    await store.withdrawLiveApproval(input.merchantId, { ...press(note), action: "withdraw" });
+    await store.withdrawLiveApproval(input.merchantId, { ...press(note), action: "withdraw" });
+    expect(notices.map((notice) => notice.kind)).toEqual(["admitted", "withdrawn"]);
+    expect(notices[1]).toMatchObject({ reason: note });
+  });
+
+  it("leaves a first wallet and split absent when its post-approval publication cannot be retained", async () => {
+    const store = new MemoryStore("eip155:8453", countedIds(), () => at, undefined, {
+      stage(event) {
+        if (event.kind === "first_wallet") throw new Error("publication unavailable");
+        return () => {};
+      },
+    });
+    await store.addMerchant({ id: input.merchantId, name: "Merchant" }, at);
+    await store.grantLiveApproval(input.merchantId, at);
+    const address = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
+    const split = payoutSplitFor(
+      payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, "eip155:8453"),
+      input.merchantId,
+      address,
+    );
+    await expect(
+      store.setPayoutWallet(
+        input.merchantId,
+        { address: null, pending: null },
+        { address, split, pending: null },
+        at + 100,
+      ),
+    ).rejects.toThrow("publication unavailable");
+    expect((await store.merchantById(input.merchantId))?.payoutWallet.address).toBeNull();
+    expect(await store.payoutSplitAt(split.address)).toBeNull();
+  });
   it("accepts without a wallet and keeps a repeated request's date and evidence", async () => {
     const { store, notices } = await setup();
     const first = await requestLiveSales(store, input, at, "live");

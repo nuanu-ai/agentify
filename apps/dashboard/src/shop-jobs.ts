@@ -4,7 +4,8 @@ import { recordAlong, type SetupResult } from "@agentify/gateway/analytics";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool, PoolClient } from "pg";
-import { shopJobProducts, shopJobs } from "./schema.js";
+import { captureLivePublication } from "./live-sales-publication.js";
+import { livePublications, shopJobProducts, shopJobs } from "./schema.js";
 import type { AppliedRate, ShopCurrency, WooShops } from "./woo-shops.js";
 
 type JobKind = "check" | "publish";
@@ -20,6 +21,7 @@ export interface JobProduct {
 }
 export interface ShopJob {
   readonly id: string;
+  readonly publicationId?: string;
   readonly merchantId: string;
   readonly accountId: string;
   readonly connectionRevision: string;
@@ -57,6 +59,7 @@ export type JobRequest = Pick<
     | { readonly kind: "check" }
     | {
         readonly kind: "publish";
+        readonly publicationId?: string;
         readonly currency: ShopCurrency;
         readonly rate: ShopJob["rate"];
       }
@@ -166,7 +169,7 @@ export function memoryShopJobs(record?: (event: SetupResult, at: Date) => void):
     jobs.set(id, job);
     if (job.status === "completed" || job.status === "stopped") {
       held.delete(id);
-      if (job.kind !== "publish") return;
+      if (job.kind !== "publish" || job.publicationId !== undefined) return;
       try {
         record?.(
           terminalImportResult(job, [...(products.get(id)?.values() ?? [])]),
@@ -268,11 +271,28 @@ export function memoryShopJobs(record?: (event: SetupResult, at: Date) => void):
 
 /** Also used inside connection/rate writes, so a saved trigger cannot lose its task. */
 export async function requestShopJob(
-  tx: Pick<ReturnType<typeof drizzle>, "execute" | "select" | "delete" | "insert">,
+  tx: Pick<ReturnType<typeof drizzle>, "execute" | "select" | "delete" | "insert" | "update">,
   input: JobRequest,
 ): Promise<{ accepted: boolean; job: ShopJob }> {
   requirePublicationBasis(input);
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${input.merchantId}, 149))`);
+  const publicationId = input.kind === "publish" ? input.publicationId : undefined;
+  const [intent] =
+    publicationId === undefined
+      ? []
+      : await tx
+          .select()
+          .from(livePublications)
+          .where(eq(livePublications.id, publicationId))
+          .for("update");
+  if (
+    publicationId !== undefined &&
+    (!intent ||
+      intent.state !== "pending" ||
+      intent.merchantId !== input.merchantId ||
+      intent.accountId !== input.accountId)
+  )
+    throw new Error("the automatic publication is no longer pending");
   const previous = await tx
     .select()
     .from(shopJobs)
@@ -281,7 +301,9 @@ export async function requestShopJob(
   if (running)
     return {
       accepted:
-        running.kind === input.kind && running.data.connectionRevision === input.connectionRevision,
+        running.kind === input.kind &&
+        running.data.connectionRevision === input.connectionRevision &&
+        running.data.publicationId === publicationId,
       job: running.data,
     };
   await tx
@@ -296,6 +318,11 @@ export async function requestShopJob(
     status: job.status,
     data: job,
   });
+  if (publicationId !== undefined)
+    await tx
+      .update(livePublications)
+      .set({ jobId: job.id })
+      .where(eq(livePublications.id, publicationId));
   return { accepted: true, job };
 }
 
@@ -375,8 +402,14 @@ export function postgresShopJobs(pool: Pool, ownershipPool: Pool = pool): ShopJo
         const [row] = await tx.select().from(shopJobs).where(eq(shopJobs.id, id)).for("update");
         if (row?.status !== "running") return true;
         const data = { ...row.data, ...change(row.data), revision: row.data.revision + 1 };
+        if (data.status === "completed" || data.status === "stopped")
+          await captureLivePublication(tx, data);
         await tx.update(shopJobs).set({ data, status: data.status }).where(eq(shopJobs.id, id));
-        if (data.kind === "publish" && (data.status === "completed" || data.status === "stopped")) {
+        if (
+          data.kind === "publish" &&
+          data.publicationId === undefined &&
+          (data.status === "completed" || data.status === "stopped")
+        ) {
           try {
             await tx.transaction(async (observation) => {
               const rows = await observation

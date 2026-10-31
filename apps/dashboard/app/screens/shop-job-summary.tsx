@@ -1,5 +1,6 @@
 import { Button } from "@agentify/ui";
 import { Link } from "react-router";
+import type { OnboardingView } from "../../src/onboarding.js";
 import type { ShopJobView } from "../../src/shop-job-view.js";
 import { PostForm } from "../components/post-form.js";
 import styles from "./shop-job.module.css";
@@ -13,8 +14,10 @@ export function ShopJobSummary({
   endpoint,
   summaryTo,
   checkAction,
+  publication,
   noProducts = false,
 }: Readonly<{
+  publication?: NonNullable<OnboardingView["account"]>["publication"];
   initial: ShopJobView | null;
   endpoint: string;
   summaryTo: string;
@@ -23,7 +26,8 @@ export function ShopJobSummary({
 }>) {
   const [view, unread] = useShopJob(initial, endpoint);
   if (!view || view.status === "queued" || view.status === "running")
-    return <ShopJobProgress view={view} unread={unread} />;
+    return <ShopJobProgress view={view} unread={unread} notification={publication?.notification} />;
+  if (publication) return <p role="status">{publication.waiting}</p>;
   const problem = unread ? (
     <p role="status">Progress couldn't be refreshed. The server may still be working.</p>
   ) : null;

@@ -1,6 +1,7 @@
 import { Button, Field } from "@agentify/ui";
 import { Link } from "react-router";
 import type { OnboardingPress, OnboardingView } from "../../src/onboarding.js";
+import type { ShopJobView } from "../../src/shop-job-view.js";
 import { Moment } from "../components/moment.js";
 import { PostForm } from "../components/post-form.js";
 import { CoinbaseAddress } from "../wallet/address-button.js";
@@ -12,7 +13,9 @@ export function OnboardingAccount({
   view,
   press,
   publish,
+  job,
 }: Readonly<{
+  job?: Pick<ShopJobView, "kind" | "status"> | null;
   view: OnboardingView;
   press?: OnboardingPress;
   publish?: Readonly<{ checkedJob: string; label: string }>;
@@ -42,6 +45,19 @@ export function OnboardingAccount({
       Check again
     </Link>
   ) : null;
+  if (view.publicationPending) {
+    const active = job?.status === "queued" || job?.status === "running";
+    return (
+      <>
+        {press?.requestNeedsCheck ? null : problem}
+        {active && job.kind === "publish" ? null : (
+          <p role="status">
+            {active ? account?.publication.checking : account?.publication.waiting}
+          </p>
+        )}
+      </>
+    );
+  }
   if (!account?.active)
     return (
       <>
@@ -115,7 +131,7 @@ export function OnboardingAccount({
                     defaultValue={name}
                     required
                     hint={account.nameRule}
-                    {...(press?.nameProblem === undefined ? {} : { error: press.nameProblem })}
+                    error={press?.nameProblem}
                   />
                 </>
               ) : null}
@@ -133,7 +149,7 @@ export function OnboardingAccount({
                     defaultValue={wallet}
                     required
                     hint={account.wallet.rule}
-                    {...(press?.walletProblem === undefined ? {} : { error: press.walletProblem })}
+                    error={press?.walletProblem}
                   />
                   <WalletEcho box="payout_wallet" initial={wallet} />
                   {account.wallet.coinbase !== null && "chain" in account.wallet.coinbase ? (

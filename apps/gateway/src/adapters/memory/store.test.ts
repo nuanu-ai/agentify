@@ -89,7 +89,9 @@ describe("MemoryStore, where it is not like the other one", () => {
     // If this store honoured an edit to a returned object, code that edits what
     // it read would work here and silently do nothing against Postgres, which
     // builds every object afresh from a row.
-    const store = new MemoryStore("eip155:84532", counted());
+    const store = new MemoryStore("eip155:84532", counted(), undefined, undefined, {
+      stage: () => () => {},
+    });
     await store.addMerchant({ id: A, name: "Merchant A" }, 0);
     await storeAcceptedOrder(store, order("ord_1", "paid"));
 
@@ -105,7 +107,9 @@ describe("MemoryStore, where it is not like the other one", () => {
     // Postgres refuses any change to a recorded split; a split edited through
     // a reference this store handed out would let a test pass on what the
     // database refuses, and a payout built from it would pay another address.
-    const store = new MemoryStore("eip155:84532", counted());
+    const store = new MemoryStore("eip155:84532", counted(), undefined, undefined, {
+      stage: () => () => {},
+    });
     await store.addMerchant({ id: A, name: "Merchant A" }, 0);
     const network = payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, "eip155:84532");
     const wallet = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
@@ -138,7 +142,9 @@ describe("MemoryStore, where it is not like the other one", () => {
     // the refusal is the driver's foreign-key error, whose message happens to
     // contain the identifier. Here the guard is this adapter's own, and whoever
     // runs the seed needs to know which merchant is missing.
-    const store = new MemoryStore("eip155:84532", counted());
+    const store = new MemoryStore("eip155:84532", counted(), undefined, undefined, {
+      stage: () => () => {},
+    });
     await store.addMerchant({ id: A, name: "Merchant A" }, 0);
 
     await expect(
@@ -162,22 +168,28 @@ describe("MemoryStore writes that go with an order", () => {
     // that is not written down.
     let seenState: string | undefined;
     let store!: MemoryStore;
-    store = new MemoryStore("eip155:84532", counted(), undefined, {
-      async stage(_merchantId, envelope) {
-        expect(envelope.id).toBe("env_1");
-        return () => {
-          // Read as the envelope arrives: the order must already say what it
-          // announces.
-          void store.orderById("ord_1").then((found) => {
-            seenState = found?.order.state;
-          });
-        };
+    store = new MemoryStore(
+      "eip155:84532",
+      counted(),
+      undefined,
+      {
+        async stage(_merchantId, envelope) {
+          expect(envelope.id).toBe("env_1");
+          return () => {
+            // Read as the envelope arrives: the order must already say what it
+            // announces.
+            void store.orderById("ord_1").then((found) => {
+              seenState = found?.order.state;
+            });
+          };
+        },
+        async forget() {
+          return () => {};
+        },
+        async remind() {},
       },
-      async forget() {
-        return () => {};
-      },
-      async remind() {},
-    });
+      { stage: () => () => {} },
+    );
     await store.addMerchant({ id: A, name: "Merchant A" }, 0);
     await storeAcceptedOrder(store, order("ord_1", "paid"));
 
@@ -212,15 +224,21 @@ describe("MemoryStore writes that go with an order", () => {
     // All or nothing without a transaction: the write that can refuse is taken
     // first, so a refusal leaves no receipt, no envelope and the order where it
     // was.
-    const store = new MemoryStore("eip155:84532", counted(), undefined, {
-      async stage() {
-        throw new Error("the stream would not take it");
+    const store = new MemoryStore(
+      "eip155:84532",
+      counted(),
+      undefined,
+      {
+        async stage() {
+          throw new Error("the stream would not take it");
+        },
+        async forget() {
+          return () => {};
+        },
+        async remind() {},
       },
-      async forget() {
-        return () => {};
-      },
-      async remind() {},
-    });
+      { stage: () => () => {} },
+    );
     await store.addMerchant({ id: A, name: "Merchant A" }, 0);
     await storeAcceptedOrder(store, order("ord_1", "paid"));
 

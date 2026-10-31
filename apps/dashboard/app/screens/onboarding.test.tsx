@@ -78,6 +78,7 @@ it("offers an approved merchant's ready code the publishing guide without asking
     origin: "https://agentify.ad",
     unread: false,
     account: onboardingAccountView(step, {
+      mode: initial.mode,
       sellerName: "Freeland",
       savedWallet: "0x0000000000000000000000000000000000000001",
       nameRule: NAME_RULE,

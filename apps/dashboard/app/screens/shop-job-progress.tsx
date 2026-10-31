@@ -4,7 +4,8 @@ import styles from "./shop-job.module.css";
 export function ShopJobProgress({
   view,
   unread,
-}: Readonly<{ view: ShopJobView | null; unread: boolean }>) {
+  notification,
+}: Readonly<{ view: ShopJobView | null; unread: boolean; notification?: string }>) {
   if (!view)
     return (
       <p role="status">
@@ -22,7 +23,7 @@ export function ShopJobProgress({
         value={view.total === null ? undefined : view.read}
         aria-label="Products read"
       />
-      <p>{view.words.leaving}</p>
+      <p>{notification ?? view.words.leaving}</p>
       {unread ? (
         <p role="status">Progress couldn't be refreshed. The server may still be working.</p>
       ) : null}

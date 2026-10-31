@@ -11,6 +11,7 @@ export interface OnboardingView {
   readonly contact: MomentView | null;
   readonly origin: string;
   readonly unread: boolean;
+  readonly publicationPending?: boolean;
   readonly account?: ReturnType<typeof onboardingAccountView>;
 }
 
@@ -26,6 +27,7 @@ export interface OnboardingPress {
 }
 
 interface AccountFacts {
+  mode: SurfaceMode;
   sellerName: string;
   savedWallet: string | null;
   nameRule: string;
@@ -49,22 +51,30 @@ export function onboardingAccountView(step: NextStep, account: Readonly<AccountF
   const declined = state === "declined" || state === "withdrawn";
   return {
     active: state !== "none",
+    email: account.email,
+    publication: {
+      checking: "We'll publish the products that pass this check.",
+      waiting: "Preparing your publication…",
+      notification: `We'll email ${account.email} when it finishes.`,
+    },
     sellerName: account.sellerName,
     savedWallet: profile ? account.savedWallet : null,
     nameRule: account.nameRule,
     wallet: account.wallet,
     heading:
-      state === "seller-name"
-        ? "Add your seller name"
-        : state === "pending" && account.request !== null
-          ? "Request sent"
-          : state === "withdrawn"
-            ? "Live sales are stopped"
-            : state === "declined"
-              ? `Agentify didn't approve ${account.sellerName} for live sales`
-              : state === "wallet"
-                ? "You're approved. Add your payout wallet."
-                : null,
+      state === "publish-code" && account.mode === "live"
+        ? "You're approved"
+        : state === "seller-name"
+          ? "Add your seller name"
+          : state === "pending" && account.request !== null
+            ? "Request sent"
+            : state === "withdrawn"
+              ? "Live sales are stopped"
+              : state === "declined"
+                ? `Agentify didn't approve ${account.sellerName} for live sales`
+                : state === "wallet"
+                  ? "You're approved. Add your payout wallet."
+                  : null,
     sent:
       state === "pending" && account.request !== null
         ? {
@@ -89,15 +99,19 @@ export function onboardingAccountView(step: NextStep, account: Readonly<AccountF
           : state === "pending" && account.request !== null && wallet
             ? [
                 step.page === "shop"
-                  ? "Meanwhile, add your payout wallet."
+                  ? "Meanwhile, add your payout wallet, so your ready products go on sale as soon as you're approved."
                   : "Meanwhile, add your payout wallet, so you can publish as soon as you're approved.",
               ]
             : declined
               ? ["Fix what the note asks, then ask again."]
               : state === "request"
                 ? ["Live sales start once Agentify approves your shop."]
-                : state === "wallet" && step.page !== "shop"
-                  ? ["Then publish your products from your code."]
+                : state === "wallet"
+                  ? [
+                      step.page === "shop"
+                        ? "We publish your ready products as soon as it's saved."
+                        : "Then publish your products from your code.",
+                    ]
                   : [],
     link:
       state === "publish-code"
@@ -151,7 +165,9 @@ export function onboardingAccountView(step: NextStep, account: Readonly<AccountF
                 ? wallet
                   ? "Save name and wallet"
                   : "Save name"
-                : "Save wallet",
+                : state === "wallet" && step.page === "shop"
+                  ? "Save wallet and publish"
+                  : "Save wallet",
           }
         : null,
   };

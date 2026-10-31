@@ -14,6 +14,8 @@ export { declineLiveSales, requestLiveSales } from "./app/live-sales.js";
 export type {
   LiveSalesAsk,
   LiveSalesAsked,
+  LiveSalesChange,
+  LiveSalesEffect,
   LiveSalesEvidence,
   LiveSalesNotice,
   LiveSalesRequest,

@@ -27,6 +27,7 @@ import { connect } from "./database.js";
 import { gatewayFor } from "./gateway.js";
 import { identityFor } from "./identity.js";
 import { postgresLiveSalesNotices, startLiveSalesMail } from "./live-sales-mail.js";
+import { advanceLivePublication, livePublicationPending } from "./live-sales-publication.js";
 import { isSandboxMail, postmanFor } from "./mail.js";
 import { startNuanuAnalytics } from "./nuanu-analytics.js";
 import type { Pages } from "./pages.js";
@@ -128,6 +129,7 @@ function started(
     identity,
     wooShops,
     pages,
+    livePublicationPending: (merchantId) => livePublicationPending(pool, merchantId),
     // On the dashboard's own pool, which is the gateway's database: the reader
     // opens read-only transactions there, and a dashboard action writes its
     // change and its journal row in one transaction there.
@@ -161,6 +163,8 @@ function started(
   });
 
   const shopJobs = startShopJobs({
+    advancePublications: () =>
+      config.surfaceMode === "live" ? advanceLivePublication(pool, wooShops) : Promise.resolve(),
     shops: wooShops,
     identity,
     clientFor: (acting) => gatewayFor(application, acting, undefined, wooShops.cardPauses),

@@ -1,6 +1,6 @@
 import type { LiveSalesNotice, LiveSalesRequest } from "@agentify/gateway/live-sales";
 import { describe, expect, it } from "vitest";
-import { liveSalesMessage } from "./live-sales-mail.js";
+import { liveSalesMessage } from "./live-sales-message.js";
 
 const askedAt = Date.parse("2026-10-30T14:00:00Z");
 const request: LiveSalesRequest = {

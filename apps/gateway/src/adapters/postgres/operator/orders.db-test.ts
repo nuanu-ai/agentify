@@ -88,7 +88,9 @@ if (databaseUrl === null) {
     // The registry of splits refuses a delete; only a truncate empties it.
     await pool.query(EMPTY_EVERY_TABLE);
     return {
-      store: PostgresStore.over(db, "eip155:84532", countedIds()),
+      store: PostgresStore.over(db, "eip155:84532", countedIds(), undefined, {
+        within: async () => {},
+      }),
       orders: postgresOperatorReader(db, "eip155:84532").orders,
     };
   });
@@ -96,7 +98,9 @@ if (databaseUrl === null) {
   describe("the segments' predicates", () => {
     it("hold each order exactly where their memory twins do, in every state and payment stage", async () => {
       await pool.query(EMPTY_EVERY_TABLE);
-      const store = PostgresStore.over(db, "eip155:84532", countedIds());
+      const store = PostgresStore.over(db, "eip155:84532", countedIds(), undefined, {
+        within: async () => {},
+      });
       await store.addMerchant({ id: "mch_twins", name: "A merchant" }, 1);
       const written: StoredOrder[] = [];
       for (const state of ORDER_STATES.filter(

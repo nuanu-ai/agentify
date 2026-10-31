@@ -1,4 +1,4 @@
-import type { LiveSalesNotice } from "@agentify/gateway/live-sales";
+import type { LiveSalesEffect } from "@agentify/gateway/live-sales";
 import { afterEach, expect, it } from "vitest";
 import { type AdminServed, adminServed } from "./testing/admin.js";
 import { formsIn, readable } from "./testing/html.js";
@@ -17,7 +17,7 @@ async function seller(
   connected = true,
   shops?: WooShops,
 ) {
-  const notices: LiveSalesNotice[] = [];
+  const notices: LiveSalesEffect[] = [];
   open = await adminServed({
     channel: channel === "sandbox" ? "test" : channel,
     ...(shops === undefined ? {} : { shops }),
@@ -30,6 +30,7 @@ async function seller(
       },
     },
   });
+  notices.length = 0;
   const id = await open.harnessed.gateway.registerMerchant();
   await open.identity.make(OWNER, id);
   if (connected) await open.harnessed.store.noteContact(id, open.harnessed.now(), "api");
@@ -445,7 +446,15 @@ it("follows the current code integration after a shop disconnect, retaining shop
 });
 
 it("keeps a failed request retryable when its transactional notice writer is unavailable", async () => {
-  open = await adminServed({ channel: "live" });
+  open = await adminServed({
+    channel: "live",
+    liveSalesNotices: {
+      stage: (notice) => {
+        if (notice.kind === "requested") throw new Error("notice writer unavailable");
+        return () => {};
+      },
+    },
+  });
   const id = await open.harnessed.gateway.registerMerchant();
   await open.identity.make(OWNER, id);
   await open.harnessed.store.noteContact(id, open.harnessed.now(), "api");

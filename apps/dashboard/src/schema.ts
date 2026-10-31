@@ -515,8 +515,10 @@ export const liveSalesMail = pgTable(
     requesterAccountId: text("requester_account_id").references(() => accounts.id, {
       onDelete: "cascade",
     }),
-    kind: text("kind").$type<"requested" | "declined" | "reminder">().notNull(),
-    event: jsonb("event").$type<import("./live-sales-mail.js").LiveSalesMailEvent>().notNull(),
+    kind: text("kind")
+      .$type<import("./live-sales-events.js").LiveSalesMailEvent["kind"]>()
+      .notNull(),
+    event: jsonb("event").$type<import("./live-sales-events.js").LiveSalesMailEvent>().notNull(),
     message: jsonb("message").$type<import("./mail.js").Message>(),
     state: text("state")
       .$type<"pending" | "accepted" | "suppressed">()
@@ -546,7 +548,7 @@ export const liveSalesMail = pgTable(
     index("dashboard_live_sales_mail_recipient").on(table.recipientAccountId),
     check(
       "dashboard_live_sales_mail_kind",
-      sql`${table.kind} in ('requested', 'declined', 'reminder')`,
+      sql`${table.kind} in ('requested', 'declined', 'reminder', 'admitted', 'published', 'withdrawn')`,
     ),
     check(
       "dashboard_live_sales_mail_state",
@@ -557,6 +559,28 @@ export const liveSalesMail = pgTable(
       sql`${table.lastOutcome} is null or ${table.lastOutcome} in ('accepted', 'refused', 'unknown')`,
     ),
     check("dashboard_live_sales_mail_attempts", sql`${table.attempts} >= 0`),
+  ],
+);
+
+/** A saved admission/first-wallet trigger survives an active catalogue check. */
+export const livePublications = pgTable(
+  "dashboard_live_publications",
+  {
+    id: text("id").primaryKey(),
+    merchantId: text("merchant_id").notNull(),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    event: jsonb("event").$type<import("@agentify/gateway/live-sales").LiveSalesChange>().notNull(),
+    jobId: text("job_id"),
+    state: text("state").$type<"pending" | "completed">().notNull().default("pending"),
+    createdAt: moment("created_at"),
+  },
+  (table) => [
+    index("dashboard_live_publications_pending")
+      .on(table.createdAt)
+      .where(sql`${table.state} = 'pending'`),
+    check("dashboard_live_publications_state", sql`${table.state} in ('pending', 'completed')`),
   ],
 );
 

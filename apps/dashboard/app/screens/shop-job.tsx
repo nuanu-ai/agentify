@@ -15,8 +15,10 @@ export function ShopJobPanel({
   reconnect,
   secondaryCheck = false,
   header,
+  notification,
   noProducts = false,
 }: Readonly<{
+  notification?: string;
   noProducts?: boolean;
   header?: (view: ShopJobView | null) => ReactNode;
   reconnect?: ReactNode;
@@ -32,7 +34,7 @@ export function ShopJobPanel({
     <>
       {header?.(view)}
       {!view || view.status === "queued" || view.status === "running" ? (
-        <ShopJobProgress view={view} unread={unread} />
+        <ShopJobProgress view={view} unread={unread} notification={notification} />
       ) : (
         <ShopJobResult
           view={view}
