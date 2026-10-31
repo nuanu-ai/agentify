@@ -1023,6 +1023,23 @@ describe("a stop before the shop was read", () => {
     expect(said.body).not.toContain("couldn't read");
     expect(said.reason).toMatchObject({ outcome: "unknown", reason_code: "unknown" });
   };
+  /** A publication may have reached the gateway before its row was recorded. */
+  const ourSideMidway = (said: Awaited<ReturnType<typeof told>>) => {
+    expect(said.job.read).toBe(0);
+    expect(said.screen).toContain(
+      "Agentify stopped on its side. No product was confirmed on sale in this sync, and we don't know about the rest yet.",
+    );
+    expect(said.subject).toBe("You're approved. Publishing stopped on our side");
+    expect(said.body).toContain(
+      "Agentify stopped on its side while publishing from woo.nuanu.ai. No product was confirmed on sale, and we don't know about the rest yet.",
+    );
+    expect(said.body).toContain("Sync with your shop from your dashboard.");
+    for (const words of [said.screen, said.body]) {
+      expect(words).not.toContain("Nothing was published");
+      expect(words).not.toContain("couldn't read");
+    }
+    expect(said.reason).toMatchObject({ outcome: "unknown", reason_code: "unknown" });
+  };
 
   it("an unreadable seller account is told as Agentify's stop, not the shop's", async () => {
     const s = await setup([currency, item(11), complete]);
@@ -1055,7 +1072,7 @@ describe("a stop before the shop was read", () => {
     await workShopJob(job, s.parts, () => true);
     const said = await told(s);
     expect(said.job.stopCode).toBe("interrupted");
-    ourSide(said);
+    ourSideMidway(said);
   });
 
   it("an exception of Agentify's own before the first product is told as Agentify's stop", async () => {
@@ -1088,7 +1105,41 @@ describe("a stop before the shop was read", () => {
     }
     const said = await told(s);
     expect(said.job.stopCode).toBe("unknown");
-    ourSide(said);
+    ourSideMidway(said);
+  });
+
+  it("a failure after the gateway accepted the first product never says nothing was published", async () => {
+    const s = await setup([currency, item(11), complete]);
+    await s.shops.noteCurrency(s.person.id, { code: "USD", decimals: 2 }, "grant-1");
+    await s.shops.jobs.request({
+      merchantId: s.h.merchant.id,
+      accountId: s.person.id,
+      connectionRevision: "grant-1",
+      shopUrl: SHOP,
+      kind: "publish",
+      currency: { code: "USD", decimals: 2 },
+      rate: null,
+    });
+    const worker = startShopJobs({
+      ...s.parts,
+      publisherFor: (who) => ({
+        ...shopPublisherFor(s.h.gateway, who, s.shops),
+        read: async () => {
+          throw new Error("The published card could not be read back.");
+        },
+      }),
+    });
+    try {
+      await vi.waitFor(async () =>
+        expect((await s.shops.jobs.latest(s.h.merchant.id))[0]?.status).toBe("stopped"),
+      );
+    } finally {
+      await worker.stop();
+    }
+    expect(await s.h.store.cards(s.h.merchant.id)).toMatchObject([{ paused: false }]);
+    const said = await told(s);
+    expect(said.job.stopCode).toBe("unknown");
+    ourSideMidway(said);
   });
 
   it("a check stopped by a restart before its first product says the same about the check", async () => {
@@ -1104,7 +1155,7 @@ describe("a stop before the shop was read", () => {
     if (!job) throw new Error("The check was not queued");
     await workShopJob(job, s.parts, () => true);
     const view = await shopJobView(s.shops, s.h.merchant.id, new URLSearchParams());
-    expect(view?.words.outcome).toBe("Agentify stopped on its side before reading your shop.");
+    expect(view?.words.outcome).toBe("Agentify stopped on its side before the check finished.");
   });
 
   it("a shop that could not be read is still told as the shop's", async () => {

@@ -70,7 +70,10 @@ export function decisionMessage(parts: {
         subject = title = approved
           ? "You're approved. Publishing stopped on our side"
           : "Publishing stopped on our side";
-        lead = `${prefix}Agentify stopped on its side before reading ${result.host}. Nothing was published.`;
+        lead =
+          result.stopCode === "internal"
+            ? `${prefix}Agentify stopped on its side before reading ${result.host}. Nothing was published.`
+            : `${prefix}Agentify stopped on its side while publishing from ${result.host}. No product was confirmed on sale, and we don't know about the rest yet.`;
         paragraphs = ["Sync with your shop from your dashboard."];
       } else if (result.status === "stopped" && result.stopCode === "unread") {
         subject = title = approved

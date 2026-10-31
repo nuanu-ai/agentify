@@ -70,7 +70,11 @@ export function presentShopJob(
         : null
       : view.status === "stopped"
         ? stoppedOnOurSide(view)
-          ? `Agentify stopped on its side before reading your shop.${view.kind === "publish" ? " Nothing was published." : ""}`
+          ? view.stopCode === "internal"
+            ? `Agentify stopped on its side before reading your shop.${view.kind === "publish" ? " Nothing was published." : ""}`
+            : view.kind === "publish"
+              ? "Agentify stopped on its side. No product was confirmed on sale in this sync, and we don't know about the rest yet."
+              : "Agentify stopped on its side before the check finished."
           : view.kind === "publish" && view.stopCode === "unknown"
             ? `We couldn't confirm the last publication. ${products(view.published)} ${view.published === 1 ? "was" : "were"} confirmed on sale during this publication. ${read}. We don't know about the rest yet.`
             : view.kind === "publish"

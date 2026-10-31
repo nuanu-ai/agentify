@@ -114,9 +114,15 @@ work was interrupted, or Agentify stopped on its own side. The last one covers
 a publication that cannot read the merchant's own account before it starts, and
 a restart or an internal error before the first product is read. Those are not
 the shop's doing, so the screen, the approval email and the analytics event
-never describe them as an unreadable shop: the merchant reads "Agentify stopped
-on its side before reading your shop. Nothing was published.", and analytics
-records the generic reason rather than `catalogue_unavailable`.
+never describe them as an unreadable shop, and analytics records the generic
+reason rather than `catalogue_unavailable`. Only the first case is known to
+have published nothing, so only it reads "Agentify stopped on its side before
+reading your shop. Nothing was published." A restart or an internal error can
+land after the gateway accepted a product and before its row was recorded, so
+a card may be on sale while the job counts nothing read. There a publication
+reads "Agentify stopped on its side. No product was confirmed on sale in this
+sync, and we don't know about the rest yet.", and a check reads "Agentify
+stopped on its side before the check finished."
 
 ## Reading progress
 
