@@ -192,6 +192,21 @@ export const ONBOARDING_CASES: readonly {
     account: "wallet",
   },
   {
+    row: 28,
+    when: "Approved shop with a wallet waits for its own publication",
+    facts: {
+      ...initial,
+      through: "woocommerce",
+      shop: "connected",
+      ready: 2,
+      liveApproved: true,
+      payoutWallet: true,
+    },
+    page: "shop",
+    reason: null,
+    account: "none",
+  },
+  {
     row: 29,
     when: "Approved code can publish",
     facts: {
