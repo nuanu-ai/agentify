@@ -7,6 +7,7 @@
  * the merchant's own, 18000 rupiah to the dollar.
  */
 
+import { coinbaseRateOf } from "@agentify/recorded";
 import type { Order } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
 import { merchantItemIdFor } from "./woo-catalog.js";
@@ -35,7 +36,7 @@ const RATE: RateEntry = {
   rate: "18000",
   setAt: SET,
   sessionSignedInAt: new Date("2026-10-09T09:00:00.000Z"),
-  reference: { rate: "18035.292596", source: "Coinbase", readAt: SET },
+  reference: { rate: coinbaseRateOf("IDR"), source: "Coinbase", readAt: SET },
   confirmed: false,
 };
 const KEYS = { shopUrl: SHOP, consumerKey: "ck_abc", consumerSecret: "cs_def" };

@@ -1,0 +1,44 @@
+name: Recorded answers
+
+# Asks the services Agentify does not run whether they still answer as the
+# tests' recordings in packages/recorded say: Coinbase's public exchange rates,
+# WooCommerce's source at the recorded release and at the newest one, and the
+# payment facilitator's refusal codes on npm. `pnpm smoke:recorded` says what
+# it checks and what it leaves alone. It makes public GET requests only and
+# holds no secret.
+#
+# A recorded fact that no longer holds fails the run, and so does a service
+# that could not be asked, which the log names apart from a change. GitHub
+# sends a failed scheduled run to whoever last changed the cron line below,
+# and disables this workflow when the public repository has had no activity
+# for 60 days; the Actions tab turns it back on. It never runs on a pull
+# request: what it reports is the world moving, not the change under review.
+
+on:
+  schedule:
+    # Mondays at 06:17 UTC.
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  recorded:
+    name: recorded answers
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          # setup-node v5 otherwise infers pnpm from packageManager and tries to
+          # cache it before the next step has enabled Corepack.
+          package-manager-cache: false
+
+      - run: corepack enable
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm smoke:recorded

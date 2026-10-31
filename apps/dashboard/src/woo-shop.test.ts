@@ -28,6 +28,7 @@ const createParcel = (
 ) => createTheParcelInTheShop(keys, sold, fetch);
 
 import { PAYOUT_SPLIT_NETWORKS, payoutSplitFor, payoutSplitNetworkOf } from "@agentify/gateway";
+import { wooRefusal } from "@agentify/recorded";
 import type { ShipToLocality } from "@nuanu-ai/agentify-contracts";
 import type { WooRequest } from "./woo-request.js";
 import {
@@ -517,12 +518,11 @@ describe("creating the order", () => {
 
   it("does not carry an authenticated shop's response into the error", async () => {
     const secret = `Basic ${Buffer.from("ck_abc:cs_def").toString("base64")}`;
+    const refused = wooRefusal("woocommerce_rest_required_product_reference");
+    // WooCommerce's refusal, in words that repeat the request's credentials.
     stand = await shopAnswering(() => ({
-      status: 400,
-      body: {
-        code: "woocommerce_rest_invalid_product_id",
-        message: `reflected ${secret}`,
-      },
+      status: refused.status,
+      body: { ...refused.body, message: `reflected ${secret}` },
     }));
     const made = await createOrder(connectionTo(stand.url), order);
     expect(made.ok).toBe(false);
@@ -2770,15 +2770,7 @@ describe("the shop's own shipping rate for a parcel's place", () => {
               ? new Response("<html>Proxy response</html>", { status: 200 })
               : Response.json({}, { status: 504 });
           }
-          if (!retryCleanup)
-            return Response.json(
-              {
-                code: "woocommerce_rest_cart_conflict",
-                message: "Cart update was refused.",
-                data: { status: 409 },
-              },
-              { status: 409 },
-            );
+          if (!retryCleanup) return new Response(null, { status: 429 });
           state.held = 0;
         }
         return Response.json(
@@ -2801,6 +2793,16 @@ describe("the shop's own shipping rate for a parcel's place", () => {
     },
   );
 
+  /**
+   * Whether a token the stand-in issued is past the expiry it carries. The
+   * Store API takes a token it cannot validate for none: a read opens a new
+   * guest's cart, and a write is refused for want of a nonce.
+   */
+  const lapsedAt = (token: string | undefined, time: number): boolean =>
+    token !== undefined &&
+    JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8")).exp * 1000 <=
+      time;
+
   it("replaces an expired known-dirty identity through the creation budget instead of retrying its cleanup forever", async () => {
     let time = 1_800_000_000_000;
     let sessions = 0;
@@ -2808,27 +2810,16 @@ describe("the shop's own shipping rate for a parcel's place", () => {
     const contents = new Map<string, boolean>();
     stand = await shopAnswering((asked) => {
       let token = asked.cartToken;
-      if (token === undefined) {
+      const lapsed = lapsedAt(token, time);
+      if (lapsed && asked.method !== "GET") return wooRefusal("woocommerce_rest_missing_nonce");
+      if (token === undefined || lapsed) {
         sessions += 1;
         token = `e30.${Buffer.from(JSON.stringify({ user_id: `guest-${sessions}`, exp: Math.floor(time / 1000) + 172_800 })).toString("base64url")}.signature`;
         contents.set(token, false);
-      } else if (
-        JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8")).exp *
-          1000 <=
-        time
-      ) {
-        return {
-          status: 401,
-          body: { code: "woocommerce_rest_invalid_cart_token", message: "Expired cart token." },
-        };
       }
       if (asked.url.endsWith("/add-item")) contents.set(token, true);
       if (asked.url.endsWith("/remove-item")) {
-        if (!cleanupAllowed)
-          return {
-            status: 409,
-            body: { code: "woocommerce_rest_cart_conflict", message: "Cart update was refused." },
-          };
+        if (!cleanupAllowed) return { status: 429, raw: "" };
         contents.set(token, false);
       }
       return {
@@ -2941,19 +2932,17 @@ describe("the shop's own shipping rate for a parcel's place", () => {
   it("renews an observed empty cart after its shop-declared token expiry", async () => {
     let time = 1_800_000_000_000;
     let sessions = 0;
+    let lapsedSent = 0;
     const contents = new Map<string, boolean>();
     stand = await shopAnswering((asked) => {
       let token = asked.cartToken;
-      if (token === undefined) {
+      const lapsed = lapsedAt(token, time);
+      if (lapsed) lapsedSent += 1;
+      if (lapsed && asked.method !== "GET") return wooRefusal("woocommerce_rest_missing_nonce");
+      if (token === undefined || lapsed) {
         sessions += 1;
         token = `e30.${Buffer.from(JSON.stringify({ user_id: `guest-${sessions}`, exp: Math.floor(time / 1000) + 172800 })).toString("base64url")}.signature`;
         contents.set(token, false);
-      } else if (
-        JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8")).exp *
-          1000 <=
-        time
-      ) {
-        return { status: 401, body: { code: "invalid_cart_token" } };
       }
       if (asked.url.endsWith("/add-item")) contents.set(token, true);
       if (asked.url.endsWith("/remove-item")) contents.set(token, false);
@@ -2973,6 +2962,8 @@ describe("the shop's own shipping rate for a parcel's place", () => {
       expect([...contents.values()]).toStrictEqual([false, false]);
       expect(await runtime.shippingRates("28", JAKARTA)).toMatchObject({ ok: true });
       expect(sessions).toBe(2);
+      // A runtime that sent a lapsed token would recover and show the same results above.
+      expect(lapsedSent).toBe(0);
     } finally {
       clock.mockRestore();
     }

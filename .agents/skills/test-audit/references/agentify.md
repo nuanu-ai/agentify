@@ -16,8 +16,22 @@ pattern search or a sample.
 Exercise the production owner through a caller-visible boundary with independent
 expected values and fixed external I/O. Preserve distinct transport, lifecycle,
 security, storage and published-package contracts even when their inputs overlap.
-Read the real dependency when an assertion depends on its behavior. A mock call
-alone does not establish the outcome that dependency must produce.
+When an assertion depends on how a code dependency behaves, read its source or
+types; a mock call alone does not establish the outcome that dependency must
+produce.
+
+Fixed external I/O stands in for services Agentify does not run, such as an
+exchange-rate feed, a WooCommerce shop, the payment facilitator, the chain or a
+sign-in provider, and every answer a stand-in gives is a claim about its
+service. Before adding or changing a test that uses one, answer: what does this
+test claim about the outside service, and which recorded answer says so? A
+stand-in carries only what the service was seen to answer, either a recorded
+response or a fact taken from one, with its source and the date it was read. A
+hand-written answer, such as a currency the rate feed is said not to list, is a
+claim a reviewer cannot check by reading the test, and the test keeps passing
+when the service answers otherwise. A failure any network peer can produce,
+such as a timeout, a refused connection or a bare server error, needs no
+recording; an error code or body the service states in its own words does.
 
 Measure focused test duration when proposing an expensive test's consolidation.
 Separate test execution time from transform/setup and whole-command wall time.

@@ -1,0 +1,17 @@
+{
+  "name": "@agentify/recorded",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "What services Agentify does not run were seen to answer, with where and when each answer was read, for tests to stand in for them; and the live check that asks the services again",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "smoke": "tsx src/smoke.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.12"
+  }
+}

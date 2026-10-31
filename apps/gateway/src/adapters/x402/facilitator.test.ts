@@ -841,6 +841,10 @@ describe("verifying a payment", () => {
       "invalid_exact_evm_failed_to_get_balance",
       "unknown_error",
       "invalid_exact_evm_eip3009_not_supported",
+      // A fault in Coinbase's own nodes. `@coinbase/cdp-sdk` 1.58.0 names it
+      // in X402VerifyInvalidReason (read 2026-10-31); the recorded vocabulary
+      // is of 1.55.0, which does not.
+      "node_failure",
     ]) {
       const answered = await refusedWith(code, "the payer's words must not reach the log");
       if (answered.verified !== "unknown") throw new Error(`${code} became a verdict`);
