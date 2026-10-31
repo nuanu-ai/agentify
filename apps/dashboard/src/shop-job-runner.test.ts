@@ -1,4 +1,5 @@
 import { type Harness, harness } from "@agentify/gateway/testing";
+import { wooRefusal } from "@agentify/recorded";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { gatewayFor } from "./gateway.js";
 import { liveSalesMessage } from "./live-sales-message.js";
@@ -11,7 +12,12 @@ import {
 } from "./shop-job-runner.js";
 import { shopJobView } from "./shop-job-view.js";
 import { cardsFromTheShop, type StoreProduct } from "./woo-catalog.js";
-import type { ConnectedCatalogueEvent, ProductInspection } from "./woo-shop.js";
+import {
+  type ConnectedCatalogueEvent,
+  inspectProductInTheShop,
+  type ProductInspection,
+} from "./woo-shop.js";
+import type { WooRequest } from "./woo-request.js";
 import { memoryWooShops } from "./woo-shops.js";
 
 const SHOP = "https://woo.nuanu.ai";
@@ -414,6 +420,38 @@ describe("a durable shop job", () => {
     expect(await s.h.store.cardById(id)).toMatchObject({
       paused: true,
     });
+  });
+  it("asks the shop about missing cards within its request bound and never again once withdrawn", async () => {
+    const s = await setup([currency, { kind: "complete", total: 0 }]);
+    const ids = [];
+    for (let id = 1; id <= 30; id++) ids.push(await s.seed(id));
+    let inFlight = 0;
+    let most = 0;
+    const asked: string[] = [];
+    const deleted = wooRefusal("woocommerce_rest_product_invalid_id");
+    const shop: WooRequest = async (url) => {
+      inFlight += 1;
+      most = Math.max(most, inFlight);
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 1));
+        const { pathname, search } = new URL(String(url));
+        asked.push(pathname + search);
+        if (pathname.includes("/settings/"))
+          return Response.json({ id: pathname.split("/").at(-1), value: "no" });
+        if (pathname === "/wp-json/wc/v3/products") return Response.json([]);
+        return Response.json(deleted.body, { status: deleted.status });
+      } finally {
+        inFlight -= 1;
+      }
+    };
+    const inspect: ShopWorkParts["inspect"] = (keys, id) => inspectProductInTheShop(keys, id, shop);
+    await s.run("publish", { inspect });
+    for (const id of ids) expect((await s.h.store.cardById(id))?.paused, id).toBe(true);
+    expect(most).toBeLessThanOrEqual(4);
+    expect(asked.filter((path) => path.includes("/settings/")).length).toBeLessThanOrEqual(11);
+    asked.length = 0;
+    await s.run("publish", { inspect });
+    expect(asked).toEqual([]);
   });
   it("keeps the published card when its current price no longer satisfies the card contract", async () => {
     const s = await setup([
