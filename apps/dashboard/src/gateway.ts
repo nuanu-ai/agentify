@@ -653,10 +653,12 @@ export const gatewayFor = (
               status: 409,
               why: "This product is off sale after a shop check. Sync with your shop to check it again and return it to sale if it's ready.",
             };
-          // Relinquish connector ownership before the seller acts, including an already paused card.
-          await ownership?.save(null);
           const card = await application.setCardPaused(merchantId, itemId, paused, caller);
-          return card === null ? refusedAs(NO_SUCH_ITEM) : answered(API_ROUTES.pause_card, card);
+          if (card === null) return refusedAs(NO_SUCH_ITEM);
+          // The seller's act takes the pause from the connector, an already paused card included,
+          // and only once the card write stands.
+          await ownership?.save(null);
+          return answered(API_ROUTES.pause_card, card);
         };
         return cardPauses ? cardPauses.withLock(merchantId, itemId, change) : change();
       }),
