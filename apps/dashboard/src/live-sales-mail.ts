@@ -129,12 +129,17 @@ async function eligible(
     )
       return "decision_changed";
   }
-  if (row.kind === "reminder") {
-    const [pending] = await tx
+  if (operatorMail(row.kind) || row.kind === "declined") {
+    const [held] = await tx
       .select({ id: liveRequests.id })
       .from(liveRequests)
-      .where(and(eq(liveRequests.id, row.requestId), eq(liveRequests.state, "pending")));
-    if (!pending) return "request_answered";
+      .where(
+        and(
+          eq(liveRequests.id, row.requestId),
+          eq(liveRequests.state, row.kind === "declined" ? "declined" : "pending"),
+        ),
+      );
+    if (!held) return row.kind === "declined" ? "decision_changed" : "request_answered";
   }
   if (row.message !== null && row.message.to !== recipient.email) return "address_changed";
   if (row.message !== null && row.preparedFrom !== config.mailFrom) return "sender_changed";
