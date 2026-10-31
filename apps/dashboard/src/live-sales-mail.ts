@@ -160,8 +160,10 @@ async function suppressed(
 }
 
 /**
- * Tries before an email is given up: one the provider refuses, or one this
- * version cannot prepare, is tried this many times over about eight hours.
+ * How many handovers an email gets before an answer calling it malformed (400
+ * or 422) ends it, and how many preparations one this version cannot prepare
+ * gets before it is suppressed. Every handover counts, whatever it returned;
+ * the growing delay spreads ten over about eight and a half hours.
  */
 const TRIES = 10;
 const retryAt = (from: Date, attempts: number): Date =>

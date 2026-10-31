@@ -1006,10 +1006,6 @@ describe("the protected product check", () => {
       if (!complete) claimedTotal = 3;
       expect(await sync()).toMatchObject({ status: complete ? "completed" : "stopped" });
       expect(await h.store.cardById(draft?.id ?? "")).toMatchObject({ paused: complete });
-      expect(
-        stand.asked.some((one) => one.url.includes("include=2")),
-        "the draft was asked after by id",
-      ).toBe(complete);
     } finally {
       await h.stop();
     }

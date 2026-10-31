@@ -353,8 +353,9 @@ if (databaseUrl === null) {
         log.mockRestore();
       }
       const settled = await rows();
-      // Not "suppressed", which says a message was never handed over: an
-      // earlier try whose outcome was unknown may have delivered this one.
+      // Given up rather than suppressed: the queue stopped trying an email
+      // that still applied, and an earlier try whose outcome was unknown may
+      // have delivered it.
       expect(settled.map((row) => [row.kind, row.state, row.last_outcome])).toEqual([
         ["reminder", "given_up", "refused"],
         ["requested", "given_up", "refused"],

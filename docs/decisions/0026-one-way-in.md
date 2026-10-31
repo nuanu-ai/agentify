@@ -53,7 +53,9 @@ sales.** The operator flag opens `/admin` and the workspace; everybody else
 gets the site's 404. A merchant asks with a seller name and dated evidence of
 their connection, and no wallet; an operator admits them, or declines with a
 mandatory note the merchant reads before asking again, and may admit without
-a request. A withdrawn admission is a pause with a note the merchant reads.
+a request. The admission is the one lever the operator holds over a merchant,
+and a withdrawn admission is a pause with a note the merchant reads (the
+product owner, 2026-10-24).
 The workspace never sets or takes away a seller name. Neither admission nor
 decline bypasses another selling guard or asserts a payment outcome (the
 product owner, 2026-10-30). Admission goes through a person, the reply time
