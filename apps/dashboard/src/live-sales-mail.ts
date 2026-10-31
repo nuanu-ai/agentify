@@ -17,7 +17,7 @@ import type { DashboardConfig } from "./config.js";
 import { operatorMail } from "./live-sales-events.js";
 import { insertNotices } from "./live-sales-intents.js";
 import { recordLiveSalesChange } from "./live-sales-publication.js";
-import { type Handover, isSandboxMail, type Postman, postmanFor } from "./mail.js";
+import { type Handover, isSandboxMail, type Message, type Postman, postmanFor } from "./mail.js";
 import { accounts, liveSalesMail } from "./schema.js";
 
 type MailConfig = Pick<
@@ -159,6 +159,14 @@ async function suppressed(
     .where(eq(liveSalesMail.id, row.id));
 }
 
+/**
+ * Tries before an email is given up: one the provider refuses, or one this
+ * version cannot prepare, is tried this many times over about eight hours.
+ */
+const TRIES = 10;
+const retryAt = (from: Date, attempts: number): Date =>
+  new Date(from.getTime() + Math.min(6 * 3600_000, 60_000 * 2 ** Math.min(attempts - 1, 9)));
+
 interface DeliveryParts {
   readonly pool: Pool;
   readonly config: MailConfig;
@@ -197,13 +205,32 @@ export async function deliverLiveSalesMail(parts: DeliveryParts): Promise<boolea
               .select({ email: accounts.email, merchantId: accounts.merchantId })
               .from(accounts)
               .where(eq(accounts.id, row.requesterAccountId));
-      const message = liveSalesMessage({
-        to: recipient.email,
-        event: row.event,
-        requesterEmail: requester?.merchantId === row.merchantId ? requester.email : null,
-        baseUrl: `${parts.config.publicBaseUrl}${parts.config.basePath}`,
-        idempotencyKey: row.id,
-      });
+      let message: Message;
+      try {
+        message = liveSalesMessage({
+          to: recipient.email,
+          event: row.event,
+          requesterEmail: requester?.merchantId === row.merchantId ? requester.email : null,
+          baseUrl: `${parts.config.publicBaseUrl}${parts.config.basePath}`,
+          idempotencyKey: row.id,
+        });
+      } catch (error) {
+        // A row stored by another version can fail here every time; the
+        // rest of the queue must not wait behind it.
+        console.error(
+          `[dashboard] a live-sales email could not be prepared: ${failureNamed(error)}`,
+        );
+        const attempts = row.attempts + 1;
+        await tx
+          .update(liveSalesMail)
+          .set(
+            attempts >= TRIES
+              ? { attempts, state: "suppressed", suppression: "unpreparable", settledAt: at }
+              : { attempts, nextAttemptAt: retryAt(at, attempts) },
+          )
+          .where(eq(liveSalesMail.id, row.id));
+        return { id: row.id, send: false };
+      }
       await tx
         .update(liveSalesMail)
         .set({
@@ -244,17 +271,17 @@ export async function deliverLiveSalesMail(parts: DeliveryParts): Promise<boolea
     }
     const settledAt = now();
     const attempts = row.attempts + 1;
+    const givenUp = outcome === "refused" && attempts >= TRIES;
     await tx
       .update(liveSalesMail)
       .set({
         attempts,
         lastOutcome: outcome,
         lastAttemptAt: at,
-        state: outcome === "accepted" ? "accepted" : "pending",
-        settledAt: outcome === "accepted" ? settledAt : null,
-        nextAttemptAt: new Date(
-          settledAt.getTime() + Math.min(6 * 3600_000, 60_000 * 2 ** Math.min(attempts - 1, 9)),
-        ),
+        state: outcome === "accepted" ? "accepted" : givenUp ? "suppressed" : "pending",
+        suppression: givenUp ? "refused" : null,
+        settledAt: outcome === "accepted" || givenUp ? settledAt : null,
+        nextAttemptAt: retryAt(settledAt, attempts),
       })
       .where(eq(liveSalesMail.id, row.id));
   });
