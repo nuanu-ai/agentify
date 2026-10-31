@@ -1548,10 +1548,13 @@ hour or two before K's visit, and L's windows, are filled with other stories
 of the tier rather than waited out. T-06's stop belongs to the load stand
 alone, since no other story buys from the load stand's merchants.
 
-A story that needs an instrument the run lacks is recorded Blocked, with the
-missing instrument named; where only some of its variants need one, the story
-is Partial and names the instrument beside each variant that did not run. The
-run does not build instruments of its own.
+The run sets up the equipment a story itself describes: the receiver I-07 and
+I-09 send to, the client D-08 brings, T-07's Compose override, and the
+merchant programs F-05 and the load stand are given. Equipment that no story
+describes is not built for the run. A story that needs such equipment is
+recorded Blocked with what is missing named, and where only some of its
+variants need it, the variants that did not run are named with what each
+lacked.
 
 A release check is a selected subset, not full readiness: A-03/A-04, B-02,
 J-01/J-02, D-04/D-06/D-07, E-02/E-03, H-01/H-03/H-08, I-08, M-01/M-02 and
