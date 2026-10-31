@@ -547,22 +547,6 @@ describe("a durable shop job", () => {
       });
     },
   );
-  it("temporary lack of stock keeps a published card", async () => {
-    const s = await setup([
-      currency,
-      item(11, {
-        ok: false,
-        again: false,
-        saidNo: true,
-        why: "Out of stock.",
-        obstacle: { group: "not_selling", reason: "out_of_stock", withdraw: false },
-      }),
-      complete,
-    ]);
-    const id = await s.seed(11);
-    await s.run();
-    expect(await s.h.store.cardById(id)).toMatchObject({ paused: false });
-  });
   it("a returned product resumes only the connector pause and preserves seller and shop pauses", async () => {
     const s = await setup([currency, item(11), complete]);
     const id = await s.seed(11);

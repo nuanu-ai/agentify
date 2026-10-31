@@ -1795,6 +1795,77 @@ describe("the protected product check", () => {
     }
   });
 
+  it("a sync keeps a published card on sale while the shop is out of stock for now", async () => {
+    let stock = "instock";
+    stand = await shopAnswering((asked) => {
+      if (asked.url === "/protected/guide.txt") return { status: 403, body: {} };
+      if (asked.url.includes("/settings/"))
+        return { status: 200, body: settingAt(asked.url, settingFor(asked.url)) };
+      const product = productDocument({
+        name: "Agentify guide.txt",
+        description: "A downloadable guide.",
+        stock_status: stock,
+      });
+      return asked.url.includes("/products?")
+        ? { status: 200, body: [product], headers: { "X-WP-Total": "1" } }
+        : { status: 200, body: product };
+    });
+    const h = await harness();
+    try {
+      const shops = memoryWooShops();
+      const person = {
+        id: "shop-owner",
+        email: "shop@example.com",
+        confirmed: true,
+        merchant: { id: h.merchant.id },
+      };
+      await shops.connect({
+        ...connectionTo(stand.url),
+        accountId: person.id,
+        revision: "granted-1",
+        permissions: "read_write",
+        connectedAt: new Date(),
+        currency: { code: "USD", decimals: 2 },
+      });
+      await gatewayFor(h.gateway, { merchantId: h.merchant.id, email: person.email }).sellThrough(
+        "woocommerce",
+      );
+      const sync = async () => {
+        await shops.jobs.request({
+          kind: "publish",
+          merchantId: h.merchant.id,
+          accountId: person.id,
+          connectionRevision: "granted-1",
+          shopUrl: stand?.url ?? "",
+          currency: { code: "USD", decimals: 2 },
+          rate: null,
+        });
+        const job = await shops.jobs.claim();
+        if (!job) throw new Error("No accepted task");
+        await workShopJob(job, {
+          shops,
+          identity: { byId: async () => person },
+          clientFor: (who) => gatewayFor(h.gateway, who),
+          publisherFor: (who) => shopPublisherFor(h.gateway, who, shops),
+          catalogue: (keys) => connectedCatalogue(keys, fetch),
+          guestCart: async () => null,
+          surfaceMode: "sandbox",
+        });
+        return job;
+      };
+      await sync();
+      expect(await h.store.cards(h.merchant.id)).toMatchObject([{ paused: false }]);
+      stock = "outofstock";
+      const job = await sync();
+      expect(await h.store.cards(h.merchant.id)).toMatchObject([{ paused: false }]);
+      expect(await shops.jobs.rows(h.merchant.id, job.id)).toMatchObject([
+        { group: "not_selling", reason: "out_of_stock" },
+      ]);
+    } finally {
+      await h.stop();
+    }
+  });
+
   /**
    * The two shops of the tax probe: one in Bali entering prices with
    * Indonesia's VAT inside them, one in Seattle entering them before
