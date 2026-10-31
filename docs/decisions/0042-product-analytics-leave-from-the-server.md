@@ -37,9 +37,20 @@ contents of a card or an order, and free text such as an error's message never
 leave.
 
 A setup result is recorded where the server learns the step's outcome, once
-per change. A seller name counts as the `seller_name` step wherever it is
-written, in Settings or by a request for live sales. What each onboarding step
-records is in [research note 92](../research/92-merchant-onboarding.md).
+per change, and its `step` is one of a fixed list. `platform_answer` is the
+platform a merchant chose. `woo_preflight` is the public catalogue estimate
+before access, whose counts cover only the products it read and which carries
+no counts when the catalogue could not be read. `woo_connect` completed means
+a request for access to a shop was saved, and `woo_connection` that the access
+arrived. `woo_check` is a finished shop check, completed or partial, counting
+only the products it read; `woo_import` is a finished publication, the one
+after an admission included. `seller_name` counts a seller name wherever it is
+written, in Settings or by a request for live sales; `seller_site`,
+`payout_wallet` and `api_key` count the site, the wallet and a key.
+`live_request` is a merchant's request for live sales, `live_decline` an
+operator's decline of one and `live_approval` an admission. How the onboarding
+screens record each is in
+[research note 92](../research/92-merchant-onboarding.md).
 
 An event is one row in an outbox, written in the transaction of the fact it
 records, so a rolled-back fact leaves no event, and checked against the
@@ -51,8 +62,9 @@ unsent. What this relies on Nuanu to do with an event's id and time, where
 that comes from and what of it is not yet verified, is in
 [research note 84](../research/84-nuanu-analytics-ingest.md).
 
-Each channel sends to a Nuanu site of its own with its own credentials and
-reference keys, the test channel's events tagged internal. A person can opt
+The live and test channels send to Nuanu sites of their own with their own
+credentials and reference keys, the test channel's events tagged internal; a
+sandbox sends only to a receiver of its own. A person can opt
 out in the cabinet's settings, and from then on no event about them, or about
 the merchant their account names, leaves, whoever acted.
 
